@@ -147,4 +147,5 @@ Thumbs.db
 
 # Specific to this project
 memory.db
-*.log 
+*.log
+open-webui/ 
