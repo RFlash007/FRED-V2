@@ -1,0 +1,14 @@
+Flask>=3.0.0
+ollama>=0.2.0
+networkx
+python-dotenv
+pydantic
+# Add embedding library (e.g., sentence-transformers)
+# sentence-transformers
+# Add DB drivers if needed
+# Add any other dependencies for core or api service 
+flask
+duckdb
+requests
+pytest
+requests-mock # For testing Ollama interactions 

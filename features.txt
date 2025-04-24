@@ -1,0 +1,24 @@
+## Novel UI Ideas Brainstorm
+
+Building on the futuristic, mind-map-inspired interface:
+
+**1. Interactive Background Mind Map:**
+   - **Live Topic Clustering:** Background visualization dynamically clusters nodes related to current conversation topics. New concepts branch out visually.
+   - **Node Interaction:** Clicking/hovering on background map nodes highlights related messages or displays concept metadata (tooltip/panel).
+   - **"Memory Trace" Animation:** Animate connections between relevant background nodes during memory access, showing Fred's "thought path".
+
+**2. Context-Aware Sidebar:**
+   - **Dynamic Panels:** Sidebar dynamically shows panels relevant to the current context (e.g., "Code Analysis" panel when discussing code).
+   - **Visual Memory Links:** Visually connect related information within sidebar panels (e.g., lines between episodic memories and related semantic concepts).
+   - **"Focus" Indicator:** Small, glowing indicator highlights the configuration or memory type Fred is currently prioritizing.
+
+**3. Evolving Message Bubbles:**
+   - **Connection Anchors:** Add visual anchors to message bubbles; draw temporary animated lines between related messages.
+   - **Inline Entity Highlighting:** Automatically detect and subtly highlight key entities in Fred's responses. Clicking could bring up related info.
+   - **"Thought Stream" Input:** Show a faint, dynamic stream of abstract shapes/keywords near the message bubble while Fred generates a response, replacing static loading indicators.
+
+**4. Command Palette / Universal Search:**
+   - Implement a quick-access command palette (e.g., Ctrl+K) for fuzzy searching through chat history, memories, config, and actions, using the futuristic aesthetic.
+
+**5. Audio-Visual Feedback (Optional):**
+   - Subtle, non-intrusive sound effects for key actions (message send/receive, mode change, memory access) paired with brief visual pulses. 

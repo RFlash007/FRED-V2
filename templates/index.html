@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fred :: AI Assistant</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Fred Visualization as background layer -->
+    <div id="fred-visualization"></div>
+    
+    <!-- Toggle sidebar button - Moved outside of fred-container for better visibility -->
+    <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle Sidebar">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    </button>
+    
+    <div class="fred-container">
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1>Fred</h1>
+                <!-- Pulsing dot added via CSS ::before -->
+            </div>
+
+            <div class="sidebar-section">
+                <h2>Memory Access</h2>
+                <!-- Removed memory tabs -->
+                <!--
+                <div class="memory-tabs">
+                    <button class="memory-tab active" data-memory="semantic">Semantic</button>
+                    <button class="memory-tab" data-memory="episodic">Episodic</button>
+                    <button class="memory-tab" data-memory="dreaming">Dreaming</button>
+                </div>
+                -->
+                
+                <!-- Placeholder for memory content display -->
+                <div id="memory-content-display" style="font-size: 0.8em; opacity: 0.7; min-height: 40px;">
+                    <!-- Content related to selected memory tab could load here -->
+                    Memory status updates will appear here.
+                </div>
+            </div>
+
+            <div class="sidebar-section settings">
+                <h2>Configuration</h2>
+                <label for="model-select">Model:</label>
+                <select id="model-select">
+                    <option value="phi4-mini:latest" selected>Phi 4 Mini</option>
+                </select>
+
+                <label for="ollama-url">Server Endpoint:</label>
+                <input type="text" id="ollama-url" value="http://localhost:11434" placeholder="e.g., http://192.168.1.100:11434">
+
+                <!-- Dark Mode Toggle -->
+                <div class="dark-mode-toggle">
+                    <label for="dark-mode-switch">Dark Mode</label>
+                    <label class="switch">
+                        <input type="checkbox" id="dark-mode-switch">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                
+                <!-- Idle Mode Toggle Switch - REMOVED -->
+                <!--
+                <div class="idle-mode-toggle">
+                    <label for="idle-mode-switch">Idle Association Discovery</label>
+                    <label class="switch">
+                        <input type="checkbox" id="idle-mode-switch">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+                -->
+            </div>
+
+            <!-- Spacer to push potential footer items down -->
+            <div style="flex-grow: 1;"></div>
+
+            <div class="sidebar-section" style="margin-bottom: 0;">
+                 <p style="font-size: 0.75em; color: var(--fred-slate-light); text-align: center; opacity: 0.6;">Fred v0.1 - Local</p>
+            </div>
+        </aside>
+
+        <main class="chat-area">
+            <div id="chat-history">
+                <!-- Chat messages will appear here -->
+                <div class="message system">
+                    <p>Initializing Fred interface... Standing by.</p>
+                </div>
+            </div>
+            <form id="message-form">
+                <textarea id="message-input" placeholder="Interact with Fred..." rows="1"></textarea>
+                <button type="submit" title="Send Message">
+                    <!-- Simple Send Icon Placeholder (could use SVG) -->
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-send"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </form>
+        </main>
+    </div>
+
+    <!-- Add vis.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js"></script>
+    <script src="/static/script.js"></script>
+    <script src="/static/mind-map.js"></script>
+    <script>
+        // Initialize the MindMap visualization after the DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            // Ensure the mind-map script has loaded and defined the MindMap class
+            if (typeof MindMap !== 'undefined') {
+                 // Instantiate the mind map, targeting the visualization container
+                 // The dataFile option is removed; data is now fetched via API
+                 window.mindMap = new MindMap('fred-visualization', {
+                    // dataFile: '/static/memory_map_data.json' // REMOVED
+                 });
+                 console.log('MindMap initialized for fred-visualization.');
+            } else {
+                console.error('MindMap class not found. Check mind-map.js loading.');
+            }
+        });
+    </script>
+</body>
+</html> 

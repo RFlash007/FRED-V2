@@ -1,0 +1,929 @@
+:root {
+    /* Fred Palette (Anthropic-Inspired) */
+    --fred-book-cloth: #CC785C;  /* Primary Action/Headers */
+    --fred-kraft: #D4A27F;       /* Secondary Backgrounds/Cards */
+    --fred-manilla: #EBDDBC;     /* Highlights/Subtle Overlays */
+    --fred-ivory-dark: #E5E4DF;  /* Borders/Subtle UI */
+    --fred-ivory-medium: #F0F0EB; /* Alt Backgrounds */
+    --fred-ivory-light: #FAFAF7;  /* Main Background/Whitespace */
+    --fred-slate-dark: #191919;   /* Primary Text */
+    --fred-slate-medium: #262625; /* Secondary Text/Icons */
+    --fred-slate-light: #40403E;  /* Muted Text/Dividers */
+    --fred-cloud-dark: #9DA7B3;   /* Neutral UI - Inferred */
+    --fred-cloud-medium: #CED3D9;  /* Neutral UI - Inferred */
+    --fred-cloud-light: #E4E8ED;   /* Neutral UI - Inferred */
+    --fred-focus: #61AAF2;        /* Interactive States/Links */
+    --fred-error: #BF4D43;        /* Errors/Warnings */
+    --fred-black: #000000;
+    --fred-white: #FFFFFF;
+
+    /* UI Application */
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+
+    /* Light Mode Defaults - Rearranged */
+    --bg-primary: var(--fred-ivory-light);          /* Main Background - F.R.E.D. */
+    --bg-secondary: var(--fred-ivory-medium);       /* Alt Backgrounds / Input Form - F.R.E.D. */
+    --bg-chat-history: var(--fred-ivory-light);     /* Chat area background - F.R.E.D. Ivory */
+    --bg-sidebar: var(--fred-slate-dark);
+    --bg-input: var(--fred-white);                  /* Input field itself */
+    --bg-message-user: var(--fred-book-cloth);      /* Keep Book Cloth for distinction */
+    --bg-message-assistant: var(--fred-ivory-medium);/* Assistant messages - NEW (Softer) */
+    --bg-message-system: var(--fred-manilla);        /* System messages - NEW (Lighter) */
+    --bg-button-primary: var(--fred-book-cloth);    /* Primary Button - F.R.E.D. */
+    --bg-button-primary-hover: #B86A4F;           /* Darker Book Cloth */
+    --bg-button-secondary: var(--fred-slate-medium);
+    --bg-button-secondary-hover: var(--fred-slate-light);
+    --bg-highlight: var(--fred-kraft);              /* Active Memory tab - F.R.E.D. Kraft */
+    --bg-panel: var(--fred-ivory-medium);           /* Panel Background - NEW (Softer) */
+    --bg-panel-header: var(--fred-book-cloth);      /* Panel Header - F.R.E.D. */
+
+    --text-primary: var(--fred-slate-medium);       /* Primary Text - F.R.E.D. Slate */
+    --text-secondary: var(--fred-slate-light);      /* Secondary Text - F.R.E.D. Slate */
+    --text-inverse: var(--fred-ivory-light);        /* Text on dark backgrounds */
+    --text-muted: var(--fred-slate-light);
+    --text-placeholder: var(--fred-cloud-dark);
+    --text-button-primary: var(--fred-white);
+    --text-button-secondary: var(--fred-ivory-light);
+    --text-link: var(--fred-focus);                 /* Links - F.R.E.D. Focus */
+    --text-error: var(--fred-white);
+    --text-system: var(--fred-slate-medium);        /* System text - Adjust for Manilla bg */
+    --text-panel-header: var(--fred-white);       /* Panel Header Text */
+
+    --border-primary: var(--fred-ivory-dark);       /* Primary borders */
+    --border-secondary: var(--fred-cloud-medium);   /* Secondary borders */
+    --border-focus: var(--fred-focus);              /* Focus State - F.R.E.D. Focus */
+    --border-error: var(--fred-error);
+
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.02);
+    --shadow-panel: var(--shadow-md);             /* Panel Shadow - NEW */
+
+    --border-radius-sm: 0.25rem;
+    --border-radius-md: 0.5rem;
+    --border-radius-lg: 0.75rem;
+    --border-radius-full: 9999px;
+
+    --transition-duration: 250ms;                 /* Slightly slower for smoother feel */
+    --transition-timing: ease-in-out;             /* Smoother timing function */
+    --fred-slate-light-rgb: 64, 64, 62;
+    --fred-slate-dark-rgb: 25, 25, 25; /* Added for rgba use */
+    --fred-kraft-rgb: 212, 162, 127; /* Added for rgba use */
+    --fred-manilla-rgb: 235, 221, 188; /* Added for rgba use */
+    --fred-book-cloth-rgb: 204, 120, 92; /* Added for rgba use */
+
+    /* --- NEW COLOR VARIABLES --- */
+    --fred-blue: #0d6efd; /* Standard Bootstrap Blue */
+    --fred-green: #198754; /* Standard Bootstrap Green */
+    
+    /* Dark Mode Variables */
+    --fred-background-dark: #212529; /* Dark background */
+    --fred-text-primary-dark: #f8f9fa; /* Light text */
+}
+
+/* Dark Mode Variables - Rearranged */
+body.dark-mode {
+    --bg-primary: var(--fred-slate-dark);         /* Main Background - NEW (Medium Slate) */
+    --bg-secondary: var(--fred-slate-dark);         /* Alt Backgrounds / Input Form - NEW (Darker) */
+    --bg-chat-history: var(--fred-slate-dark);      /* Chat area background - NEW (Darker) */
+    --bg-sidebar: var(--fred-black);
+    --bg-input: var(--fred-slate-medium);           /* Input field itself - Match old primary */
+    --bg-message-user: var(--fred-kraft);           /* User messages - Kraft */
+    --bg-message-assistant: var(--fred-slate-medium); /* Assistant messages - NEW (Match secondary) */
+    --bg-message-system: var(--fred-kraft);         /* System messages - Keep Light Slate */
+    --bg-button-primary: var(--fred-book-cloth);    /* Keep Book Cloth */
+    --bg-button-primary-hover: #B86A4F;
+    --bg-button-secondary: var(--fred-slate-medium); /* Secondary Button - Medium Slate */
+    --bg-button-secondary-hover: var(--fred-slate-light);
+    --bg-highlight: var(--fred-manilla);            /* Active Memory tab - Manilla Highlight */
+    --bg-panel: var(--fred-slate-medium);             /* Panel Background - NEW (Match secondary) */
+    --bg-panel-header: var(--fred-book-cloth);      /* Panel Header - Book Cloth */
+
+    --text-primary: var(--fred-ivory-light);        /* Primary Text - Light Ivory */
+    --text-secondary: var(--fred-cloud-medium);     /* Secondary Text - Cloud */
+    --text-inverse: var(--fred-ivory-light);        /* Text on dark backgrounds (Sidebar) - FIX */
+    --text-muted: var(--fred-cloud-dark);
+    --text-placeholder: var(--fred-cloud-dark);
+    --text-button-primary: var(--fred-white);
+    --text-button-secondary: var(--fred-ivory-light);
+    --text-link: var(--fred-focus);
+    --text-error: var(--fred-white);
+    --text-system: var(--fred-slate-dark);          /* System text - Dark Slate on Kraft */
+    --text-panel-header: var(--fred-ivory-light);   /* Panel Header Text - Light Ivory */
+
+    --border-primary: var(--fred-kraft);            /* Primary borders - Kraft */
+    --border-secondary: rgba(var(--fred-kraft-rgb), 0.5); /* Secondary borders - Kraft Transparent */
+    --border-focus: var(--fred-focus);
+    --border-error: var(--fred-error);
+
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -1px rgba(0, 0, 0, 0.2);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.2);
+    --shadow-panel: 0 2px 8px 0 rgba(0, 0, 0, 0.2); /* Subtle panel shadow */
+}
+
+/* Reset and Base Styles */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    height: 100%; /* Crucial for full height layouts */
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    height: 100%; /* Make body fill HTML height */
+    min-height: 100%; /* Fallback */
+    font-family: var(--font-sans);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    display: flex; /* Enable flex context for children */
+    overflow: hidden; /* Prevent body itself from scrolling */
+    transition: background-color var(--transition-duration) var(--transition-timing), color var(--transition-duration) var(--transition-timing); /* Smooth theme switch */
+}
+
+/* Main Layout */
+.fred-container {
+    display: flex;
+    flex: 1; /* Grow to fill body */
+    min-width: 0; /* Prevent content from breaking flex layout */
+}
+
+.sidebar {
+    width: 280px;
+    flex-shrink: 0; /* Prevent shrinking */
+    background-color: var(--bg-sidebar);
+    color: var(--text-inverse);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--fred-slate-medium);
+    box-shadow: var(--shadow-md);
+    z-index: 10;
+    overflow-y: auto; /* Allow sidebar scrolling */
+    transition: transform var(--transition-duration) var(--transition-timing), 
+                width var(--transition-duration) var(--transition-timing);
+    margin-left: 0;
+}
+
+.chat-area {
+    flex: 1; /* Grow to fill remaining space */
+    display: flex;
+    flex-direction: column;
+    position: relative; /* Needed for absolute positioning of transcription */
+    background-color: transparent;
+    min-width: 0; /* Prevent content from breaking flex layout */
+    overflow: hidden; /* Prevent chat area content from overflowing the container */
+    transition: margin-left var(--transition-duration) var(--transition-timing),
+                background-color var(--transition-duration) var(--transition-timing);
+    z-index: 5;
+}
+
+/* Sidebar Components */
+.sidebar-header {
+    margin-bottom: 1.5rem;
+}
+
+.sidebar-header h1 {
+    font-size: 1.5em;
+    font-weight: 600;
+    color: var(--fred-book-cloth); /* Title Color - Book Cloth */
+    display: flex;
+    align-items: center;
+    gap: 0.75rem; /* Increased gap */
+    position: relative; /* Needed for absolute positioning of ::after */
+}
+
+.sidebar-header h1::before {
+    content: '';
+    display: inline-block;
+    width: 10px; /* Main node size */
+    height: 10px;
+    background-color: var(--fred-focus); /* Changed to focus color */
+    border-radius: var(--border-radius-full);
+    animation: brain-pulse 3s infinite ease-in-out; /* New animation */
+    box-shadow: 0 0 10px rgba(var(--fred-focus-rgb), 0.8); /* Focus glow */
+    /* Removed relative positioning */
+}
+
+/* Add ::after for secondary node */
+.sidebar-header h1::after {
+    content: '';
+    position: absolute;
+    left: 5px; /* Position relative to the start of the h1 */
+    top: 4px;  /* Position relative to the start of the h1 */
+    width: 6px; /* Smaller node */
+    height: 6px;
+    background-color: rgba(var(--fred-focus-rgb), 0.7); /* Slightly transparent focus color */
+    border-radius: var(--border-radius-full);
+    animation: brain-node-pulse 3.5s infinite ease-in-out 0.5s; /* Staggered animation */
+    box-shadow: 0 0 8px rgba(var(--fred-focus-rgb), 0.6);
+    z-index: -1; /* Position behind ::before if they overlap */
+}
+
+/* Renamed and modified pulse animation */
+@keyframes brain-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 10px rgba(var(--fred-focus-rgb), 0.8); }
+    30% { opacity: 0.7; transform: scale(0.85); box-shadow: 0 0 15px rgba(var(--fred-focus-rgb), 0.5); }
+    70% { opacity: 0.9; transform: scale(1.1); box-shadow: 0 0 12px rgba(var(--fred-focus-rgb), 0.9); }
+}
+
+/* Animation for the secondary node */
+@keyframes brain-node-pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); box-shadow: 0 0 6px rgba(var(--fred-focus-rgb), 0.5); }
+    50% { opacity: 1; transform: scale(1.3); box-shadow: 0 0 10px rgba(var(--fred-focus-rgb), 0.8); }
+}
+
+.sidebar-section {
+    margin-bottom: 1.5rem;
+}
+
+.sidebar-section h2 {
+    font-size: 0.875em; /* 14px */
+    font-weight: 600;
+    color: var(--fred-kraft); /* Section Header Color - Kraft */
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--border-secondary); /* Use Kraft border */
+}
+
+/* --- Memory Tabs Visualization --- */
+.memory-tabs {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+}
+
+.memory-tab {
+    flex: 1;
+    padding: 0.5rem 0.25rem;
+    background-color: transparent;
+    border: none;
+    border-bottom: 2px solid var(--border-primary);
+    color: var(--text-inverse);
+    font-size: 0.9em;
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--transition-duration) var(--transition-timing);
+    opacity: 0.7;
+    position: relative;
+}
+
+.memory-tab:hover {
+    opacity: 0.9;
+    background-color: rgba(var(--fred-kraft-rgb), 0.2);
+    border-bottom-color: var(--fred-kraft);
+}
+
+.memory-tab.active {
+    opacity: 1;
+    border-bottom-color: var(--bg-highlight);
+    font-weight: 500;
+    background-color: rgba(var(--fred-kraft-rgb), 0.15);
+}
+
+/* --- Settings --- */
+.settings label {
+    display: block;
+    font-size: 0.875em; /* 14px */
+    font-weight: 500;
+    color: var(--fred-cloud-medium);
+    margin-bottom: 0.3rem;
+}
+
+.settings select,
+.settings input[type="text"] {
+    width: 100%;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid var(--fred-slate-light);
+    background-color: var(--fred-slate-medium);
+    color: var(--text-inverse);
+    border-radius: var(--border-radius-md);
+    font-size: 0.9em;
+    margin-bottom: 0.75rem;
+    transition: border-color var(--transition-duration) ease, box-shadow var(--transition-duration) ease;
+}
+
+.settings select:focus,
+.settings input[type="text"]:focus {
+    border-color: var(--border-focus); /* Use focus color for border */
+    box-shadow: 0 0 0 2px var(--border-focus); /* Focus ring */
+    outline: none;
+}
+
+/* --- Chat Area Components --- */
+#chat-history {
+    flex: 1; /* Allow history to grow and shrink */
+    overflow-y: auto; /* Enable vertical scrolling */
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    /* Ensure it has a non-zero basis */
+    min-height: 0;
+    background-color: transparent; /* Allow neural net behind messages */
+    z-index: 5;
+}
+
+/* Abstract Background Visualization (Subtle Lines - Dark Mode) */
+#chat-history::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    /* background: linear-gradient(180deg, rgba(var(--fred-slate-light-rgb), 0.05) 0%, rgba(var(--fred-slate-light-rgb), 0) 20%); */
+    /* Replace with subtle line pattern */
+    background-image: linear-gradient(rgba(var(--fred-kraft-rgb), 0.08) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(var(--fred-kraft-rgb), 0.08) 1px, transparent 1px);
+    background-size: 40px 40px; /* Adjust grid size */
+    pointer-events: none;
+    z-index: 0; /* Behind messages */
+    opacity: 0.3; /* Make very subtle */
+    transition: opacity var(--transition-duration) var(--transition-timing);
+}
+
+body.dark-mode #chat-history::before {
+    /* background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 20%); */
+    opacity: 0.3; /* Keep subtle */
+}
+
+/* --- Message Bubbles --- */
+.message {
+    padding: 0.8rem 1.2rem;
+    border-radius: var(--border-radius-lg);
+    max-width: 75%;
+    word-wrap: break-word;
+    line-height: 1.6;
+    box-shadow: var(--shadow-sm);
+    position: relative; /* For potential pseudo-elements */
+    transition: transform var(--transition-duration) ease, opacity var(--transition-duration) ease;
+    animation: message-entry 0.3s ease-out forwards; /* Add entry animation */
+    opacity: 0;
+}
+
+@keyframes message-entry {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.message p {
+    margin: 0;
+}
+
+.message.user {
+    background-color: var(--bg-message-user); /* Kraft */
+    color: var(--text-inverse); /* Dark text on Kraft */
+    border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 var(--border-radius-lg);
+    margin-left: auto;
+    max-width: 85%;
+}
+
+.message.assistant {
+    background-color: var(--bg-message-assistant); /* Medium Slate */
+    border: 1px solid var(--border-secondary); /* Kraft border */
+    border-radius: var(--border-radius-lg) var(--border-radius-lg) var(--border-radius-lg) 0;
+    margin-right: auto;
+    max-width: 85%;
+    box-shadow: var(--shadow-sm);
+}
+
+.message.system,
+.message.error {
+    background-color: var(--bg-message-system); /* Kraft */
+    color: var(--text-system); /* Dark text on Kraft */
+    border: 1px solid var(--border-secondary); /* Kraft border */
+    border-radius: var(--border-radius-md);
+    font-size: 0.9em;
+    font-style: italic;
+    text-align: center;
+    margin: 0.5rem auto;
+    padding: 0.5rem 1rem;
+    max-width: 70%;
+    box-shadow: var(--shadow-sm);
+}
+
+.message.error {
+    background-color: var(--fred-error);
+    color: var(--text-error);
+    border-color: darken(var(--fred-error), 10%);
+    font-style: normal;
+}
+
+/* Loading Placeholder Enhancement */
+.message.assistant.loading-placeholder {
+    position: relative;
+    overflow: hidden; /* Needed for pseudo-element */
+}
+.message.assistant.loading-placeholder::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(var(--fred-slate-light-rgb), 0.05), transparent);
+    animation: loading-scan 1.8s linear infinite;
+    z-index: 0;
+}
+/* Keep the typing dots */
+.message.assistant.loading-placeholder p::after {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    background-color: var(--fred-slate-light);
+    border-radius: 50%;
+    margin-left: 8px;
+    animation: typing-dot 1.2s infinite steps(3, end);
+    position: relative;
+    top: -2px;
+    z-index: 1; /* Ensure dots are above scan */
+}
+
+@keyframes typing-dot {
+  0%, 20% { 
+      box-shadow: 10px 0 0 0 var(--fred-slate-light), 20px 0 0 0 var(--fred-slate-light);
+  }
+  40% { 
+      box-shadow: 10px 0 0 0 var(--fred-slate-light), 20px 0 0 0 rgba(var(--fred-slate-light-rgb), 0.5);
+  }
+  60% { 
+      box-shadow: 10px 0 0 0 rgba(var(--fred-slate-light-rgb), 0.5), 20px 0 0 0 var(--fred-slate-light);
+  }
+  80%, 100% { 
+      box-shadow: 10px 0 0 0 rgba(var(--fred-slate-light-rgb), 0.5), 20px 0 0 0 rgba(var(--fred-slate-light-rgb), 0.5);
+  }
+}
+
+@keyframes loading-scan {
+    0% { left: -100%; }
+    50% { left: 100%; }
+    100% { left: 100%; } /* Stay off screen before repeating */
+}
+
+/* --- Input Form --- */
+#message-form {
+    padding: 1rem 1.5rem;
+    background-color: var(--bg-secondary); /* Charcoal */
+    border-top: 1px solid var(--border-primary); /* Kraft */
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1); /* Slightly stronger shadow */
+    position: relative;
+    transition: background-color var(--transition-duration) var(--transition-timing);
+    z-index: 10;
+}
+
+/* F.R.E.D. Visualization (Book Cloth Glow) */
+#fred-visualization {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: -1; /* Keep it behind other UI elements */
+    pointer-events: none; /* Let clicks pass through to UI elements underneath */
+    opacity: 0.85;
+    transition: opacity 0.4s ease-in-out;
+    overflow: visible; /* Allow visualization to exceed container bounds */
+}
+
+body.dark-mode #fred-visualization {
+    background-color: rgba(var(--fred-kraft-rgb), 0.04);
+    box-shadow: 0 0 40px 10px rgba(var(--fred-book-cloth-rgb), 0.22);
+}
+
+#fred-visualization.active {
+    opacity: 0.95;
+}
+
+/* Adjust SVG color for Send button */
+#message-form button[type="submit"] svg {
+    stroke: var(--text-button-primary);
+}
+
+body.dark-mode #message-form button[type="submit"] svg {
+    stroke: var(--text-button-primary); /* Already white, should be fine */
+}
+
+#message-input {
+    flex-grow: 1;
+    padding: 0.75rem 1rem;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--border-secondary); /* Kraft */
+    background-color: var(--bg-input); /* Medium Slate */
+    color: var(--text-primary); /* Light Ivory */
+    font-size: 1rem;
+    resize: none;
+    min-height: 48px;
+    max-height: 150px;
+    overflow-y: auto;
+    transition: border-color var(--transition-duration) var(--transition-timing), background-color var(--transition-duration) var(--transition-timing), box-shadow var(--transition-duration) var(--transition-timing);
+}
+
+#message-input::placeholder {
+    color: var(--text-placeholder);
+}
+
+#message-input:focus {
+    outline: none;
+    border-color: var(--border-focus); /* Focus Blue */
+    box-shadow: 0 0 0 3px rgba(var(--fred-focus-rgb), 0.3); /* Focus Blue glow */
+}
+
+#message-form button[type="submit"] {
+    padding: 0.65rem 1.25rem;
+    background-color: var(--bg-button-primary); /* Book Cloth */
+    color: var(--text-button-primary); /* White */
+    border: none;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    font-size: 0.95em;
+    font-weight: 600;
+    line-height: 1.5;
+    height: 44px;
+    transition: background-color var(--transition-duration) var(--transition-timing), transform var(--transition-duration) ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+#message-form button[type="submit"]:hover {
+    background-color: var(--bg-button-primary-hover);
+    transform: translateY(-1px); /* Subtle lift */
+}
+
+#message-form button[type="submit"]:active {
+    transform: translateY(0); /* Push back down */
+}
+
+/* Voice Transcription Area (Placeholder) */
+#voice-transcription {
+    position: absolute;
+    bottom: calc(100% + 5px); /* Position just above the message form */
+    left: 1.5rem;
+    right: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    background-color: rgba(255, 255, 255, 0.8); /* Slightly transparent */
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--border-radius-sm);
+    opacity: 0;
+    transition: opacity var(--transition-duration) var(--transition-timing);
+    pointer-events: none;
+    text-align: center;
+    z-index: 5; /* Below sidebar */
+}
+
+body.dark-mode #voice-transcription {
+    background-color: rgba(var(--fred-slate-dark-rgb), 0.8); /* Dark mode background */
+    color: var(--text-secondary);
+}
+
+#voice-transcription.visible {
+    opacity: 1;
+}
+
+/* Panel Styling (Image Inspired Dark Mode) */
+.fred-panel {
+    background-color: var(--bg-panel); /* Medium Slate */
+    border-radius: var(--border-radius-lg);
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow-panel);
+    overflow: hidden;
+    transition: all var(--transition-duration) var(--transition-timing);
+    opacity: 0;
+    transform: translateY(10px);
+    border: 1px solid var(--border-secondary); /* Subtle Kraft border */
+}
+
+.fred-panel.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.fred-panel-header {
+    background-color: var(--bg-panel-header); /* Book Cloth */
+    color: var(--text-panel-header); /* Light Ivory */
+    padding: 0.75rem 1.25rem;
+    font-size: 1.1em;
+    font-weight: 600;
+    border-bottom: 1px solid rgba(var(--fred-kraft-rgb), 0.4); /* Kraft line below header */
+}
+
+.fred-panel-content {
+    padding: 1.25rem;
+}
+
+/* Example: Priority Tasks Panel */
+.priority-panel {
+    /* Specific styles if needed */
+    transition-delay: 50ms; /* Stagger appearance */
+}
+
+/* Example: Insights Panel */
+.insights-panel {
+    /* Specific styles if needed */
+    border-left: 4px solid var(--fred-kraft); /* Use Kraft for emphasis */
+    transition-delay: 150ms;
+}
+
+.insights-panel .fred-panel-header {
+    /* Optional: Different header? */
+}
+
+/* Insight Expansion / Highlighting */
+.insight-detail {
+    /* Styles for expanded view */
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-primary);
+}
+
+.insight-detail strong,
+.insight-detail .highlighted-entity { /* Class for JS to add */
+    font-weight: 600;
+    color: var(--fred-manilla); /* Highlight with Manilla */
+    cursor: pointer;
+    position: relative;
+    text-decoration: none; /* Remove default underline */
+}
+
+body.dark-mode .insight-detail strong,
+body.dark-mode .insight-detail .highlighted-entity {
+     color: var(--fred-manilla);
+}
+
+
+.insight-detail strong::after,
+.insight-detail .highlighted-entity::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 1px;
+    background-color: var(--fred-manilla); /* Underline with Manilla */
+    opacity: 0;
+    transform: scaleX(0);
+    transition: opacity var(--transition-duration) var(--transition-timing), transform var(--transition-duration) var(--transition-timing);
+    transform-origin: left;
+}
+
+.insight-detail strong:hover::after,
+.insight-detail .highlighted-entity:hover::after {
+    opacity: 1;
+    transform: scaleX(1);
+}
+
+
+/* Chart Placeholder Styling (Dark Mode) */
+.resource-chart {
+    width: 100%;
+    height: 150px; /* Example height */
+    background: conic-gradient( /* Use Kraft/Manilla/Slate */
+        var(--fred-kraft) 0% 40%,
+        var(--fred-manilla) 40% 75%,
+        var(--fred-slate-light) 75% 100%
+    );
+    border-radius: var(--border-radius-full); /* Make it circular */
+    margin: 1rem auto;
+    border: 4px solid var(--bg-panel); /* Match panel bg */
+    box-shadow: var(--shadow-sm);
+}
+
+/* --- Utility Classes --- */
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+/* Responsive Considerations (Basic Example) */
+@media (max-width: 768px) {
+    .sidebar {
+        /* Consider hiding sidebar or making it collapsible on very small screens */
+        width: 220px;
+        padding: 1rem;
+    }
+    #chat-history {
+        padding: 1rem;
+    }
+    #message-form {
+        padding: 0.75rem;
+        gap: 0.5rem;
+    }
+    .message {
+        max-width: 90%;
+    }
+    #message-form button[type="submit"] {
+        padding: 0.5rem 1rem;
+        height: auto; /* Adjust height based on padding */
+        min-height: 40px;
+    }
+    #message-input {
+        min-height: 40px;
+    }
+}
+
+/* Add styles for Dark Mode Toggle */
+.dark-mode-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    margin-top: 1rem;
+}
+
+.dark-mode-toggle label {
+    font-size: 0.875em;
+    font-weight: 500;
+    color: var(--fred-cloud-medium);
+    cursor: pointer;
+}
+
+/* Basic Switch Styling */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+}
+
+.switch input { 
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--fred-slate-light);
+    transition: var(--transition-duration) ease;
+    border-radius: 20px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: var(--transition-duration) ease;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: var(--fred-focus);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--fred-focus);
+}
+
+input:checked + .slider:before {
+    transform: translateX(20px);
+}
+
+/* Sidebar Toggle Button */
+.sidebar-toggle {
+    position: fixed;
+    top: 70px; /* Moved down */
+    left: 280px; /* Position it at the edge of the expanded sidebar */
+    background-color: var(--fred-book-cloth);
+    border: 2px solid var(--fred-ivory-light);
+    border-radius: 50%; /* Make it circular */
+    color: var(--fred-white);
+    width: 36px; /* Slightly smaller */
+    height: 36px; /* Slightly smaller */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 30;
+    box-shadow: var(--shadow-lg);
+    transition: all var(--transition-duration) var(--transition-timing); /* Transition all properties */
+    pointer-events: auto;
+    transform: translateX(-50%); /* Center it on the edge */
+}
+
+.sidebar-toggle:hover {
+    background-color: var(--bg-button-primary-hover);
+    box-shadow: 0 0 12px rgba(var(--fred-focus-rgb), 0.6); /* Add focus glow on hover */
+    transform: translateX(-50%) scale(1.1); /* Keep centering and add scale */
+}
+
+.sidebar-toggle svg {
+    transition: transform var(--transition-duration) var(--transition-timing);
+    stroke-width: 2; /* Slightly thinner lines */
+    width: 18px; /* Adjust icon size */
+    height: 18px;
+}
+
+.sidebar-collapsed .sidebar-toggle {
+    left: 20px; /* Position near the left edge when collapsed */
+    background-color: var(--fred-focus);
+    transform: translateX(0) scale(1); /* Reset transform when collapsed */
+}
+
+.sidebar-collapsed .sidebar-toggle:hover {
+     box-shadow: 0 0 15px rgba(var(--fred-focus-rgb), 0.8); /* Stronger glow when collapsed */
+     transform: scale(1.1); /* Simple scale on hover when collapsed */
+}
+
+.sidebar-collapsed .sidebar-toggle svg {
+    transform: rotate(180deg); /* Keep the rotation */
+}
+
+/* Updated Sidebar for Collapsing */
+.sidebar {
+    width: 280px;
+    flex-shrink: 0; /* Prevent shrinking */
+    background-color: var(--bg-sidebar);
+    color: var(--text-inverse);
+    padding: 1.5rem;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--fred-slate-medium);
+    box-shadow: var(--shadow-md);
+    z-index: 10;
+    overflow-y: auto; /* Allow sidebar scrolling */
+    transition: transform var(--transition-duration) var(--transition-timing), 
+                width var(--transition-duration) var(--transition-timing);
+    margin-left: 0;
+}
+
+/* Add collapsed state for sidebar */
+.sidebar-collapsed .sidebar {
+    transform: translateX(-100%);
+    margin-left: -280px; /* Negative width to ensure it's fully off-screen */
+}
+
+/* Adjust main content when sidebar is collapsed */
+.chat-area {
+    flex: 1; /* Grow to fill remaining space */
+    display: flex;
+    flex-direction: column;
+    position: relative; /* Needed for absolute positioning of transcription */
+    background-color: transparent;
+    min-width: 0; /* Prevent content from breaking flex layout */
+    overflow: hidden; /* Prevent chat area content from overflowing the container */
+    transition: margin-left var(--transition-duration) var(--transition-timing),
+                background-color var(--transition-duration) var(--transition-timing);
+    z-index: 5;
+}
+
+.sidebar-collapsed .chat-area {
+    margin-left: 0;
+}
+
+/* Idle Mode Toggle */
+.idle-mode-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 1rem 0;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid rgba(var(--fred-slate-light-rgb), 0.2);
+}
+
+.idle-mode-toggle label {
+    font-size: 0.9em;
+    color: var(--text-inverse);
+    margin-right: 0.5rem;
+    cursor: pointer;
+}
+
+/* Memory Content Display */
+#memory-content-display {
+    padding: 0.75rem;
+    border-radius: var(--border-radius-sm);
+    background-color: rgba(var(--fred-slate-medium-rgb), 0.3);
+    margin-bottom: 1rem;
+    font-size: 0.85em;
+    color: var(--text-inverse);
+    transition: background-color var(--transition-duration) var(--transition-timing);
+} 
