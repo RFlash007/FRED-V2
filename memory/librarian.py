@@ -7,6 +7,7 @@ import time
 DB_FILE = 'memory.db'
 OLLAMA_API_URL = 'http://localhost:11434/api/embeddings'
 EMBED_MODEL = 'nomic-embed-text'
+LLM_MODEL = 'llama3.1:8b'
 EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
 def init_db():
@@ -66,13 +67,14 @@ def get_embedding(text):
         return None
 
 def classify_memory_type(text):
-    """Classifies memory as Semantic or Episodic (simple rule-based)."""
-    # More sophisticated classification could involve an LLM call
-    past_tense_verbs = ["was", "did", "went", "saw", "talked", "learned", "experienced"]
-    if any(verb in text.lower() for verb in past_tense_verbs) or \
-       any(char.isdigit() for char in text): # Very basic date check
-        return "Episodic"
-    return "Semantic"
+    """Classifies memory as Semantic or Episodic (LLM based)"""
+    # Use an LLM to classify the memory type
+    prompt = f"""
+    Classify the following memory as either "Semantic" or "Episodic":
+    {text}
+    """
+    response = requests.post(OLLAMA_API_URL, json={"model": "llama3.1:8b", "prompt": prompt})
+
 
 def add_memory(label, text, memory_type=None, parent_id=None):
     """Adds a new memory node."""
