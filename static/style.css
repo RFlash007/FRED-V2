@@ -18,6 +18,15 @@
     --fred-black: #000000;
     --fred-white: #FFFFFF;
 
+    /* RGB versions for semi-transparent backgrounds */
+    --fred-book-cloth-rgb: 204, 120, 92;
+    --fred-kraft-rgb: 212, 162, 127;
+    --fred-manilla-rgb: 235, 221, 188;
+    --fred-ivory-medium-rgb: 240, 240, 235;
+    --fred-slate-medium-rgb: 38, 38, 37;
+    --fred-slate-dark-rgb: 25, 25, 25;
+    --fred-slate-light-rgb: 64, 64, 62;
+
     /* UI Application */
     --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     --font-mono: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
@@ -28,9 +37,9 @@
     --bg-chat-history: var(--fred-ivory-light);     /* Chat area background - F.R.E.D. Ivory */
     --bg-sidebar: var(--fred-slate-dark);
     --bg-input: var(--fred-white);                  /* Input field itself */
-    --bg-message-user: var(--fred-book-cloth);      /* Keep Book Cloth for distinction */
-    --bg-message-assistant: var(--fred-ivory-medium);/* Assistant messages - NEW (Softer) */
-    --bg-message-system: var(--fred-manilla);        /* System messages - NEW (Lighter) */
+    --bg-message-user: rgba(var(--fred-book-cloth-rgb), 0.8);
+    --bg-message-assistant: rgba(var(--fred-ivory-medium-rgb), 0.8);
+    --bg-message-system: rgba(var(--fred-manilla-rgb), 0.85);
     --bg-button-primary: var(--fred-book-cloth);    /* Primary Button - F.R.E.D. */
     --bg-button-primary-hover: #B86A4F;           /* Darker Book Cloth */
     --bg-button-secondary: var(--fred-slate-medium);
@@ -68,11 +77,6 @@
 
     --transition-duration: 250ms;                 /* Slightly slower for smoother feel */
     --transition-timing: ease-in-out;             /* Smoother timing function */
-    --fred-slate-light-rgb: 64, 64, 62;
-    --fred-slate-dark-rgb: 25, 25, 25; /* Added for rgba use */
-    --fred-kraft-rgb: 212, 162, 127; /* Added for rgba use */
-    --fred-manilla-rgb: 235, 221, 188; /* Added for rgba use */
-    --fred-book-cloth-rgb: 204, 120, 92; /* Added for rgba use */
 
     /* --- NEW COLOR VARIABLES --- */
     --fred-blue: #0d6efd; /* Standard Bootstrap Blue */
@@ -103,9 +107,9 @@ body.dark-mode {
     --bg-chat-history: var(--fred-slate-dark);      /* Chat area background - NEW (Darker) */
     --bg-sidebar: var(--fred-black);
     --bg-input: var(--fred-slate-medium);           /* Input field itself - Match old primary */
-    --bg-message-user: var(--fred-kraft);           /* User messages - Kraft */
-    --bg-message-assistant: var(--fred-slate-medium); /* Assistant messages - NEW (Match secondary) */
-    --bg-message-system: var(--fred-kraft);         /* System messages - Keep Light Slate */
+    --bg-message-user: rgba(var(--fred-book-cloth-rgb), 0.8);
+    --bg-message-assistant: rgba(var(--fred-ivory-medium-rgb), 0.8);
+    --bg-message-system: rgba(var(--fred-manilla-rgb), 0.85);
     --bg-button-primary: var(--fred-book-cloth);    /* Keep Book Cloth */
     --bg-button-primary-hover: #B86A4F;
     --bg-button-secondary: var(--fred-slate-medium); /* Secondary Button - Medium Slate */
@@ -284,7 +288,7 @@ body {
     overflow-y: auto;
     padding: 1rem;
     display: flex;
-    flex-direction: column-reverse; /* New messages at bottom, scroll for history */
+    flex-direction: column; /* Changed from column-reverse */
     z-index: 25; /* Higher than visualization, lower than form */
 }
 
@@ -488,27 +492,35 @@ body {
 }
 
 .message.user {
-    background-color: var(--bg-message-user); /* Kraft */
-    color: var(--text-inverse); /* Dark text on Kraft */
+    background-color: var(--bg-message-user);
+    color: var(--text-inverse);
     border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 var(--border-radius-lg);
     margin-left: auto;
     max-width: 85%;
 }
 
+body.dark-mode .message.user {
+    background-color: rgba(var(--fred-kraft-rgb), 0.8);
+}
+
 .message.assistant {
-    background-color: var(--bg-message-assistant); /* Medium Slate */
-    border: 1px solid var(--border-secondary); /* Kraft border */
+    background-color: var(--bg-message-assistant);
+    border: 1px solid var(--border-secondary);
     border-radius: var(--border-radius-lg) var(--border-radius-lg) var(--border-radius-lg) 0;
     margin-right: auto;
     max-width: 85%;
     box-shadow: var(--shadow-sm);
 }
 
+body.dark-mode .message.assistant {
+    background-color: rgba(var(--fred-slate-medium-rgb), 0.8);
+}
+
 .message.system,
 .message.error {
-    background-color: var(--bg-message-system); /* Kraft */
-    color: var(--text-system); /* Dark text on Kraft */
-    border: 1px solid var(--border-secondary); /* Kraft border */
+    background-color: var(--bg-message-system);
+    color: var(--text-system);
+    border: 1px solid var(--border-secondary);
     border-radius: var(--border-radius-md);
     font-size: 0.9em;
     font-style: italic;
@@ -517,6 +529,10 @@ body {
     padding: 0.5rem 1rem;
     max-width: 70%;
     box-shadow: var(--shadow-sm);
+}
+
+body.dark-mode .message.system {
+    background-color: rgba(var(--fred-kraft-rgb), 0.85);
 }
 
 .message.error {

@@ -312,7 +312,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         
         # Terminal Output - Keep this as it's important for debugging
         print("\n=========================================")
-        print(f">>> User input formatted for LLM:\n{formatted_user_message}")
+        print(f">>> User input formatted for LLM:\\n{formatted_user_message}")
         print("-----------------------------------------")
 
         client = ollama.Client(host=ollama_base_url, timeout=180)
