@@ -149,3 +149,7 @@ Thumbs.db
 memory.db
 *.log
 open-webui/ 
+Ranking.txt
+features.txt
+incrementaluprgades
+system_prompt.txt

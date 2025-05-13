@@ -13,6 +13,7 @@
     --fred-cloud-medium: #CED3D9;  /* Neutral UI - Inferred */
     --fred-cloud-light: #E4E8ED;   /* Neutral UI - Inferred */
     --fred-focus: #61AAF2;        /* Interactive States/Links */
+    --fred-focus-rgb: 97, 170, 242; /* Added for rgba use with fred-focus */
     --fred-error: #BF4D43;        /* Errors/Warnings */
     --fred-black: #000000;
     --fred-white: #FFFFFF;
@@ -82,6 +83,19 @@
     --fred-text-primary-dark: #f8f9fa; /* Light text */
 }
 
+/* Keyframe animation for subtle background gradient shift */
+@keyframes subtle-gradient-shift {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+
 /* Dark Mode Variables - Rearranged */
 body.dark-mode {
     --bg-primary: var(--fred-slate-dark);         /* Main Background - NEW (Medium Slate) */
@@ -142,6 +156,11 @@ body {
     min-height: 100%; /* Fallback */
     font-family: var(--font-sans);
     background-color: var(--bg-primary);
+    /* Subtle animated gradient background */
+    background: linear-gradient(270deg, var(--bg-primary), var(--bg-secondary), var(--bg-primary));
+    background-size: 600% 600%;
+    animation: subtle-gradient-shift 45s ease infinite;
+
     color: var(--text-primary);
     display: flex; /* Enable flex context for children */
     overflow: hidden; /* Prevent body itself from scrolling */
@@ -151,13 +170,17 @@ body {
 /* Main Layout */
 .fred-container {
     display: flex;
-    flex: 1; /* Grow to fill body */
-    min-width: 0; /* Prevent content from breaking flex layout */
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    position: relative;
 }
 
+/* Make sidebar full-height */
 .sidebar {
     width: 280px;
-    flex-shrink: 0; /* Prevent shrinking */
+    flex-shrink: 0;
+    height: 100%;
     background-color: var(--bg-sidebar);
     color: var(--text-inverse);
     padding: 1.5rem;
@@ -165,24 +188,146 @@ body {
     flex-direction: column;
     border-right: 1px solid var(--fred-slate-medium);
     box-shadow: var(--shadow-md);
-    z-index: 10;
-    overflow-y: auto; /* Allow sidebar scrolling */
+    z-index: 20; /* Higher z-index to stay above visualization */
+    overflow-y: auto;
     transition: transform var(--transition-duration) var(--transition-timing), 
                 width var(--transition-duration) var(--transition-timing);
+    position: absolute;
+    left: 0;
+    top: 0;
+}
+
+/* Add collapsed state for sidebar */
+.sidebar-collapsed .sidebar {
+    transform: translateX(-100%);
+}
+
+/* Position toggle button properly */
+.sidebar-toggle {
+    position: fixed;
+    top: 20px;
+    left: 280px;
+    background-color: var(--fred-book-cloth);
+    border: 2px solid var(--fred-ivory-light);
+    border-radius: 50%;
+    color: var(--fred-white);
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 30;
+    box-shadow: var(--shadow-lg);
+    transition: all var(--transition-duration) var(--transition-timing);
+    transform: translateX(-50%);
+}
+
+.sidebar-collapsed .sidebar-toggle {
+    left: 20px;
+    transform: translateX(0);
+}
+
+/* Chat area takes full width when sidebar is collapsed */
+.chat-area {
+    flex: 1;
+    height: 100%;
+    display: flex; /* Keep flex for overall structure if sidebar collapses */
+    flex-direction: column; /* Though children will be absolute */
+    position: relative; /* ESSENTIAL for absolute children */
+    background-color: transparent; /* chat-area itself is transparent */
+    min-width: 0;
+    transition: margin-left var(--transition-duration) var(--transition-timing);
+    margin-left: 280px; /* Match sidebar width */
+}
+
+.sidebar-collapsed .chat-area {
     margin-left: 0;
 }
 
-.chat-area {
-    flex: 1; /* Grow to fill remaining space */
+/* Visualization container as background */
+.visualization-container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%; /* Fill entire chat-area */
+    z-index: 5; /* Base layer */
+    display: flex; /* To center/style the SVG if needed */
+    align-items: center;
+    justify-content: center;
+    overflow: hidden; /* Ensure SVG doesn't break layout */
+}
+
+.visualization-container h2 {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    color: var(--text-muted);
+    font-size: 0.9em;
+    z-index: 6; /* Above SVG but below chat */
+}
+
+#mindMapVisualization {
+    width: 100%;
+    height: 100%;
+}
+
+/* Chat history overlay */
+#chat-history {
+    position: absolute;
+    top: 0; /* Cover top of screen */
+    left: 0;
+    right: 0;
+    bottom: 60px; /* Space for the message form */
+    background-color: transparent !important; /* Fully transparent overlay */
+    overflow-y: auto;
+    padding: 1rem;
     display: flex;
-    flex-direction: column;
-    position: relative; /* Needed for absolute positioning of transcription */
-    background-color: transparent;
-    min-width: 0; /* Prevent content from breaking flex layout */
-    overflow: hidden; /* Prevent chat area content from overflowing the container */
-    transition: margin-left var(--transition-duration) var(--transition-timing),
-                background-color var(--transition-duration) var(--transition-timing);
-    z-index: 5;
+    flex-direction: column-reverse; /* New messages at bottom, scroll for history */
+    z-index: 25; /* Higher than visualization, lower than form */
+}
+
+/* Message form at bottom */
+#message-form {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px; /* Fixed height */
+    background-color: var(--bg-secondary); /* Solid background */
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem; /* Adjusted padding */
+    z-index: 30; /* Highest z-index */
+    border-top: 1px solid var(--border-primary);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .sidebar {
+        width: 240px;
+    }
+    
+    .chat-area {
+        margin-left: 240px;
+    }
+    
+    .sidebar-collapsed .chat-area {
+        margin-left: 0;
+    }
+    
+    .visualization-container {
+        bottom: 50px;
+    }
+    
+    #chat-history {
+        bottom: 50px;
+    }
+    
+    #message-form {
+        height: 50px;
+    }
 }
 
 /* Sidebar Components */
@@ -208,8 +353,7 @@ body {
     background-color: var(--fred-focus); /* Changed to focus color */
     border-radius: var(--border-radius-full);
     animation: brain-pulse 3s infinite ease-in-out; /* New animation */
-    box-shadow: 0 0 10px rgba(var(--fred-focus-rgb), 0.8); /* Focus glow */
-    /* Removed relative positioning */
+    filter: url(#enhanced-central-glow);
 }
 
 /* Add ::after for secondary node */
@@ -223,21 +367,22 @@ body {
     background-color: rgba(var(--fred-focus-rgb), 0.7); /* Slightly transparent focus color */
     border-radius: var(--border-radius-full);
     animation: brain-node-pulse 3.5s infinite ease-in-out 0.5s; /* Staggered animation */
-    box-shadow: 0 0 8px rgba(var(--fred-focus-rgb), 0.6);
+    filter: url(#enhanced-central-glow);
+    opacity: 0.7;
     z-index: -1; /* Position behind ::before if they overlap */
 }
 
 /* Renamed and modified pulse animation */
 @keyframes brain-pulse {
-    0%, 100% { opacity: 1; transform: scale(1); box-shadow: 0 0 10px rgba(var(--fred-focus-rgb), 0.8); }
-    30% { opacity: 0.7; transform: scale(0.85); box-shadow: 0 0 15px rgba(var(--fred-focus-rgb), 0.5); }
-    70% { opacity: 0.9; transform: scale(1.1); box-shadow: 0 0 12px rgba(var(--fred-focus-rgb), 0.9); }
+    0%, 100% { opacity: 1; transform: scale(1); }
+    30% { opacity: 0.7; transform: scale(0.85); }
+    70% { opacity: 0.9; transform: scale(1.1); }
 }
 
 /* Animation for the secondary node */
 @keyframes brain-node-pulse {
-    0%, 100% { opacity: 0.6; transform: scale(1); box-shadow: 0 0 6px rgba(var(--fred-focus-rgb), 0.5); }
-    50% { opacity: 1; transform: scale(1.3); box-shadow: 0 0 10px rgba(var(--fred-focus-rgb), 0.8); }
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.3); }
 }
 
 .sidebar-section {
@@ -317,41 +462,6 @@ body {
     border-color: var(--border-focus); /* Use focus color for border */
     box-shadow: 0 0 0 2px var(--border-focus); /* Focus ring */
     outline: none;
-}
-
-/* --- Chat Area Components --- */
-#chat-history {
-    flex: 1; /* Allow history to grow and shrink */
-    overflow-y: auto; /* Enable vertical scrolling */
-    padding: 2rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    /* Ensure it has a non-zero basis */
-    min-height: 0;
-    background-color: transparent; /* Allow neural net behind messages */
-    z-index: 5;
-}
-
-/* Abstract Background Visualization (Subtle Lines - Dark Mode) */
-#chat-history::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    /* background: linear-gradient(180deg, rgba(var(--fred-slate-light-rgb), 0.05) 0%, rgba(var(--fred-slate-light-rgb), 0) 20%); */
-    /* Replace with subtle line pattern */
-    background-image: linear-gradient(rgba(var(--fred-kraft-rgb), 0.08) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(var(--fred-kraft-rgb), 0.08) 1px, transparent 1px);
-    background-size: 40px 40px; /* Adjust grid size */
-    pointer-events: none;
-    z-index: 0; /* Behind messages */
-    opacity: 0.3; /* Make very subtle */
-    transition: opacity var(--transition-duration) var(--transition-timing);
-}
-
-body.dark-mode #chat-history::before {
-    /* background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0) 20%); */
-    opacity: 0.3; /* Keep subtle */
 }
 
 /* --- Message Bubbles --- */
@@ -470,6 +580,7 @@ body.dark-mode #chat-history::before {
 
 /* --- Input Form --- */
 #message-form {
+    flex: 0 0 auto; /* Don't grow, don't shrink, basis auto */
     padding: 1rem 1.5rem;
     background-color: var(--bg-secondary); /* Charcoal */
     border-top: 1px solid var(--border-primary); /* Kraft */
@@ -515,18 +626,21 @@ body.dark-mode #message-form button[type="submit"] svg {
 }
 
 #message-input {
+    /* Style adjustments for better integration */
     flex-grow: 1;
-    padding: 0.75rem 1rem;
+    border: 1px solid var(--border-secondary);
     border-radius: var(--border-radius-md);
-    border: 1px solid var(--border-secondary); /* Kraft */
-    background-color: var(--bg-input); /* Medium Slate */
-    color: var(--text-primary); /* Light Ivory */
-    font-size: 1rem;
-    resize: none;
-    min-height: 48px;
-    max-height: 150px;
-    overflow-y: auto;
-    transition: border-color var(--transition-duration) var(--transition-timing), background-color var(--transition-duration) var(--transition-timing), box-shadow var(--transition-duration) var(--transition-timing);
+    padding: 0.6rem 0.8rem;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+    resize: none; /* Prevent manual resize */
+    overflow-y: hidden; /* Hide scrollbar initially */
+    max-height: 150px; /* Max height before scrolling */
+    transition: background-color var(--transition-duration) var(--transition-timing), 
+                color var(--transition-duration) var(--transition-timing), 
+                border-color var(--transition-duration) var(--transition-timing);
 }
 
 #message-input::placeholder {
@@ -560,10 +674,12 @@ body.dark-mode #message-form button[type="submit"] svg {
 #message-form button[type="submit"]:hover {
     background-color: var(--bg-button-primary-hover);
     transform: translateY(-1px); /* Subtle lift */
+    box-shadow: 0 4px 10px rgba(var(--fred-book-cloth-rgb), 0.3);
 }
 
 #message-form button[type="submit"]:active {
     transform: translateY(0); /* Push back down */
+    box-shadow: 0 2px 5px rgba(var(--fred-book-cloth-rgb), 0.2);
 }
 
 /* Voice Transcription Area (Placeholder) */
@@ -719,7 +835,7 @@ body.dark-mode .insight-detail .highlighted-entity {
 @media (max-width: 768px) {
     .sidebar {
         /* Consider hiding sidebar or making it collapsible on very small screens */
-        width: 220px;
+        width: 240px;
         padding: 1rem;
     }
     #chat-history {
@@ -808,98 +924,6 @@ input:checked + .slider:before {
     transform: translateX(20px);
 }
 
-/* Sidebar Toggle Button */
-.sidebar-toggle {
-    position: fixed;
-    top: 70px; /* Moved down */
-    left: 280px; /* Position it at the edge of the expanded sidebar */
-    background-color: var(--fred-book-cloth);
-    border: 2px solid var(--fred-ivory-light);
-    border-radius: 50%; /* Make it circular */
-    color: var(--fred-white);
-    width: 36px; /* Slightly smaller */
-    height: 36px; /* Slightly smaller */
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 30;
-    box-shadow: var(--shadow-lg);
-    transition: all var(--transition-duration) var(--transition-timing); /* Transition all properties */
-    pointer-events: auto;
-    transform: translateX(-50%); /* Center it on the edge */
-}
-
-.sidebar-toggle:hover {
-    background-color: var(--bg-button-primary-hover);
-    box-shadow: 0 0 12px rgba(var(--fred-focus-rgb), 0.6); /* Add focus glow on hover */
-    transform: translateX(-50%) scale(1.1); /* Keep centering and add scale */
-}
-
-.sidebar-toggle svg {
-    transition: transform var(--transition-duration) var(--transition-timing);
-    stroke-width: 2; /* Slightly thinner lines */
-    width: 18px; /* Adjust icon size */
-    height: 18px;
-}
-
-.sidebar-collapsed .sidebar-toggle {
-    left: 20px; /* Position near the left edge when collapsed */
-    background-color: var(--fred-focus);
-    transform: translateX(0) scale(1); /* Reset transform when collapsed */
-}
-
-.sidebar-collapsed .sidebar-toggle:hover {
-     box-shadow: 0 0 15px rgba(var(--fred-focus-rgb), 0.8); /* Stronger glow when collapsed */
-     transform: scale(1.1); /* Simple scale on hover when collapsed */
-}
-
-.sidebar-collapsed .sidebar-toggle svg {
-    transform: rotate(180deg); /* Keep the rotation */
-}
-
-/* Updated Sidebar for Collapsing */
-.sidebar {
-    width: 280px;
-    flex-shrink: 0; /* Prevent shrinking */
-    background-color: var(--bg-sidebar);
-    color: var(--text-inverse);
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    border-right: 1px solid var(--fred-slate-medium);
-    box-shadow: var(--shadow-md);
-    z-index: 10;
-    overflow-y: auto; /* Allow sidebar scrolling */
-    transition: transform var(--transition-duration) var(--transition-timing), 
-                width var(--transition-duration) var(--transition-timing);
-    margin-left: 0;
-}
-
-/* Add collapsed state for sidebar */
-.sidebar-collapsed .sidebar {
-    transform: translateX(-100%);
-    margin-left: -280px; /* Negative width to ensure it's fully off-screen */
-}
-
-/* Adjust main content when sidebar is collapsed */
-.chat-area {
-    flex: 1; /* Grow to fill remaining space */
-    display: flex;
-    flex-direction: column;
-    position: relative; /* Needed for absolute positioning of transcription */
-    background-color: transparent;
-    min-width: 0; /* Prevent content from breaking flex layout */
-    overflow: hidden; /* Prevent chat area content from overflowing the container */
-    transition: margin-left var(--transition-duration) var(--transition-timing),
-                background-color var(--transition-duration) var(--transition-timing);
-    z-index: 5;
-}
-
-.sidebar-collapsed .chat-area {
-    margin-left: 0;
-}
-
 /* Idle Mode Toggle */
 .idle-mode-toggle {
     display: flex;
@@ -926,4 +950,99 @@ input:checked + .slider:before {
     font-size: 0.85em;
     color: var(--text-inverse);
     transition: background-color var(--transition-duration) var(--transition-timing);
-} 
+}
+
+/* --- Additions for Flex Layout within Chat Area --- */
+.visualization-container {
+    /* flex-grow: 1; REMOVED */
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem;
+    background-color: rgba(var(--fred-slate-dark-rgb), 0.03); /* Subtle bg */
+    border-bottom: 1px solid var(--border-primary);
+    /* min-height: 300px; REMOVED */
+    /* max-height: 70%; REMOVED */
+    /* Consider adding a fixed height or aspect ratio if desired */
+}
+
+.visualization-container h2 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--fred-book-cloth);
+    margin: 0.5rem 0 1rem 0;
+    text-align: center;
+    z-index: 7;
+}
+
+#mindMapVisualization {
+    flex: 1; /* Fill remaining space in container */
+    width: 100%;
+    min-height: 500px;
+    border-radius: var(--border-radius-sm);
+    background-color: var(--bg-primary);
+    box-shadow: inset 0 0 10px rgba(var(--fred-slate-dark-rgb), 0.05);
+    display: block;
+    margin: 0 auto;
+}
+
+.nodes circle {
+    transition: fill 0.3s ease, r 0.3s ease, stroke-width 0.3s ease;
+}
+
+.nodes text {
+    font-family: var(--font-sans);
+    user-select: none;
+}
+
+.links line {
+    transition: stroke-opacity 0.3s ease, stroke-width 0.3s ease;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* Dark mode adjustments for visualization */
+body.dark-mode .visualization-container {
+    background-color: rgba(var(--fred-slate-light-rgb), 0.05);
+}
+
+body.dark-mode #mindMapVisualization {
+    background-color: rgba(var(--fred-slate-dark-rgb), 0.8);
+    box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode .nodes text {
+    fill: var(--fred-ivory-light) !important;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+body.dark-mode .links line {
+    stroke: rgba(var(--fred-ivory-dark-rgb), 0.6) !important;
+    stroke-opacity: 0.7 !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .visualization-container {
+        margin: 0.5rem;
+        padding: 0.5rem;
+    }
+    
+    #mindMapVisualization {
+        height: 350px;
+    }
+}
+
+/* Chat input styling */
+#message-input {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    border-radius: var(--border-radius-md);
+    border: 1px solid var(--border-secondary);
+    background-color: var(--bg-input);
+    color: var(--text-primary);
+    font-size: 1rem;
+    resize: none;
+    min-height: 40px;
+    max-height: 40px;
+}

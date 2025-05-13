@@ -1,5 +1,1 @@
-	Faster, approximate nearest‑neighbour search when embeddings grow.	Strip embedding column from nodes; store vector ID instead; update search_memory() to hit Chroma first.
-FastAPI conversion	Async endpoints & auto‑generated docs when you expose the service to others.	Replace Flask routes with FastAPI, keep db.py helpers untouched.
-Workflow scheduler (Prefect / Airflow)	Manage backups, forgetting, re‑embedding as DAGs with retries.	Move cron scripts into tasks; add a Dockerfile or virtual‑env to the flow.
-Multimodal media layer (Qdrant or LanceDB Media)	Allow image/video memories via CLIP‑style embeddings.	New media table + vector store; extend librarian to handle files; update UI with thumbnails.
-Cold‑storage / Parquet archive	Keep database slim after millions of rows.	Script to move very old superseded rows to Parquet, leave pointer rows in nodes.
+**Google search**

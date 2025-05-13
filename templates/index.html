@@ -7,7 +7,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/dist/vis-network.min.css">
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -28,18 +27,9 @@
 
             <div class="sidebar-section">
                 <h2>Memory Access</h2>
-                <!-- Removed memory tabs -->
-                <!--
-                <div class="memory-tabs">
-                    <button class="memory-tab active" data-memory="semantic">Semantic</button>
-                    <button class="memory-tab" data-memory="episodic">Episodic</button>
-                    <button class="memory-tab" data-memory="dreaming">Dreaming</button>
-                </div>
-                -->
                 
                 <!-- Placeholder for memory content display -->
                 <div id="memory-content-display" style="font-size: 0.8em; opacity: 0.7; min-height: 40px;">
-                    <!-- Content related to selected memory tab could load here -->
                     Memory status updates will appear here.
                 </div>
             </div>
@@ -48,7 +38,7 @@
                 <h2>Configuration</h2>
                 <label for="model-select">Model:</label>
                 <select id="model-select">
-                    <option value="phi4-mini:latest" selected>Phi 4 Mini</option>
+                    <option value="qwen3:30b-a3b" selected>Qwen 3 (30B)</option>
                 </select>
 
                 <label for="ollama-url">Server Endpoint:</label>
@@ -62,17 +52,6 @@
                         <span class="slider"></span>
                     </label>
                 </div>
-                
-                <!-- Idle Mode Toggle Switch - REMOVED -->
-                <!--
-                <div class="idle-mode-toggle">
-                    <label for="idle-mode-switch">Idle Association Discovery</label>
-                    <label class="switch">
-                        <input type="checkbox" id="idle-mode-switch">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-                -->
             </div>
 
             <!-- Spacer to push potential footer items down -->
@@ -84,12 +63,21 @@
         </aside>
 
         <main class="chat-area">
+            <!-- Visualization Container - Moved to top of chat area -->
+            <div class="visualization-container">
+                <h2>F.R.E.D.'s Memory Mind Map</h2>
+                <svg id="mindMapVisualization" width="960" height="700"></svg>
+            </div>
+            
+            <!-- Chat history restored to original position -->
             <div id="chat-history">
                 <!-- Chat messages will appear here -->
                 <div class="message system">
                     <p>Initializing Fred interface... Standing by.</p>
                 </div>
             </div>
+
+            <!-- Message Form restored to original position at the bottom -->
             <form id="message-form">
                 <textarea id="message-input" placeholder="Interact with Fred..." rows="1"></textarea>
                 <button type="submit" title="Send Message">
@@ -100,25 +88,9 @@
         </main>
     </div>
 
-    <!-- Add vis.js Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.2/dist/vis-network.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="/static/script.js"></script>
     <script src="/static/mind-map.js"></script>
-    <script>
-        // Initialize the MindMap visualization after the DOM is loaded
-        document.addEventListener('DOMContentLoaded', () => {
-            // Ensure the mind-map script has loaded and defined the MindMap class
-            if (typeof MindMap !== 'undefined') {
-                 // Instantiate the mind map, targeting the visualization container
-                 // The dataFile option is removed; data is now fetched via API
-                 window.mindMap = new MindMap('fred-visualization', {
-                    // dataFile: '/static/memory_map_data.json' // REMOVED
-                 });
-                 console.log('MindMap initialized for fred-visualization.');
-            } else {
-                console.error('MindMap class not found. Check mind-map.js loading.');
-            }
-        });
-    </script>
+    <!-- Mind map is now self-initializing, no need for extra configuration -->
 </body>
 </html> 

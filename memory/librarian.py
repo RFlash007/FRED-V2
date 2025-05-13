@@ -1,266 +1,634 @@
+# Import necessary libraries
 import duckdb
 import datetime
 import requests
 import json
 import time
+import os # For potential environment variables later
+import logging
 
-DB_FILE = 'memory.db'
-OLLAMA_API_URL = 'http://localhost:11434/api/embeddings'
-EMBED_MODEL = 'nomic-embed-text'
-LLM_MODEL = 'llama3.1:8b'
+# --- Configuration ---
+# Set default path inside the memory folder
+DB_FILE = os.path.join('memory', 'memory.db')  # Default that can be overridden
+OLLAMA_EMBED_URL = os.getenv('OLLAMA_EMBED_URL', 'http://localhost:11434/api/embeddings')
+OLLAMA_GENERATE_URL = os.getenv('OLLAMA_GENERATE_URL', 'http://localhost:11434/api/generate')
+EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
+LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'qwen3:30b-a3b') # As requested
 EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
+# How many similar nodes to check for automatic edge creation
+AUTO_EDGE_SIMILARITY_CHECK_LIMIT = 3
+
+# Define valid relationship types directly from schema for validation and prompting
+VALID_REL_TYPES = [
+    'instanceOf', 'relatedTo', 'updates',
+    'contains', 'partOf', 'precedes',
+    'causes',
+    'createdBy', 'hasOwner',
+    'locatedAt', 'dependsOn', 'servesPurpose',
+    'occursDuring', 'enablesGoal', 'activatesIn', 'contextualAnalog', 'sourceAttribution'
+]
+
+# --- Logging Setup ---
+logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Database Initialization ---
 def init_db():
     """Initializes the DuckDB database and tables if they don't exist."""
-    with duckdb.connect(DB_FILE) as con:
-        con.execute(f"""
-            CREATE TABLE IF NOT EXISTS nodes (
-                nodeid BIGINT PRIMARY KEY DEFAULT (CAST(strftime(current_timestamp, '%s%f') AS BIGINT)),
-                type TEXT CHECK (type IN ('Semantic', 'Episodic')),
-                label TEXT NOT NULL,
-                text TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT current_timestamp,
-                last_access TIMESTAMP DEFAULT current_timestamp,
-                superseded_at TIMESTAMP,
-                parent_id BIGINT,
-                embedding FLOAT[{EMBEDDING_DIM}],
-                embed_model TEXT
-            );
-        """)
-        con.execute("""
-            CREATE TABLE IF NOT EXISTS edges (
-                sourceid BIGINT NOT NULL,
-                targetid BIGINT NOT NULL,
-                rel_type TEXT CHECK (rel_type IN (
-                    'instanceOf', 'relatedTo', 'updates', 
-                    'contains', 'partOf', 'precedes',
-                    'causes',
-                    'createdBy', 'hasOwner',
-                    'locatedAt', 'dependsOn', 'servesPurpose',
-                    'occursDuring', 'enablesGoal', 'activatesIn', 'contextualAnalog', 'sourceAttribution' 
-                )),
-                created_at TIMESTAMP DEFAULT current_timestamp,
-                PRIMARY KEY (sourceid, targetid, rel_type),
-                FOREIGN KEY (sourceid) REFERENCES nodes(nodeid),
-                FOREIGN KEY (targetid) REFERENCES nodes(nodeid)
-            );
-        """)
+    # This function will fail in environments without duckdb installed
+    try:
+        with duckdb.connect(DB_FILE) as con:
+            con.execute(f"""
+                CREATE TABLE IF NOT EXISTS nodes (
+                    nodeid BIGINT PRIMARY KEY DEFAULT (CAST(strftime(current_timestamp, '%s%f') AS BIGINT)),
+                    type TEXT CHECK (type IN ('Semantic', 'Episodic', 'Procedural')),
+                    label TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT current_timestamp,
+                    last_access TIMESTAMP DEFAULT current_timestamp,
+                    superseded_at TIMESTAMP,
+                    parent_id BIGINT,
+                    embedding FLOAT[{EMBEDDING_DIM}],
+                    embed_model TEXT,
+                    target_date TIMESTAMP
+                );
+            """)
+            # Use ', '.join for correct SQL syntax in CHECK constraint
+            valid_types_sql = "', '".join(VALID_REL_TYPES)
+            con.execute(f"""
+                CREATE TABLE IF NOT EXISTS edges (
+                    sourceid BIGINT NOT NULL,
+                    targetid BIGINT NOT NULL,
+                    rel_type TEXT CHECK (rel_type IN ('{valid_types_sql}')),
+                    created_at TIMESTAMP DEFAULT current_timestamp,
+                    PRIMARY KEY (sourceid, targetid, rel_type),
+                    FOREIGN KEY (sourceid) REFERENCES nodes(nodeid),
+                    FOREIGN KEY (targetid) REFERENCES nodes(nodeid)
+                );
+            """)
+        logging.info("Database initialized successfully.")
+    except ImportError:
+        logging.error("DuckDB library not found. Database operations will fail.")
+        # Depending on the use case, you might want to raise this error
+        # raise ImportError("DuckDB library not found. Please install it.")
+    except Exception as e:
+         logging.error(f"Failed to initialize database: {e}")
+         raise
+
+# --- Ollama Interaction Functions ---
 
 def get_embedding(text):
-    """Gets the embedding for a given text using the Ollama API."""
+    """Gets the embedding for a given text using the Ollama Embedding API."""
     try:
         response = requests.post(
-            OLLAMA_API_URL,
-            json={"model": EMBED_MODEL, "prompt": text}
+            OLLAMA_EMBED_URL,
+            json={"model": EMBED_MODEL, "prompt": text},
         )
         response.raise_for_status()
-        # Ensure the embedding has the correct dimension
         embedding = response.json().get("embedding", [])
         if len(embedding) != EMBEDDING_DIM:
             raise ValueError(f"Embedding dimension mismatch: expected {EMBEDDING_DIM}, got {len(embedding)}")
         return embedding
     except requests.exceptions.RequestException as e:
-        print(f"Error contacting Ollama: {e}")
-        return None
+        logging.error(f"Error contacting Ollama Embedding API: {e}")
+        raise ConnectionError(f"Failed to get embedding from Ollama: {e}") from e
     except ValueError as e:
-        print(f"Embedding error: {e}")
-        return None
-
-def classify_memory_type(text):
-    """Classifies memory as Semantic or Episodic (LLM based)"""
-    # Use an LLM to classify the memory type
-    prompt = f"""
-    Classify the following memory as either "Semantic" or "Episodic":
-    {text}
-    """
-    response = requests.post(OLLAMA_API_URL, json={"model": "llama3.1:8b", "prompt": prompt})
+        logging.error(f"Embedding processing error: {e}")
+        raise ValueError(f"Embedding data error: {e}") from e
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during embedding: {e}")
+        raise RuntimeError(f"Unexpected error getting embedding: {e}") from e
 
 
-def add_memory(label, text, memory_type=None, parent_id=None):
-    """Adds a new memory node."""
-    if memory_type is None:
-        memory_type = classify_memory_type(text)
+#Simple ollama call with JSON response
+def call_ollama_generate(prompt, model=LLM_DECISION_MODEL):
+    """Calls the Ollama generate API, expecting a JSON response."""
+    full_prompt = f"""
+You are an AI assistant specializing in knowledge graph management. Your task is to analyze the provided information and respond ONLY with a valid JSON object containing the requested information. Do not include any explanations, apologies, or introductory text outside the JSON structure.
 
-    embedding = get_embedding(text)
-    if embedding is None:
-        print("Failed to get embedding. Memory not added.")
-        return None
+{prompt}
 
-    with duckdb.connect(DB_FILE) as con:
-        # Use epoch milliseconds for a potentially more unique default ID
-        new_id = int(time.time() * 1000)
-        con.execute(
-            """
-            INSERT INTO nodes (nodeid, type, label, text, parent_id, embedding, embed_model)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            RETURNING nodeid;
-            """,
-            [new_id, memory_type, label, text, parent_id, embedding, EMBED_MODEL]
+Respond with ONLY the JSON object.
+"""
+    try:
+        response = requests.post(
+            OLLAMA_GENERATE_URL,
+            json={
+                "model": model,
+                "prompt": full_prompt,
+                "stream": False, # Ensure we get the full response at once
+                "format": "json" # Explicitly request JSON format if API supports it
+            },
         )
-        result = con.fetchone()
-        return result[0] if result else None
+        response.raise_for_status()
+        response_data = response.json()
+        # Ollama generate returns the JSON string within the 'response' key
+        json_string = response_data.get("response")
+        if not json_string:
+             raise ValueError("Ollama response did not contain a 'response' field.")
 
-
-def supersede_memory(old_nodeid, new_label, new_text):
-    """Supersedes an old memory node with a new one."""
-    with duckdb.connect(DB_FILE) as con:
-        con.begin()
+        # Attempt to parse the JSON string
         try:
-            # Check if old node exists
-            old_node = con.execute("SELECT type, parent_id FROM nodes WHERE nodeid = ?", [old_nodeid]).fetchone()
-            if not old_node:
-                print(f"Error: Node {old_nodeid} not found.")
-                con.rollback()
-                return None
+            parsed_json = json.loads(json_string)
+            return parsed_json
+        except json.JSONDecodeError as json_e:
+            logging.error(f"Failed to parse JSON response from Ollama: {json_string}. Error: {json_e}")
+            raise ValueError(f"LLM returned invalid JSON: {json_string}") from json_e
 
-            old_type, old_parent_id = old_node
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Error contacting Ollama Generate API ({OLLAMA_GENERATE_URL}): {e}")
+        raise ConnectionError(f"Failed to get decision from Ollama: {e}") from e
+    except Exception as e:
+        logging.error(f"An unexpected error occurred during Ollama generation: {e}")
+        raise RuntimeError(f"Unexpected error during LLM generation: {e}") from e
 
-            # Mark old node as superseded and update last_access
-            now = datetime.datetime.now()
-            con.execute(
-                "UPDATE nodes SET superseded_at = ?, last_access = ? WHERE nodeid = ?",
-                [now, now, old_nodeid]
-            )
 
-            # Add the new memory
-            new_memory_type = classify_memory_type(new_text)
-            embedding = get_embedding(new_text)
-            if embedding is None:
-                print("Failed to get embedding. Supersede failed.")
-                con.rollback()
-                return None
+# --- LLM Decision Functions ---
 
-            # Use epoch milliseconds for a potentially more unique default ID
-            new_id = int(time.time() * 1000)
-            con.execute(
-                """
-                INSERT INTO nodes (nodeid, type, label, text, parent_id, embedding, embed_model, last_access)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                RETURNING nodeid;
-                """,
-                [new_id, new_memory_type, new_label, new_text, old_parent_id, embedding, EMBED_MODEL, now]
-            )
-            result = con.fetchone()
-            if not result:
-                print("Failed to insert new node. Supersede failed.")
-                con.rollback()
-                return None
-            new_nodeid = result[0]
+def determine_edge_type_llm(source_node_info, target_node_info):
+    """Determines the relationship type between two nodes using an LLM."""
+    # Define relationship types for clarity in the prompt
+    rel_definitions = """
+    - instanceOf: A specific example of a general concept (e.g., "Fido" instanceOf "Dog").
+    - relatedTo: General association (use sparingly).
+    - updates: Newer version modifies an existing one (e.g., "v2" updates "v1").
+    - contains: One entity holds another (e.g., "Folder" contains "File").
+    - partOf: An entity is a component of a whole (e.g., "Wheel" partOf "Car").
+    - precedes: Comes before in sequence/time (e.g., "Step 1" precedes "Step 2").
+    - causes: Directly leads to another (e.g., "Rain" causes "Wet Ground").
+    - createdBy: Made or produced by (e.g., "Book" createdBy "Author").
+    - hasOwner: Belongs to or possessed by (e.g., "Car" hasOwner "Person").
+    - locatedAt: Exists at a specific place (e.g., "Statue" locatedAt "Park").
+    - dependsOn: Requires another to function/exist (e.g., "App" dependsOn "OS").
+    - servesPurpose: Used to achieve a goal (e.g., "Hammer" servesPurpose "Driving Nails").
+    - occursDuring: Happens within the timeframe of another (e.g., "Meeting" occursDuring "Workday").
+    - enablesGoal: Makes a goal possible (e.g., "Funding" enablesGoal "Research").
+    - activatesIn: Becomes relevant in a specific context (e.g., "Alarm" activatesIn "Emergency").
+    - contextualAnalog: Similar role in different contexts (e.g., "Captain" contextualAnalog "CEO").
+    - sourceAttribution: Information originates from a source (e.g., "Quote" sourceAttribution "Book").
+    """
 
-            # Add 'updates' edge from new to old
-            add_edge(new_nodeid, old_nodeid, 'updates', con=con)
+    prompt = f"""
+Analyze the relationship between the following two memory nodes:
 
-            # Update last_access on the new node as well (redundant but safe)
-            con.execute("UPDATE nodes SET last_access = ? WHERE nodeid = ?", [now, new_nodeid])
+Source Node:
+- Label: {source_node_info['label']}
+- Type: {source_node_info['type']}
+- Text: {source_node_info['text']}
 
-            con.commit()
+Target Node:
+- Label: {target_node_info['label']}
+- Type: {target_node_info['type']}
+- Text: {target_node_info['text']}
+
+Consider the connection *from* the Source Node *to* the Target Node. Choose the single most appropriate relationship type from the following list, based on these definitions:
+{rel_definitions}
+
+Valid types: {VALID_REL_TYPES}
+
+Return ONLY your chosen relationship type as a JSON object like this: {{"relationship_type": "chosen_type"}}
+"""
+    try:
+        response_json = call_ollama_generate(prompt)
+        rel_type = response_json.get("relationship_type")
+
+        if rel_type in VALID_REL_TYPES:
+            return rel_type
+        else:
+            logging.error(f"LLM returned invalid relationship type: {rel_type}. Valid types: {VALID_REL_TYPES}. Response: {response_json}")
+            raise ValueError(f"LLM returned invalid relationship type: {rel_type}")
+    except (ConnectionError, ValueError, RuntimeError) as e:
+        logging.error(f"Failed to determine relationship type using LLM: {e}")
+        raise # Re-raise the error as requested
+
+# --- Core Memory Functions ---
+
+def add_memory(label, text, memory_type, parent_id=None, target_date=None):
+    """Adds a new memory node, classifies it, gets embedding, and attempts automatic edge creation."""
+    logging.info(f"Attempting to add memory with label: {label}")
+    try:
+        # 1. Get Embedding
+        logging.info("Generating embedding...")
+        embedding = get_embedding(text)
+        logging.info("Embedding generated.")
+
+        # 2. Add Node to DB
+        # This block will fail if duckdb is not installed
+        try:
+            with duckdb.connect(DB_FILE) as con:
+                # Use epoch milliseconds for a potentially more unique default ID
+                new_id = int(time.time() * 1000)
+                con.execute(
+                    """
+                    INSERT INTO nodes (nodeid, type, label, text, parent_id, embedding, embed_model, target_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    RETURNING nodeid;
+                    """,
+                    [new_id, memory_type, label, text, parent_id, embedding, EMBED_MODEL, target_date]
+                )
+                result = con.fetchone()
+                if not result:
+                     # This case should ideally not happen if INSERT is successful without error
+                     raise RuntimeError("Failed to retrieve nodeid after insertion.")
+                new_nodeid = result[0]
+                logging.info(f"Memory node added successfully with ID: {new_nodeid}")
+
+                # 3. Attempt Automatic Edge Creation
+                logging.info(f"Attempting automatic edge creation for new node {new_nodeid}...")
+                try:
+                    similar_nodes = search_memory(text, limit=AUTO_EDGE_SIMILARITY_CHECK_LIMIT + 1)
+
+                    # Filter out self-reference for clearer logging
+                    non_self_similar_nodes = [node for node in similar_nodes if node['nodeid'] != new_nodeid]
+                    
+                    if not non_self_similar_nodes:
+                        logging.info(f"No similar nodes found other than itself. No edges created.")
+                        return new_nodeid
+                        
+                    logging.info(f"Found {len(non_self_similar_nodes)} relevant similar nodes for edge creation.")
+                    
+                    new_node_info_res = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ?", [new_nodeid]).fetchone()
+                    if not new_node_info_res:
+                        logging.error(f"Could not fetch details for newly added node {new_nodeid}. Skipping auto-edge creation.")
+                        return new_nodeid
+
+                    new_node_info = {"label": new_node_info_res[0], "text": new_node_info_res[1], "type": new_node_info_res[2]}
+
+                    added_edge_count = 0
+                    for similar_node in similar_nodes:
+                        similar_nodeid = similar_node['nodeid']
+                        if similar_nodeid == new_nodeid:
+                            continue  # Skip self-reference
+
+                        target_node_valid = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [similar_nodeid]).fetchone()
+                        if not target_node_valid:
+                            logging.warning(f"Skipping auto-edge to node {similar_nodeid} as it's missing or superseded.")
+                            continue
+
+                        target_node_info = {"label": target_node_valid[0], "text": target_node_valid[1], "type": target_node_valid[2]}
+
+                        logging.info(f"Checking relationship between new node {new_nodeid} and similar node {similar_nodeid}...")
+
+                        try:
+                            # Determine relationship type using LLM first
+                            determined_rel_type = determine_edge_type_llm(new_node_info, target_node_info)
+                            logging.info(f"LLM determined relationship from {new_nodeid} to {similar_nodeid} as: {determined_rel_type}")
+
+                            # Now call add_edge with the determined type and the connection
+                            add_edge(sourceid=new_nodeid,
+                                     targetid=similar_nodeid,
+                                     rel_type=determined_rel_type,
+                                     con=con)
+                            # Logging for success is now handled within add_edge
+                            added_edge_count += 1
+                            if added_edge_count >= AUTO_EDGE_SIMILARITY_CHECK_LIMIT:
+                                break # Stop if we've added enough edges
+
+                        except (ValueError, ConnectionError, RuntimeError, duckdb.Error) as auto_edge_e:
+                            # Log errors during automatic edge creation (determination or addition)
+                            # but don't raise to block memory addition. add_edge logs its own errors too.
+                            logging.error(f"Failed to automatically create edge from {new_nodeid} to {similar_nodeid} (logged by add_memory): {auto_edge_e}")
+                        except Exception as e:
+                             logging.error(f"Unexpected error during auto edge creation for {similar_nodeid}: {e}")
+
+                except ImportError:
+                     # This happens if duckdb is missing, needed for search_memory indirectly
+                     logging.error("DuckDB not found, skipping automatic edge creation.")
+                except Exception as e:
+                    # Log errors during the search/setup phase of auto-linking
+                    logging.error(f"Error during automatic edge creation setup for node {new_nodeid}: {e}")
+
+            # End of 'with duckdb.connect...' block, transaction commits automatically on success
             return new_nodeid
-        except Exception as e:
-            print(f"Error during supersede: {e}")
-            con.rollback()
-            return None
+
+        except ImportError:
+            logging.critical("DuckDB library not found. Cannot add memory node.")
+            raise ImportError("DuckDB library not found. Cannot add memory node.")
+        except duckdb.Error as db_e:
+             logging.error(f"Database error during node insertion: {db_e}")
+             raise # Re-raise critical DB errors
 
 
-def add_edge(sourceid, targetid, rel_type, con=None):
-    """Adds an edge between two nodes."""
-    close_conn = False
-    if con is None:
-        con = duckdb.connect(DB_FILE)
-        close_conn = True
+    except (ConnectionError, ValueError, RuntimeError) as e:
+        # Errors during classification or embedding are critical
+        logging.error(f"Failed to add memory due to pre-processing error: {e}")
+        # Don't return None, let the exception propagate as per requirement
+        raise
+    except Exception as e:
+         logging.error(f"Unexpected critical error in add_memory: {e}")
+         raise
+
+
+def supersede_memory(old_nodeid, new_label, new_text, new_memory_type, target_date=None):
+    """Supersedes an old memory node with a new one, adding an 'updates' edge.
+
+    Args:
+        old_nodeid: The ID of the node to supersede.
+        new_label: The label for the new node.
+        new_text: The text content for the new node.
+        new_memory_type: The type ('Semantic', 'Episodic', 'Procedural') for the new node.
+        target_date: Optional timestamp for future events or activities.
+
+    Raises:
+        ValueError: If the old node is not found, already superseded, or invalid memory type provided.
+        ImportError: If DuckDB is not found.
+        ConnectionError, RuntimeError: For issues during embedding or DB operations.
+        duckdb.Error: For database errors.
+    """
+    logging.info(f"Attempting to supersede node {old_nodeid} with label: {new_label}")
+
+    # Validate memory type
+    if new_memory_type not in ('Semantic', 'Episodic', 'Procedural'):
+        raise ValueError(f"Invalid memory type provided: {new_memory_type}")
 
     try:
+        with duckdb.connect(DB_FILE) as con:
+            con.begin()
+            try:
+                # Check if old node exists and get parent_id
+                old_node = con.execute("SELECT parent_id FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [old_nodeid]).fetchone()
+                if not old_node:
+                    already_superseded = con.execute("SELECT 1 FROM nodes WHERE nodeid = ?", [old_nodeid]).fetchone()
+                    if already_superseded:
+                         logging.error(f"Error: Node {old_nodeid} has already been superseded.")
+                         raise ValueError(f"Node {old_nodeid} has already been superseded.")
+                    else:
+                         logging.error(f"Error: Node {old_nodeid} not found.")
+                         raise ValueError(f"Node {old_nodeid} not found.")
+
+                old_parent_id = old_node[0]
+
+                # Mark old node as superseded and update last_access
+                now = datetime.datetime.now()
+                con.execute(
+                    "UPDATE nodes SET superseded_at = ?, last_access = ? WHERE nodeid = ?",
+                    [now, now, old_nodeid]
+                )
+
+                # Get embedding for the new memory (can raise errors)
+                logging.info("Generating embedding for new memory...")
+                embedding = get_embedding(new_text)
+                logging.info("Embedding generated.")
+
+
+                # Insert the new node using the provided new_memory_type
+                new_id = int(time.time() * 1000)
+                con.execute(
+                    """
+                    INSERT INTO nodes (nodeid, type, label, text, parent_id, embedding, embed_model, last_access, target_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    RETURNING nodeid;
+                    """,
+                    [new_id, new_memory_type, new_label, new_text, old_parent_id, embedding, EMBED_MODEL, now, target_date]
+                )
+                result = con.fetchone()
+                if not result:
+                     raise RuntimeError("Failed to insert new node during supersede.")
+                new_nodeid = result[0]
+                logging.info(f"Added new node {new_nodeid} (type: {new_memory_type}) to supersede {old_nodeid}")
+
+                # Add 'updates' edge using the consolidated add_edge function
+                try:
+                    add_edge(sourceid=new_nodeid,
+                             targetid=old_nodeid,
+                             rel_type='updates', # Explicit type
+                             con=con)
+                    # Success logging is handled within add_edge
+                except (ValueError, ConnectionError, RuntimeError, duckdb.Error) as edge_e:
+                     # Log edge error but commit node changes if insertion was successful
+                     # add_edge logs its own errors too.
+                     logging.error(f"Failed to add 'updates' edge during supersede (logged by supersede_memory): {edge_e}. Node changes will still be committed.")
+                except Exception as e:
+                    # Catch unexpected errors from add_edge
+                    logging.error(f"Unexpected error adding 'updates' edge during supersede: {e}. Node changes will still be committed.")
+
+
+                con.commit()
+                logging.info(f"Node {old_nodeid} successfully superseded by {new_nodeid}")
+                return new_nodeid
+
+            except (ConnectionError, ValueError, RuntimeError, duckdb.Error) as e:
+                logging.error(f"Error during supersede operation: {e}")
+                con.rollback()
+                raise # Re-raise the critical error
+            except Exception as e:
+                 logging.error(f"Unexpected error during supersede: {e}")
+                 con.rollback()
+                 raise RuntimeError(f"Unexpected error during supersede: {e}") from e
+
+    except ImportError:
+        logging.critical("DuckDB library not found. Cannot supersede memory.")
+        raise ImportError("DuckDB library not found. Cannot supersede memory.")
+    except Exception as e:
+         logging.error(f"Unexpected critical error in supersede_memory: {e}")
+         raise
+
+
+def add_edge(sourceid: int, targetid: int, rel_type: str | None = None, con: duckdb.DuckDBPyConnection | None = None):
+    """Adds an edge between two nodes within a provided database connection context.
+
+    If rel_type is None, uses LLM to determine it.
+
+    Args:
+        sourceid: The ID of the source node.
+        targetid: The ID of the target node.
+        rel_type: The relationship type. If None, it will be determined by LLM.
+        con: An active DuckDB database connection. This argument is required.
+
+    Raises:
+        ValueError: If nodes are invalid, superseded, or rel_type is invalid.
+        ConnectionError: If LLM call fails.
+        RuntimeError: For unexpected errors during LLM call or DB operation.
+        duckdb.Error: For database errors during query execution.
+        ImportError: If DuckDB is not installed (should be caught earlier ideally).
+        TypeError: If 'con' is not provided.
+    """
+    if con is None:
+         # Explicitly require the connection object
+         raise TypeError("add_edge() missing 1 required positional argument: 'con'")
+
+    # No need for close_conn, begin, commit, rollback, or finally block here anymore.
+    # Transaction management is handled by the caller.
+
+    try:
+        # Check if nodes exist and are not superseded
+        source_node = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [sourceid]).fetchone()
+        target_node = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [targetid]).fetchone()
+
+        if not source_node:
+            raise ValueError(f"Source node {sourceid} not found or is superseded.")
+        if not target_node:
+            raise ValueError(f"Target node {targetid} not found or is superseded.")
+
+        source_node_info = {"label": source_node[0], "text": source_node[1], "type": source_node[2]}
+        target_node_info = {"label": target_node[0], "text": target_node[1], "type": target_node[2]}
+
+        # Determine relationship type if not provided
+        determined_rel_type = rel_type # Use a different variable name
+        if determined_rel_type is None:
+            logging.info(f"Relationship type not provided for edge {sourceid} -> {targetid}. Determining using LLM.")
+            # This call can raise errors (ConnectionError, ValueError, RuntimeError), which will propagate up
+            determined_rel_type = determine_edge_type_llm(source_node_info, target_node_info)
+            logging.info(f"LLM determined relationship type: {determined_rel_type}")
+        elif determined_rel_type not in VALID_REL_TYPES:
+             # Validate explicitly provided type
+             raise ValueError(f"Provided relationship type '{determined_rel_type}' is not valid. Must be one of: {VALID_REL_TYPES}")
+
+        # Check again if LLM failed to return a valid type (though determine_edge_type_llm should raise)
+        if determined_rel_type not in VALID_REL_TYPES:
+             logging.error(f"Invalid relationship type determined or provided: {determined_rel_type}")
+             raise ValueError(f"Relationship type '{determined_rel_type}' is invalid.")
+
+
+        # Insert the edge
         now = datetime.datetime.now()
         con.execute(
             "INSERT INTO edges (sourceid, targetid, rel_type, created_at) VALUES (?, ?, ?, ?)",
-            [sourceid, targetid, rel_type, now]
+            [sourceid, targetid, determined_rel_type, now]
         )
         # Update last_access for both nodes involved in the edge
         con.execute("UPDATE nodes SET last_access = ? WHERE nodeid IN (?, ?)", [now, sourceid, targetid])
-        if close_conn:
-            con.commit() # Commit if we opened the connection here
+        logging.info(f"Successfully added edge ({determined_rel_type}) from {sourceid} to {targetid}")
+
+    except (ValueError, ConnectionError, RuntimeError, duckdb.Error) as e:
+        # Log the error, but let the caller handle transaction rollback/commit based on this exception.
+        logging.error(f"Error adding edge from {sourceid} to {targetid} within provided transaction: {e}")
+        raise # Re-raise the error for the caller to handle
     except Exception as e:
-        print(f"Error adding edge: {e}")
-        if close_conn:
-            con.rollback() # Rollback if we opened the connection here
-    finally:
-        if close_conn:
-            con.close()
+         # Catch any other unexpected errors
+         logging.error(f"Unexpected error adding edge: {e}")
+         raise RuntimeError(f"Unexpected error adding edge: {e}") from e
 
 
-def search_memory(query_text, memory_type=None, limit=10):
-    """Searches memory nodes using cosine similarity and keyword fallback."""
-    query_embedding = get_embedding(query_text)
+def search_memory(query_text, memory_type=None, limit=10, future_events_only=False, include_past_events=True, use_keyword_search=False):
+    """Searches memory nodes using cosine similarity and/or keyword matching.
+
+    Args:
+        query_text: The text to search for.
+        memory_type: Optional filter by memory type.
+        limit: Maximum number of results to return.
+        future_events_only: If True, only returns nodes with target_date in the future.
+        include_past_events: If False, excludes nodes with target_date in the past.
+        use_keyword_search: If True, performs a keyword search. If False (default), performs semantic search.
+    """
     results = []
+    node_ids_updated = set() # Track updated nodes to avoid duplicate updates
+    now = datetime.datetime.now()
 
-    with duckdb.connect(DB_FILE) as con:
-        now = datetime.datetime.now()
+    try:
+        with duckdb.connect(DB_FILE) as con:
+            if use_keyword_search:
+                logging.info("Performing keyword search.")
+                # Basic keyword tokenization (split by space)
+                keywords = query_text.lower().split()
+                if not keywords:
+                    return []
 
-        # Cosine Similarity Search (if embedding was successful)
-        if query_embedding:
-            base_query = """
-            SELECT nodeid, label, text, type, created_at, last_access, list_cosine_similarity(embedding, ?) AS similarity
-            FROM nodes
-            WHERE superseded_at IS NULL
-            """
-            params = [query_embedding]
-            if memory_type:
-                base_query += " AND type = ?"
-                params.append(memory_type)
+                # Build query for keyword search
+                # Search in label and text. Using OR for keywords, AND for conditions.
+                # This is a simple approach; more advanced would require FTS5 or similar.
+                conditions = ["superseded_at IS NULL"]
+                params_keyword = []
 
-            base_query += " ORDER BY similarity DESC LIMIT ?"
-            params.append(limit)
+                # Keyword matching clauses for label and text
+                keyword_clauses = []
+                for kw in keywords:
+                    keyword_clauses.append("(LOWER(label) LIKE ? OR LOWER(text) LIKE ?)")
+                    params_keyword.extend([f"%{kw}%", f"%{kw}%"])
+                
+                if keyword_clauses:
+                    conditions.append(f"({' OR '.join(keyword_clauses)})") # Match any keyword
 
-            results = con.execute(base_query, params).fetchall()
+                if memory_type:
+                    conditions.append("type = ?")
+                    params_keyword.append(memory_type)
+                
+                if future_events_only:
+                    conditions.append("(target_date IS NOT NULL AND target_date > ?)")
+                    params_keyword.append(now)
+                elif not include_past_events:
+                    conditions.append("(target_date IS NULL OR target_date > ?)")
+                    params_keyword.append(now)
 
-            # Update last_access for retrieved nodes
+                keyword_query = f"""
+                SELECT nodeid, label, text, type, created_at, last_access, target_date, 0.0 AS similarity -- Placeholder for similarity
+                FROM nodes
+                WHERE {' AND '.join(conditions)}
+                ORDER BY last_access DESC, created_at DESC -- Prioritize by access/creation for keywords
+                LIMIT ?
+                """
+                params_keyword.append(limit)
+
+                try:
+                    keyword_search_results = con.execute(keyword_query, params_keyword).fetchall()
+                    results.extend(keyword_search_results)
+                    logging.info(f"Keyword search found {len(keyword_search_results)} nodes.")
+                except duckdb.Error as db_err:
+                    logging.error(f"Database error during keyword search: {db_err}")
+                    return [] # Return empty list on DB error during keyword search
+                except Exception as e:
+                    logging.error(f"Unexpected error during keyword search: {e}")
+                    return []
+
+            else: # Semantic Search (default)
+                try:
+                    query_embedding = get_embedding(query_text) # Can raise ConnectionError, ValueError
+                except (ConnectionError, ValueError) as e:
+                    logging.error(f"Failed to get embedding for search query: {e}")
+                    return [] # If embedding fails for semantic search, we cannot search
+
+                logging.info("Performing embedding similarity search.")
+                try:
+                    base_query = """
+                    SELECT nodeid, label, text, type, created_at, last_access, target_date, list_cosine_similarity(embedding, ?) AS similarity
+                    FROM nodes
+                    WHERE superseded_at IS NULL
+                    """
+                    params_semantic = [query_embedding]
+                    
+                    if memory_type:
+                        base_query += " AND type = ?"
+                        params_semantic.append(memory_type)
+                    
+                    if future_events_only:
+                        base_query += " AND (target_date IS NOT NULL AND target_date > ?)"
+                        params_semantic.append(now)
+                    elif not include_past_events:
+                        base_query += " AND (target_date IS NULL OR target_date > ?)"
+                        params_semantic.append(now)
+
+                    base_query += " ORDER BY similarity DESC LIMIT ?"
+                    params_semantic.append(limit)
+
+                    similarity_results = con.execute(base_query, params_semantic).fetchall()
+                    results.extend(similarity_results)
+                    logging.info(f"Semantic search found {len(similarity_results)} nodes.")
+
+                except duckdb.Error as db_err:
+                     logging.error(f"Database error during similarity search: {db_err}")
+                     return []
+                except Exception as e:
+                     logging.error(f"Unexpected error during similarity search: {e}")
+                     return []
+
+            # Update last_access for all retrieved nodes (from either search type)
             if results:
-                node_ids = [row[0] for row in results]
-                con.execute(f"UPDATE nodes SET last_access = ? WHERE nodeid IN ({','.join(['?']*len(node_ids))})", [now] + node_ids)
+                node_ids = [row[0] for row in results if row[0] not in node_ids_updated]
+                if node_ids: # Check if there are new node_ids to update
+                    placeholders = ','.join(['?'] * len(node_ids))
+                    con.execute(f"UPDATE nodes SET last_access = ? WHERE nodeid IN ({placeholders})", [now] + node_ids)
+                    node_ids_updated.update(node_ids)
+                    logging.info(f"Updated last_access for {len(node_ids)} retrieved nodes.")
 
-
-        # Keyword Fallback Search (if no embedding or fewer results than limit)
-        if len(results) < limit:
-            keyword_limit = limit - len(results)
-            # Basic keyword search using LIKE
-            keywords = query_text.split()
-            like_clauses = " OR ".join([f"text LIKE '%{keyword}%'" for keyword in keywords])
-
-            fallback_query = f"""
-            SELECT nodeid, label, text, type, created_at, last_access, 0.0 AS similarity
-            FROM nodes
-            WHERE superseded_at IS NULL AND ({like_clauses})
-            """
-            params = []
-            if memory_type:
-                fallback_query += " AND type = ?"
-                params.append(memory_type)
-
-            # Exclude nodes already found by similarity search
-            if results:
-                found_ids = [row[0] for row in results]
-                fallback_query += f" AND nodeid NOT IN ({','.join(['?']*len(found_ids))})"
-                params.extend(found_ids)
-
-            fallback_query += " ORDER BY last_access DESC LIMIT ?" # Prioritize recently accessed if only keyword match
-            params.append(keyword_limit)
-
-
-            try:
-                fallback_results = con.execute(fallback_query, params).fetchall()
-                 # Update last_access for keyword-retrieved nodes
-                if fallback_results:
-                    node_ids = [row[0] for row in fallback_results]
-                    # Filter out IDs already updated by similarity search
-                    node_ids_to_update = [nid for nid in node_ids if nid not in [r[0] for r in results]]
-                    if node_ids_to_update:
-                         con.execute(f"UPDATE nodes SET last_access = ? WHERE nodeid IN ({','.join(['?']*len(node_ids_to_update))})", [now] + node_ids_to_update)
-
-                results.extend(fallback_results)
-
-            except duckdb.BinderException as e:
-                 print(f"Keyword search binder error (likely missing params): {e}")
-            except Exception as e:
-                 print(f"Error during keyword fallback search: {e}")
+    except ImportError:
+        logging.error("DuckDB library not found. Cannot perform memory search.")
+        return []
+    except duckdb.Error as e:
+        logging.error(f"Failed to connect to database for memory search: {e}")
+        return []
+    except Exception as e:
+        logging.error(f"Unexpected critical error in search_memory: {e}")
+        return []
 
 
     # Format results as dictionaries
@@ -272,142 +640,349 @@ def search_memory(query_text, memory_type=None, limit=10):
             "type": row[3],
             "created_at": row[4],
             "last_access": row[5],
-            "similarity": row[6] if len(row)>6 else 0.0 # handle keyword results missing similarity
+            "target_date": row[6],
+            "similarity": row[7]
         } for row in results
     ]
     return formatted_results
 
 
 def get_graph_data(center_nodeid, depth=1):
-    """Retrieves nodes and edges for the mind map within a certain depth from a center node."""
+    """Retrieves nodes and edges for graph visualization within a certain depth."""
     nodes = {}
     edges = []
-    nodes_to_fetch = {center_nodeid}
+    # nodes_to_fetch = {center_nodeid} # Will be set after validation
     fetched_nodes = set()
+    all_involved_nodes = set() # Track nodes to update last_access
 
-    with duckdb.connect(DB_FILE) as con:
-        now = datetime.datetime.now()
+    try:
+        with duckdb.connect(DB_FILE) as con:
+            now = datetime.datetime.now()
 
-        for _ in range(depth + 1):
-            if not nodes_to_fetch:
-                break
+            # --- Start of proposed addition ---
+            if not center_nodeid:
+                logging.warning("get_graph_data called without a center_nodeid. "
+                                "The Flask /graph route should provide a default. Returning empty graph.")
+                return {"nodes": [], "edges": []}
 
-            current_batch = list(nodes_to_fetch)
-            nodes_to_fetch.clear()
-            fetched_nodes.update(current_batch)
+            center_node_check = con.execute(
+                "SELECT 1 FROM nodes WHERE nodeid = ? AND superseded_at IS NULL",
+                [center_nodeid]
+            ).fetchone()
+            if not center_node_check:
+                logging.error(f"Provided center_nodeid {center_nodeid} for get_graph_data "
+                              "is not found or is superseded. Returning empty graph.")
+                return {"nodes": [], "edges": []}
+            
+            nodes_to_fetch = {center_nodeid} # Initialize after validation
+            # --- End of proposed addition ---
 
-            # Fetch node details for the current batch
-            node_results = con.execute(
-                f"SELECT nodeid, type, label, text, created_at, last_access FROM nodes WHERE nodeid IN ({','.join(['?']*len(current_batch))}) AND superseded_at IS NULL",
-                current_batch
-            ).fetchall()
+            for current_depth in range(depth + 1):
+                if not nodes_to_fetch:
+                    break
 
-            for row in node_results:
-                 node_id = row[0]
-                 if node_id not in nodes: # Avoid duplicates if fetched via different paths
-                     nodes[node_id] = {
-                        "id": node_id, # d3 expects 'id'
-                        "type": row[1],
-                        "label": row[2],
-                        "text": row[3],
-                        "created_at": row[4],
-                        "last_access": row[5]
-                    }
+                current_batch = list(nodes_to_fetch)
+                nodes_to_fetch.clear()
+                fetched_nodes.update(current_batch)
+                all_involved_nodes.update(current_batch) # Add nodes being fetched
+
+                try:
+                    node_placeholders = ','.join(['?'] * len(current_batch))
+                    node_results = con.execute(
+                        f"SELECT nodeid, type, label, text, created_at, last_access FROM nodes WHERE nodeid IN ({node_placeholders}) AND superseded_at IS NULL",
+                        current_batch
+                    ).fetchall()
+
+                    for row in node_results:
+                        node_id = row[0]
+                        if node_id not in nodes: # Avoid duplicates
+                            nodes[node_id] = {
+                                "id": node_id,
+                                "type": row[1],
+                                "label": row[2],
+                                "text": row[3],
+                                "created_at": row[4],
+                                "last_access": row[5]
+                            }
+
+                    if current_depth < depth:
+                        edge_placeholders = ','.join(['?'] * len(current_batch))
+                        edge_results = con.execute(
+                            f"""
+                            SELECT sourceid, targetid, rel_type
+                            FROM edges
+                            WHERE (sourceid IN ({edge_placeholders}) OR targetid IN ({edge_placeholders}))
+                            """,
+                            current_batch + current_batch
+                        ).fetchall()
+
+                        valid_target_ids = set(nodes.keys()) # Nodes confirmed valid in this fetch
+
+                        for sourceid, targetid, rel_type in edge_results:
+                            source_is_valid = sourceid in nodes
+                            target_is_valid = targetid in nodes
+
+                            potential_neighbor = None
+                            if source_is_valid and targetid not in fetched_nodes and targetid not in nodes_to_fetch:
+                               potential_neighbor = targetid
+                            elif target_is_valid and sourceid not in fetched_nodes and sourceid not in nodes_to_fetch:
+                               potential_neighbor = sourceid
+
+                            if potential_neighbor:
+                                 is_neighbor_valid = con.execute("SELECT 1 FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [potential_neighbor]).fetchone()
+                                 if is_neighbor_valid:
+                                     nodes_to_fetch.add(potential_neighbor)
+                                     all_involved_nodes.add(potential_neighbor)
 
 
-            # Fetch edges connected to the current batch and find next layer of nodes
-            edge_results = con.execute(
-                f"""
-                SELECT sourceid, targetid, rel_type
-                FROM edges
-                WHERE (sourceid IN ({','.join(['?']*len(current_batch))}) OR targetid IN ({','.join(['?']*len(current_batch))}))
-                """,
-                current_batch + current_batch # Need placeholders for both source and target IN clauses
-            ).fetchall()
+                            if source_is_valid and target_is_valid:
+                               edges.append({"source": sourceid, "target": targetid, "rel_type": rel_type})
 
-            for sourceid, targetid, rel_type in edge_results:
-                # Add edge if both nodes are within the fetched set so far (or will be)
-                # Check against fetched_nodes AND the nodes dictionary keys to be safe
-                source_in_scope = sourceid in fetched_nodes or sourceid in nodes
-                target_in_scope = targetid in fetched_nodes or targetid in nodes
+                except duckdb.Error as e:
+                     logging.error(f"Database error during graph data retrieval: {e}")
+                     # Continue if possible, graph might be incomplete
+                except Exception as e:
+                     logging.error(f"Unexpected error during graph data retrieval: {e}")
 
-                # Only add edge if both nodes are valid and not superseded
-                source_node_valid = con.execute("SELECT 1 FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [sourceid]).fetchone()
-                target_node_valid = con.execute("SELECT 1 FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [targetid]).fetchone()
+            if all_involved_nodes:
+                logging.info(f"Updating last_access for {len(all_involved_nodes)} nodes involved in graph data.")
+                node_ids_list = list(all_involved_nodes)
+                id_placeholders = ','.join(['?'] * len(node_ids_list))
+                try:
+                     con.execute(f"UPDATE nodes SET last_access = ? WHERE nodeid IN ({id_placeholders})", [now] + node_ids_list)
+                except duckdb.Error as e:
+                     logging.error(f"Failed to update last_access for graph nodes: {e}")
 
-
-                if source_node_valid and target_node_valid:
-                     edges.append({"source": sourceid, "target": targetid, "rel_type": rel_type}) # d3 expects source/target
-
-                     # Add neighbours to the next fetch list if not already fetched/queued
-                     if sourceid not in fetched_nodes and sourceid not in nodes_to_fetch:
-                         nodes_to_fetch.add(sourceid)
-                     if targetid not in fetched_nodes and targetid not in nodes_to_fetch:
-                         nodes_to_fetch.add(targetid)
-
-        # Update last_access for all nodes included in the graph
-        if nodes:
-             node_ids = list(nodes.keys())
-             con.execute(f"UPDATE nodes SET last_access = ? WHERE nodeid IN ({','.join(['?']*len(node_ids))})", [now] + node_ids)
+    except ImportError:
+        logging.error("DuckDB library not found. Cannot get graph data.")
+        return {"nodes": [], "edges": []}
+    except duckdb.Error as e:
+        logging.error(f"Failed to connect to database for graph data: {e}")
+        return {"nodes": [], "edges": []} # Return empty graph on connection error
+    except Exception as e:
+        logging.error(f"Unexpected critical error in get_graph_data: {e}")
+        return {"nodes": [], "edges": []}
 
 
     return {"nodes": list(nodes.values()), "edges": edges}
+
+
+def get_all_active_nodes_for_viz():
+    """Retrieves all active nodes with their embeddings and total edge counts for visualization."""
+    nodes_data = []
+    logging.info("Fetching all active nodes for visualization.")
+    try:
+        with duckdb.connect(DB_FILE) as con:
+            # Fetch all active nodes with their basic details and embeddings
+            active_nodes_res = con.execute(
+                """
+                SELECT nodeid, label, type, embedding
+                FROM nodes
+                WHERE superseded_at IS NULL;
+                """
+            ).fetchall()
+
+            if not active_nodes_res:
+                logging.info("No active nodes found for visualization.")
+                return []
+
+            for node_row in active_nodes_res:
+                nodeid, label, node_type, embedding = node_row
+                
+                # Calculate total edge count for this node
+                edge_count_res = con.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM (
+                        SELECT sourceid AS node_involved FROM edges WHERE targetid = ?
+                        UNION ALL
+                        SELECT targetid AS node_involved FROM edges WHERE sourceid = ?
+                    ) AS all_edges;
+                    """,
+                    [nodeid, nodeid] # Count where this node is either a source or a target
+                ).fetchone()
+                
+                total_edge_count = edge_count_res[0] if edge_count_res else 0
+
+                # Ensure embedding is a list of floats if it's not already
+                # DuckDB might return it as a special type, though list_cosine_similarity implies it's usable
+                # For JSON serialization and JS, ensure it's a standard list.
+                if embedding is not None and not isinstance(embedding, list):
+                    # This step might be redundant if DuckDB already returns a list-like structure
+                    # that json.dumps can handle. However, explicit conversion is safer for JS.
+                    try:
+                        # Assuming embedding is a numpy array or similar that can be converted
+                        processed_embedding = [float(e) for e in embedding]
+                    except TypeError:
+                        logging.warning(f"Embedding for node {nodeid} is not iterable, setting to empty list.")
+                        processed_embedding = [] # Or handle as an error
+                elif embedding is None:
+                    processed_embedding = []
+                else:
+                    processed_embedding = embedding
+
+
+                nodes_data.append({
+                    "nodeid": nodeid,
+                    "label": label,
+                    "type": node_type,
+                    "embedding": processed_embedding, # Store the raw embedding
+                    "total_edge_count": total_edge_count
+                })
+            
+            logging.info(f"Successfully fetched and processed {len(nodes_data)} active nodes for visualization.")
+            return nodes_data
+
+    except ImportError:
+        logging.error("DuckDB library not found. Cannot get_all_active_nodes_for_viz.")
+        return []
+    except duckdb.Error as e:
+        logging.error(f"Database error in get_all_active_nodes_for_viz: {e}")
+        return []
+    except Exception as e:
+        logging.error(f"Unexpected error in get_all_active_nodes_for_viz: {e}")
+        return []
 
 
 def forget_old_memories(days_old=180):
     """Deletes nodes that were superseded long ago and haven't been accessed."""
     cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days_old)
     deleted_count = 0
-    with duckdb.connect(DB_FILE) as con:
-        try:
+    logging.info(f"Starting forgetting process for memories superseded and not accessed before {cutoff_date}...")
+
+    try:
+        with duckdb.connect(DB_FILE) as con:
             con.begin()
+            try:
+                nodes_to_delete_result = con.execute(
+                    """
+                    SELECT nodeid FROM nodes
+                    WHERE superseded_at IS NOT NULL
+                      AND superseded_at < ?
+                      AND last_access < ?
+                    """,
+                    [cutoff_date, cutoff_date]
+                ).fetchall()
 
-            # 1. Identify nodes to be deleted
-            nodes_to_delete_result = con.execute(
-                """
-                SELECT nodeid FROM nodes
-                WHERE superseded_at IS NOT NULL
-                  AND superseded_at < ?
-                  AND last_access < ?
-                """,
-                [cutoff_date, cutoff_date]
-            ).fetchall()
-            
-            nodes_to_delete_ids = [row[0] for row in nodes_to_delete_result]
+                nodes_to_delete_ids = [row[0] for row in nodes_to_delete_result]
 
-            if not nodes_to_delete_ids:
-                print("No old memories found to forget.")
-                con.commit() # Commit even if nothing to delete
-                return 0
+                if not nodes_to_delete_ids:
+                    logging.info("No old memories found meeting the forgetting criteria.")
+                    con.commit()
+                    return 0
 
-            # 2. Delete edges connected to these nodes
-            # Need to format the list of IDs for the IN clause
-            id_placeholders = ",".join(['?'] * len(nodes_to_delete_ids))
-            delete_edges_query = f"DELETE FROM edges WHERE sourceid IN ({id_placeholders}) OR targetid IN ({id_placeholders})"
-            # Double the list of IDs because placeholders appear twice
-            deleted_edges_result = con.execute(delete_edges_query, nodes_to_delete_ids + nodes_to_delete_ids).fetchall()
-            print(f"Deleted associated edges for {len(nodes_to_delete_ids)} nodes.") # Note: fetchall() on DELETE returns empty list
+                logging.info(f"Identified {len(nodes_to_delete_ids)} nodes to forget.")
 
-            # 3. Delete the nodes themselves
-            # Edges are deleted manually now, not via cascade
-            delete_nodes_query = f"""
-                DELETE FROM nodes
-                WHERE nodeid IN ({id_placeholders})
-                RETURNING COUNT(*);
-                """
-            result = con.execute(delete_nodes_query, nodes_to_delete_ids)
-            fetched_result = result.fetchone()
-            if fetched_result:
-                deleted_count = fetched_result[0]
-            else:
-                 deleted_count = 0 # Should not happen if nodes_to_delete_ids was not empty
-            
-            con.commit()
-            print(f"Successfully forgot {deleted_count} old memories.")
-        except Exception as e:
-            con.rollback()
-            print(f"Error during forgetting old memories: {e}")
+                id_placeholders = ",".join(['?'] * len(nodes_to_delete_ids))
+                delete_edges_query = f"DELETE FROM edges WHERE sourceid IN ({id_placeholders}) OR targetid IN ({id_placeholders})"
+                con.execute(delete_edges_query, nodes_to_delete_ids + nodes_to_delete_ids)
+                logging.info(f"Deleted associated edges for {len(nodes_to_delete_ids)} nodes.")
+
+                delete_nodes_query = f"DELETE FROM nodes WHERE nodeid IN ({id_placeholders})"
+                cur = con.execute(delete_nodes_query, nodes_to_delete_ids)
+                # Attempt to get row count, fallback to len(ids)
+                try:
+                    deleted_count = cur.fetchall()[0][0] # DuckDB DELETE RETURNING COUNT(*) might work this way
+                except:
+                     # If fetchall doesn't work as expected or returns nothing useful
+                     logging.warning("Could not get exact deleted row count from cursor, using initial count.")
+                     deleted_count = len(nodes_to_delete_ids)
+
+                con.commit()
+                logging.info(f"Finished forgetting old memories. Deleted {deleted_count} nodes.")
+
+            except duckdb.Error as e:
+                con.rollback()
+                logging.error(f"Database error during forgetting old memories: {e}")
+                # Do not return, let error propagate or be handled by outer block
+                raise
+            except Exception as e:
+                con.rollback()
+                logging.error(f"Unexpected error during forgetting old memories: {e}")
+                raise RuntimeError(f"Unexpected error during forgetting: {e}") from e
+
+    except ImportError:
+         logging.error("DuckDB library not found. Cannot forget old memories.")
+         return 0 # Indicate nothing was done
+    except duckdb.Error as e:
+         logging.error(f"Failed to connect to database for forgetting memories: {e}")
+         return 0 # Indicate nothing was done
+    except Exception as e:
+         logging.error(f"Unexpected critical error in forget_old_memories: {e}")
+         return 0
+
+
     return deleted_count
 
-# Initialize DB on first import
-init_db() 
+def clear_all_memory(force=False):
+    """Deletes ALL nodes and edges from the database by dropping and re-initializing tables.
+
+    Warning: This action is irreversible.
+
+    Args:
+        force (bool): Set to True to bypass safety checks for production environments.
+                     Default is False, which prevents deletion if environment is not development.
+
+    Returns:
+        bool: True if deletion and re-initialization was successful, False otherwise.
+    """
+    # Safety check for production environments
+    if not force:
+        env = os.getenv('FRED_ENV', 'production').lower()
+        if env != 'development' and env != 'test':
+            logging.warning("Attempted to clear memory in non-development environment! Set force=True to override.")
+            return False
+            
+    logging.warning("Attempting to clear ALL memory by dropping and re-initializing tables!")
+    try:
+        with duckdb.connect(DB_FILE) as con:
+            con.begin() # Start transaction
+            try:
+                logging.info("Dropping existing 'edges' table (if exists)...")
+                con.execute("DROP TABLE IF EXISTS edges;")
+                logging.info("Dropped 'edges' table.")
+                
+                logging.info("Dropping existing 'nodes' table (if exists)...")
+                con.execute("DROP TABLE IF EXISTS nodes;")
+                logging.info("Dropped 'nodes' table.")
+                
+                con.commit() # Commit drops
+                logging.info("Tables dropped. Now re-initializing schema...")
+                
+                # Re-initialize the schema
+                init_db() # This will create the tables again
+                
+                logging.warning("Successfully cleared and re-initialized all memory.")
+                return True
+            except duckdb.Error as e:
+                con.rollback() # Rollback on error
+                logging.error(f"Database error during memory clearing (drop/re-init): {e}")
+                return False
+            except Exception as e:
+                con.rollback()
+                logging.error(f"Unexpected error during memory clearing (drop/re-init): {e}")
+                return False
+
+    except ImportError:
+         logging.error("DuckDB library not found. Cannot clear memory.")
+         return False
+    except duckdb.Error as e:
+         logging.error(f"Failed to connect to database for clearing memory: {e}")
+         return False
+    except Exception as e:
+         logging.error(f"Unexpected critical error in clear_all_memory: {e}")
+         return False
+
+# --- Initialization ---
+# Only initialize DB automatically when this script is run directly
+try:
+    import duckdb
+    if __name__ == "__main__":
+        print("Librarian script loaded. Initializing database...")
+        init_db()
+        print("Database ready.")
+        # Add test calls here if desired, wrapped in try/except ImportError
+except ImportError:
+    logging.warning("DuckDB not found during import. Database functionality is disabled.")
+    if __name__ == "__main__":
+        print("Librarian script loaded, but DuckDB is missing. Database functionality disabled.")
