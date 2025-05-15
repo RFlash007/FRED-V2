@@ -480,6 +480,7 @@ body {
     transition: transform var(--transition-duration) ease, opacity var(--transition-duration) ease;
     animation: message-entry 0.3s ease-out forwards; /* Add entry animation */
     opacity: 0;
+    margin-bottom: 0.5rem; /* ADDED: Vertical spacing between messages */
 }
 
 @keyframes message-entry {
@@ -489,6 +490,12 @@ body {
 
 .message p {
     margin: 0;
+}
+
+/* ADDED: Center content of p tag in loading placeholder */
+.message.assistant.loading-placeholder p {
+    text-align: center;
+    line-height: 1.6; /* Match .message style for consistent height */
 }
 
 .message.user {
@@ -566,10 +573,11 @@ body.dark-mode .message.system {
     height: 6px;
     background-color: var(--fred-slate-light);
     border-radius: 50%;
-    margin-left: 8px;
+    /* margin-left: 8px; */ /* MODIFIED: Removed */
     animation: typing-dot 1.2s infinite steps(3, end);
     position: relative;
     top: -2px;
+    left: -10px; /* MODIFIED: Added to shift the centered group correctly */
     z-index: 1; /* Ensure dots are above scan */
 }
 
@@ -1061,4 +1069,20 @@ body.dark-mode .links line {
     resize: none;
     min-height: 40px;
     max-height: 40px;
+}
+
+.activity-log-display {
+    height: 150px; /* Adjust as needed */
+    overflow-y: auto;
+    border: 1px solid var(--fred-border-color);
+    padding: 8px;
+    font-size: 0.8em;
+    background-color: var(--fred-sidebar-input-bg);
+    border-radius: 4px;
+    margin-top: 5px;
+}
+
+.activity-log-display p {
+    margin: 0 0 5px 0;
+    word-wrap: break-word;
 }

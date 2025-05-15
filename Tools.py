@@ -1,9 +1,8 @@
-import os
 import time
 import logging
 import json
 import datetime
-# from duckduckgo_search import DDGS  # Commented out DuckDuckGo import
+from duckduckgo_search import DDGS # Uncommented DuckDuckGo import
 # Import the librarian module
 import memory.librarian as lib
 
@@ -110,8 +109,8 @@ AVAILABLE_TOOLS = [
     },
     {
         "name": "search_web_information",
-        "description": "Searches the web for information relevant to a query text.",
-        "parameters": {"query_text": {"type": "string", "description": "The text to search for relevant information."}}
+        "description": "Searches the web for information using DuckDuckGo. This tool retrieves current information from the internet. It combines results from general web search and news search.",
+        "parameters": {"query_text": {"type": "string", "description": "The text to search for."}}
     }
 ]
 
@@ -194,91 +193,83 @@ def tool_search_memory(query_text: str, memory_type: str | None = None, limit: i
         logging.error(f"Error in tool_search_memory: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
-def search_web_information(topics: str) -> str:
+def search_web_information(query_text: str) -> str:
     """
-    Searches for EXTERNAL information from the web using DuckDuckGo.
-    This tool retrieves current information from the internet - NOT from F.R.E.D.'s memory.
-    
-    1. Perform text & news searches on each topic (comma-separated).
-    2. Summarize the combined results in the specified style.
-    3. If summarization fails, return raw search results.
-    
+    Searches the web for information using DuckDuckGo.
+    This tool retrieves current information from the internet.
+    It combines results from general web search and news search.
+
     Args:
-        topics (str): The user's desired topics, comma-separated.
-        mode (str): The summarization mode - "educational" or "news".
+        query_text (str): The text to search for.
         
     Returns:
-        str: A summary or raw results if summarization fails.
+        str: A JSON string containing the search results or an error message.
     """
-    ddgs = DDGS()
-    
-    # Split topics by commas
-    topics_list = [t.strip() for t in topics.split(",") if t.strip()]
-    
-    region = "us-en"
-    safesearch = "off"
-    
-    # Gather results
-    text_results = []
-    news_results = []
-    
-    # Configure search parameters based on mode
-    text_max_results = 2
-    news_max_results = 1 if mode == "educational" else 2
-    
-    # For each topic, do text + news
-    for topic in topics_list:
-        text_results.extend(ddgs.text(
-            keywords=topic,
-            region=region,
-            safesearch=safesearch,
-            max_results=text_max_results
-        ))
-        news_results.extend(ddgs.news(
-            keywords=topic,
-            region=region,
-            safesearch=safesearch,
-            max_results=news_max_results
-        ))
-    
-    # Configure prompt based on mode
-    if mode == "educational":
-        combined_prompt = (
-            "You are an educational summarizer. Summarize both the search results and news "
-            "in a concise but thorough manner, focusing on learning and clarity. "
-            "If not enough info is provided, do your best to fill in context. "
-            "Structure your response with 'Text Summary:' and 'News Summary:' sections. "
-            "Return ONLY the summary.\n\n"
-            f"Search Results:\n{text_results}\n\n"
-            f"News Results:\n{news_results}"
-        )
-    else:  # news mode
-        combined_prompt = (
-            "You are a news summarizer. Summarize both the text results and news "
-            "in a journalistic style, highlighting recent or important events. "
-            "Structure your response with 'Text Summary:' and 'News Summary:' sections. "
-            "Return ONLY the summary:\n\n"
-            f"Text Results:\n{text_results}\n\n"
-            f"News Results:\n{news_results}"
-        )
-    
-    # Fallback if summarization fails
-    bare_info = (
-        f"[Text Results]\n{text_results}\n\n"
-        f"[News Results]\n{news_results}"
-    )
-    
+    logging.info(f"Tool call: search_web_information(query_text='{query_text}')")
     try:
-        # Single summarization call
-        response = ddgs.chat(
-            keywords=combined_prompt,
-            model="gpt-4o-mini",
-            timeout=60
-        )
-        return response
+        ddgs = DDGS(timeout=20) # Initialize with a timeout
+        
+        search_keywords = query_text # Use the provided query_text directly
+        
+        text_results = []
+        news_results = []
+        
+        # Perform text search
+        try:
+            text_search_results = ddgs.text(
+                keywords=search_keywords,
+                region="us-en",
+                safesearch="off",
+                max_results=3  # Limiting results for brevity
+            )
+            if text_search_results:
+                text_results = text_search_results
+        except Exception as e_text:
+            logging.warning(f"DuckDuckGo text search failed for '{search_keywords}': {e_text}")
+            # Optionally, include this warning in the output if desired
+
+        # Perform news search
+        try:
+            news_search_results = ddgs.news(
+                keywords=search_keywords,
+                region="us-en",
+                safesearch="off",
+                max_results=2 # Limiting news results
+            )
+            if news_search_results:
+                news_results = news_search_results
+        except Exception as e_news:
+            logging.warning(f"DuckDuckGo news search failed for '{search_keywords}': {e_news}")
+
+        if not text_results and not news_results:
+            return json.dumps({"success": True, "results": "No information found from web search."})
+        
+        combined_prompt = f"Summarize the following web search results: {text_results} {news_results}"
+
+        combined_results = {
+            "text_search_summary": text_results,
+            "news_search_summary": news_results
+        }
+
+        
+        try:
+            # Single summarization call
+            response = ddgs.chat(
+                keywords=combined_prompt,
+                model="gpt-4o-mini",
+                timeout=60
+            )
+            if response:
+                combined_results["llm_summary"] = response
+        except Exception as e_summary:
+            logging.warning(f"DuckDuckGo LLM summary failed for '{combined_prompt}': {e_summary}")
+            combined_results["llm_summary"] = "Could not generate summary"
+        
+        return json.dumps({"success": True, "results": combined_results})
+
     except Exception as e:
-        logging.error(f"Summarization error: {e}")
-        return bare_info
+        logging.error(f"Error in search_web_information: {e}", exc_info=True)
+        return json.dumps({"success": False, "error": str(e)})
 
 # --- Tool Registry ---
 TOOL_FUNCTIONS = {
@@ -367,45 +358,3 @@ def handle_tool_calls(response_message):
             tool_outputs.append({"tool_call_id": tool_call_id, "role": "tool", "content": error_content})
 
     return tool_outputs
-
-# --- Test Code ---
-if __name__ == '__main__':
-    print("Available Tools:")
-    print(json.dumps(AVAILABLE_TOOLS, indent=2))
-
-    print("\n--- Testing Tools ---")
-
-    # Ensure DB is initialized for testing
-    try:
-        lib.init_db()
-        print("Memory DB initialized for testing.")
-    except Exception as e:
-        print(f"DB init failed for testing: {e}")
-
-    print("\nTesting add_memory:")
-    add_args = {"label": "Test Memory", "text": "This is a test memory added via tool.", "memory_type": "Episodic"}
-    add_result = handle_tool_calls({"tool_calls": [{"function": {"name": "add_memory", "arguments": add_args}, "id": "call_12345"}]})
-    print(f"Result: {add_result}")
-    added_node_id = None
-    try:
-        added_node_id = json.loads(add_result[0]['content']).get("nodeid")
-        print(f"Added Node ID: {added_node_id}")
-    except: pass
-
-    print("\nTesting search_memory:")
-    search_args = {"query_text": "test memory"}
-    search_result = handle_tool_calls({"tool_calls": [{"function": {"name": "search_memory", "arguments": search_args}, "id": "call_12346"}]})
-    print(f"Result: {search_result}")
-
-    if added_node_id:
-        print("\nTesting supersede_memory:")
-        supersede_args = {
-            "old_nodeid": added_node_id,
-            "new_label": "Updated Test Memory",
-            "new_text": "This memory has been superseded.",
-            "new_memory_type": "Episodic"
-        }
-        supersede_result = handle_tool_calls({"tool_calls": [{"function": {"name": "supersede_memory", "arguments": supersede_args}, "id": "call_12347"}]})
-        print(f"Result: {supersede_result}")
-
-    print("\n--- Testing Finished ---")

@@ -12,7 +12,18 @@ const bodyElement = document.body;
 const sidebarToggle = document.getElementById('sidebar-toggle');
 // const idleModeSwitch = document.getElementById('idle-mode-switch'); // REMOVED (Feature removed)
 
+const activityLog = document.getElementById('activity-log'); // Get the activity log div
+
 // --- Helper Functions ---
+
+function logToolActivity(message) {
+    if (!activityLog) return; // Safety check
+    const activityEntry = document.createElement('p');
+    activityEntry.textContent = message; // Use textContent for security
+    activityLog.appendChild(activityEntry);
+    // Scroll to the bottom of the activity log
+    activityLog.scrollTop = activityLog.scrollHeight;
+}
 
 function appendMessage(role, content, addLoading = false) {
     const messageDiv = document.createElement('div');
@@ -248,93 +259,114 @@ messageForm.addEventListener('submit', async (event) => {
 
     const assistantMessageDiv = appendMessage('assistant', '', true); // Add loading placeholder
     const assistantParagraph = assistantMessageDiv.querySelector('p');
+    let fullResponse = ""; // To accumulate the full response for potential Markdown parsing later
 
     try {
         const response = await fetch('/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Accept': 'text/event-stream'
             },
             body: JSON.stringify({
                 message: userMessage,
                 model: selectedModel,
-                ollama_url: ollamaUrl
-            })
+                ollama_url: ollamaUrl,
+                // max_tool_iterations: 3 // Example, can be configurable
+            }),
         });
 
-        if (!response.ok || !response.body) {
-            const errorData = response.ok ? { error: 'Response body is missing' } : await response.json();
-            throw new Error(errorData.error || `Server responded with status ${response.status}`);
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error occurred, server response not JSON.' }));
+            throw new Error(`HTTP error! status: ${response.status}, message: ${errorData.error || 'Server error'}`);
         }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
-        let firstChunk = true;
+
+        assistantMessageDiv.classList.remove('loading-placeholder'); // Remove placeholder once stream starts
 
         while (true) {
-            const { done, value } = await reader.read();
+            const { value, done } = await reader.read();
             if (done) break;
 
             buffer += decoder.decode(value, { stream: true });
-            let lines = buffer.split('\n\n');
-            buffer = lines.pop(); // Keep incomplete line
+            
+            // Process buffer line by line (assuming server sends JSON objects separated by newlines)
+            let newlineIndex;
+            while ((newlineIndex = buffer.indexOf('\n')) >= 0) {
+                const line = buffer.substring(0, newlineIndex).trim();
+                buffer = buffer.substring(newlineIndex + 1);
 
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
+                if (line) {
                     try {
-                        const jsonStr = line.substring(6);
-                        const data = JSON.parse(jsonStr);
-
-                        if (data.type === 'chunk') {
-                            if (firstChunk) {
-                                assistantParagraph.textContent = '';
-                                assistantMessageDiv.classList.remove('loading-placeholder');
-                                firstChunk = false;
-                            }
-                            // Append content incrementally, handling potential basic markdown
-                            assistantParagraph.innerHTML += data.content
+                        const chunk = JSON.parse(line);
+                        if (chunk.type === 'tool_activity' && chunk.content) {
+                            logToolActivity(chunk.content);
+                        } else if (chunk.response) {
+                            fullResponse += chunk.response;
+                            // Basic Markdown-like formatting for streaming
+                            assistantParagraph.innerHTML = fullResponse
                                 .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                                .replace(/\*(.*?)\*/g, '<em>$1</em>');
-                            chatHistory.scrollTo({ top: chatHistory.scrollHeight, behavior: 'auto' }); // Use auto scroll during streaming
-                        } else if (data.type === 'done') {
-                            console.log("Stream finished (done message).");
-                            assistantMessageDiv.classList.remove('loading-placeholder');
-                            chatHistory.scrollTo({ top: chatHistory.scrollHeight, behavior: 'smooth' }); // Smooth scroll at the end
-                            reader.cancel();
-                            // Deactivate visualization
-                            fredVisualization.classList.remove('active');
-                            
-                            // Stop mind map animation
-                            if (window.mindMap) {
-                                window.mindMap.setActive(false);
-                            }
-                            return;
-                        } else if (data.type === 'error') {
-                            throw new Error(data.content);
+                                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                                .replace(/\n/g, '<br>'); // Replace explicit newlines if any
+                        } else if (chunk.error) {
+                            // Handle errors streamed from the backend
+                            console.error("Streamed error:", chunk.error);
+                            appendMessage('error', `Server error: ${chunk.error}`);
+                            // Optionally stop processing further messages if a critical error occurs
+                            // return; 
                         }
-                    } catch (parseError) {
-                        console.error("Error parsing SSE data:", parseError, "Raw line:", line);
+                        // Add other chunk types if needed (e.g., tool_call_result)
+                    } catch (e) {
+                        // This might happen if a non-JSON line is encountered or if JSON is malformed
+                        // It could also be a raw string if the server sometimes doesn't send JSON
+                        console.warn('Received non-JSON line or malformed JSON in stream:', line, e);
+                        // As a fallback, append raw line if it's not an empty string from keep-alive pings
+                        if (line.trim()) {
+                             fullResponse += line; // Add it to the main response
+                             assistantParagraph.innerHTML = fullResponse
+                                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                                .replace(/\n/g, '<br>');
+                        }
                     }
                 }
+                chatHistory.scrollTop = chatHistory.scrollHeight; // Keep scrolled to bottom
             }
         }
-        console.log("Stream finished (reader done).");
-        assistantMessageDiv.classList.remove('loading-placeholder');
-        chatHistory.scrollTo({ top: chatHistory.scrollHeight, behavior: 'smooth' });
+        
+        // Final processing of any remaining buffer content (if stream ends without newline)
+        if (buffer.trim()) {
+            try {
+                const chunk = JSON.parse(buffer.trim());
+                 if (chunk.type === 'tool_activity' && chunk.content) {
+                    logToolActivity(chunk.content);
+                } else if (chunk.response) {
+                    fullResponse += chunk.response;
+                } else if (chunk.error) {
+                    console.error("Streamed error (final buffer):", chunk.error);
+                    appendMessage('error', `Server error: ${chunk.error}`);
+                }
+            } catch (e) {
+                 console.warn('Received non-JSON final buffer content:', buffer.trim(), e);
+                 fullResponse += buffer.trim(); // Add it to the main response
+            }
+        }
+
+        // Update with the complete response for final Markdown rendering if needed,
+        // or if server only sends one complete JSON at the end.
+        // For now, progressive rendering handles it.
+        // assistantParagraph.innerHTML = marked.parse(fullResponse); // If using a library like 'marked'
 
     } catch (error) {
-        console.error('Chat Error:', error);
+        console.error('Error sending message:', error);
         assistantParagraph.textContent = `Error: ${error.message}`;
-        assistantMessageDiv.classList.remove('assistant', 'loading-placeholder');
-        assistantMessageDiv.classList.add('error');
-        chatHistory.scrollTo({ top: chatHistory.scrollHeight, behavior: 'smooth' });
+        assistantMessageDiv.classList.remove('loading-placeholder');
+        appendMessage('error', `Failed to get response from Fred: ${error.message}`);
     } finally {
-        // Ensure visualization is always deactivated
+        // Deactivate visualization after response or error
         fredVisualization.classList.remove('active');
-        
-        // Always stop mind map animation
         if (window.mindMap) {
             window.mindMap.setActive(false);
         }
