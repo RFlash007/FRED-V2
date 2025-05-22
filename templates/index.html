@@ -45,7 +45,8 @@
                 <h2>Configuration</h2>
                 <label for="model-select">Model:</label>
                 <select id="model-select">
-                    <option value="qwen3:30b-a3b" selected>Qwen 3 (30B)</option>
+                    <option value="hf.co/unsloth/Qwen3-8B-GGUF:Q4_K_M" selected>Unsloth Qwen3 (8B Q4_K_M)</option>
+                    <option value="hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M">Unsloth Qwen3 (30B Q4_K_M)</option>
                 </select>
 
                 <label for="ollama-url">Server Endpoint:</label>
@@ -91,6 +92,7 @@
                     <!-- Simple Send Icon Placeholder (could use SVG) -->
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-send"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                 </button>
+                <button type="button" id="muteFredButton" style="margin-left: 10px;">Mute F.R.E.D.</button>
             </form>
         </main>
     </div>

@@ -2,6 +2,7 @@ import time
 import logging
 import json
 import datetime
+from decimal import Decimal # Added import for Decimal
 from duckduckgo_search import DDGS # Uncommented DuckDuckGo import
 # Import the librarian module
 import memory.librarian as lib
@@ -111,6 +112,54 @@ AVAILABLE_TOOLS = [
         "name": "search_web_information",
         "description": "Searches the web for information using DuckDuckGo. This tool retrieves current information from the internet. It combines results from general web search and news search.",
         "parameters": {"query_text": {"type": "string", "description": "The text to search for."}}
+    },
+    {
+        "name": "get_node_by_id",
+        "description": "Retrieves a specific memory node by its ID, along with its connections to other nodes.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "nodeid": {
+                    "type": "integer",
+                    "description": "The ID of the node to retrieve."
+                }
+            },
+            "required": ["nodeid"]
+        }
+    },
+    {
+        "name": "get_graph_data",
+        "description": "Retrieves a subgraph centered around a specific node, showing its connections up to a certain depth.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "center_nodeid": {
+                    "type": "integer",
+                    "description": "The ID of the node to center the graph around."
+                },
+                "depth": {
+                    "type": "integer",
+                    "description": "Optional. How many levels of connections to retrieve. Defaults to 1.",
+                    "default": 1
+                }
+            },
+            "required": ["center_nodeid"]
+        }
+    },
+    {
+        "name": "update_knowledge_graph_edges",
+        "description": "Processes pending edge creation tasks. Iteratively builds connections for recently added memories based on semantic similarity and LLM-based relationship determination.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "limit_per_run": {
+                    "type": "integer",
+                    "description": "Optional. The maximum number of pending memory nodes to process for edge creation in this run. Defaults to 5.",
+                    "default": 5
+                }
+            },
+            "required": []
+        }
     }
 ]
 
@@ -148,6 +197,12 @@ def tool_supersede_memory(old_nodeid: int, new_label: str, new_text: str, new_me
     """Wrapper to call librarian.supersede_memory."""
     logging.info(f"Tool call: supersede_memory(old_nodeid={old_nodeid}, new_label='{new_label}', new_type='{new_memory_type}', target_date='{target_date}')")
     try:
+         # Validate old_nodeid is an integer
+         if not isinstance(old_nodeid, int):
+            error_message = f"Invalid old_nodeid: '{old_nodeid}'. Must be an integer."
+            logging.error(error_message)
+            return {"success": False, "error": error_message}
+
          # Ensure memory_type is valid before calling lib function
          if new_memory_type not in ('Semantic', "Episodic", "Procedural"):
              raise ValueError(f"Invalid new_memory_type '{new_memory_type}' provided to tool.")
@@ -179,15 +234,25 @@ def tool_search_memory(query_text: str, memory_type: str | None = None, limit: i
         # Validate memory_type if provided
         if memory_type is not None and memory_type not in ('Semantic', "Episodic", "Procedural"):
             raise ValueError(f"Invalid memory_type filter '{memory_type}' provided to tool.")
-        results = lib.search_memory(query_text=query_text, memory_type=memory_type, limit=limit, future_events_only=future_events_only, use_keyword_search=use_keyword_search)
-        # Convert datetime objects to strings for JSON compatibility
+        
+        # Pass include_connections=True to get edge data in a single efficient query
+        results = lib.search_memory(
+            query_text=query_text, 
+            memory_type=memory_type, 
+            limit=limit, 
+            future_events_only=future_events_only, 
+            use_keyword_search=use_keyword_search,
+            include_connections=True  # Always include connections in the tool interface
+        )
+        
+        # Convert datetime and Decimal objects to JSON-compatible types
         for result in results:
-            if isinstance(result.get('created_at'), datetime.datetime):
-                result['created_at'] = result['created_at'].isoformat()
-            if isinstance(result.get('last_access'), datetime.datetime):
-                result['last_access'] = result['last_access'].isoformat()
-            if isinstance(result.get('target_date'), datetime.datetime):
-                result['target_date'] = result['target_date'].isoformat()
+            for key, value in result.items():
+                if isinstance(value, datetime.datetime):
+                    result[key] = value.isoformat()
+                elif isinstance(value, Decimal):
+                    result[key] = float(value) # Convert Decimal to float
+            
         return {"success": True, "results": results}
     except Exception as e:
         logging.error(f"Error in tool_search_memory: {e}", exc_info=True)
@@ -271,12 +336,104 @@ def search_web_information(query_text: str) -> str:
         logging.error(f"Error in search_web_information: {e}", exc_info=True)
         return json.dumps({"success": False, "error": str(e)})
 
+# New tool to get a node by ID with its connections
+def tool_get_node_by_id(nodeid: int):
+    """Retrieves a specific node by ID with its connections."""
+    logging.info(f"Tool call: get_node_by_id(nodeid={nodeid})")
+    try:
+        # Use get_graph_data with depth=1 to get the node and its immediate connections
+        graph_data = lib.get_graph_data(nodeid, depth=1)
+        
+        # Find the target node in the nodes list
+        target_node = next((n for n in graph_data.get('nodes', []) if n['id'] == nodeid), None)
+        
+        if not target_node:
+            return {"success": False, "error": f"Node with ID {nodeid} not found or is superseded."}
+        
+        # Process datetime objects for JSON compatibility
+        for key, value in target_node.items():
+            if isinstance(value, datetime.datetime):
+                target_node[key] = value.isoformat()
+        
+        # Extract connections specific to this node
+        connections = []
+        for edge in graph_data.get('edges', []):
+            if edge['source'] == nodeid:
+                # Outgoing connection
+                target_node_info = next((n for n in graph_data.get('nodes', []) if n['id'] == edge['target']), None)
+                if target_node_info:
+                    connections.append({
+                        "direction": "outgoing",
+                        "rel_type": edge['rel_type'],
+                        "target_nodeid": edge['target'],
+                        "target_label": target_node_info.get('label', ''),
+                        "target_type": target_node_info.get('type', '')
+                    })
+            elif edge['target'] == nodeid:
+                # Incoming connection
+                source_node_info = next((n for n in graph_data.get('nodes', []) if n['id'] == edge['source']), None)
+                if source_node_info:
+                    connections.append({
+                        "direction": "incoming",
+                        "rel_type": edge['rel_type'],
+                        "source_nodeid": edge['source'],
+                        "source_label": source_node_info.get('label', ''),
+                        "source_type": source_node_info.get('type', '')
+                    })
+        
+        # Add connections to the result
+        result = {
+            "node": target_node,
+            "connections": connections
+        }
+        
+        return {"success": True, "result": result}
+    except Exception as e:
+        logging.error(f"Error in tool_get_node_by_id: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+# New tool to get graph data
+def tool_get_graph_data(center_nodeid: int, depth: int = 1):
+    """Retrieves nodes and edges around a center node up to specified depth."""
+    logging.info(f"Tool call: get_graph_data(center_nodeid={center_nodeid}, depth={depth})")
+    try:
+        graph_data = lib.get_graph_data(center_nodeid, depth=depth)
+        
+        # Process datetime objects for JSON compatibility
+        for node in graph_data.get('nodes', []):
+            for key, value in node.items():
+                if isinstance(value, datetime.datetime):
+                    node[key] = value.isoformat()
+        
+        return {"success": True, "result": graph_data}
+    except Exception as e:
+        logging.error(f"Error in tool_get_graph_data: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
+def tool_update_knowledge_graph_edges(limit_per_run: int = 5):
+    """Wrapper to call librarian.process_pending_edges."""
+    logging.info(f"Tool call: update_knowledge_graph_edges(limit_per_run={limit_per_run})")
+    try:
+        if not isinstance(limit_per_run, int) or limit_per_run <= 0:
+            raise ValueError("limit_per_run must be a positive integer.")
+        
+        summary = lib.process_pending_edges(limit_per_run=limit_per_run)
+        # Ensure all parts of the summary are JSON serializable, though they should be.
+        # datetime objects are handled by librarian if any were returned directly.
+        return {"success": True, "result": summary}
+    except Exception as e:
+        logging.error(f"Error in tool_update_knowledge_graph_edges: {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
+
 # --- Tool Registry ---
 TOOL_FUNCTIONS = {
     "add_memory": tool_add_memory,
     "supersede_memory": tool_supersede_memory,
     "search_memory": tool_search_memory,
-    "search_web_information": search_web_information    
+    "search_web_information": search_web_information,
+    "get_node_by_id": tool_get_node_by_id,
+    "get_graph_data": tool_get_graph_data,
+    "update_knowledge_graph_edges": tool_update_knowledge_graph_edges
 }
 
 # --- Tool Execution Logic ---

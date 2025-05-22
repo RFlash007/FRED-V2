@@ -3,15 +3,23 @@ import ollama
 from flask import Flask, request, jsonify, Response, render_template, send_from_directory
 import json
 import requests
+from dotenv import load_dotenv # Added for .env file support
 import memory.librarian as lib
 import logging # Added logging
+import re # Added for stripping think tags
+import playsound # Added for background audio playback
+import uuid # Added for generating unique filenames
+import glob # Added for file pattern matching (cleanup)
 # Import tool-related items
 from Tools import AVAILABLE_TOOLS, handle_tool_calls # Removed execute_tool import, handled by handle_tool_calls
 from datetime import datetime
 import sys
+import torch # Added for TTS
+from TTS.api import TTS # Added for TTS
+import subprocess
+import traceback # Ensure this is not commented out
 
-# Adjust sys.path BEFORE importing librarian
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+load_dotenv() # Load environment variables from .env file
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 # Change logging level to ERROR to reduce console clutter
@@ -24,18 +32,45 @@ lib.DB_FILE = DB_PATH
 
 FRED_CORE_NODE_ID = "FRED_CORE" # Define F.R.E.D. Core Node ID
 
+# --- TTS Configuration ---
+# IMPORTANT: You MUST provide a valid .wav file path for FRED_SPEAKER_WAV_PATH for voice cloning to work.
+# This sample should be a few seconds of clear audio of the voice you want F.R.E.D. to use.
+FRED_SPEAKER_WAV_PATH = "new_voice_sample.wav"  # Updated to use the new voice sample
+XTTS_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2" # Confirmed from clone_and_speak.py
+FRED_LANGUAGE = "en"
+# FRED_OUTPUT_WAV = os.path.join(APP_ROOT, "fred_speech_output.wav") # Output in app root for simplicity - REPLACED BY DYNAMIC
+
+tts_engine = None
+last_played_wav = None # Global variable to keep track of the last played WAV file
+# --- End TTS Configuration ---
+
+# --- Ollama Model Options ---
+thinking_mode_options = {
+    "temperature": 0.6,
+    "min_p": 0.0,
+    "top_p": 0.95,
+    "top_k": 20
+}
+
+non_thinking_mode_options = {
+    "temperature": 0.7,
+    "min_p": 0.0,
+    "top_p": 0.8,
+    "top_k": 20
+}
+# --- End Ollama Model Options ---
+
 # --- Load System Prompt from File ---
 SYSTEM_PROMPT_FILE = os.path.join(APP_ROOT, 'system_prompt.txt')
 try:
     with open(SYSTEM_PROMPT_FILE, 'r', encoding='utf-8') as f:
         SYSTEM_PROMPT = f.read()
-    print(f"[INFO] Loaded system prompt from: {SYSTEM_PROMPT_FILE}")
 except FileNotFoundError:
-    logging.error(f"System prompt file not found at: {SYSTEM_PROMPT_FILE}")
-    SYSTEM_PROMPT = "Error: Could not load system prompt." # Fallback
+    logging.error(f"CRITICAL: System prompt file not found at {SYSTEM_PROMPT_FILE}")
+    SYSTEM_PROMPT = "You are F.R.E.D., a helpful AI assistant. Your primary goal is to assist the user based on their input and your available tools. Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 except Exception as e:
-    logging.error(f"Failed to read system prompt file: {e}")
-    SYSTEM_PROMPT = "Error: Could not load system prompt." # Fallback
+    logging.error(f"CRITICAL: Error loading system prompt: {e}")
+    SYSTEM_PROMPT = "You are F.R.E.D., a helpful AI assistant. Your primary goal is to assist the user based on their input and your available tools. Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
 
 # Print database path once at startup (keep this as it's helpful)
 print(f"[INFO] Setting memory database path to: {DB_PATH}")
@@ -64,6 +99,80 @@ if not os.path.exists(STATIC_FOLDER):
     os.makedirs(STATIC_FOLDER)
 
 conversation_history = []
+
+def strip_think_tags(text_with_tags):
+    """
+    Removes <think>...</think> blocks from a string.
+    """
+    if not text_with_tags:
+        return ""
+    # The re.DOTALL flag makes '.' match newlines as well,
+    # in case the <think> block spans multiple lines.
+    # The '?' makes the '*' non-greedy, so it matches the shortest possible block.
+    cleaned_text = re.sub(r'<think>.*?</think>', '', text_with_tags, flags=re.DOTALL)
+    return cleaned_text.strip() # .strip() to remove leading/trailing whitespace
+
+# --- TTS Helper Function ---
+def fred_speak(text_to_speak, mute_fred=False):
+    global tts_engine
+    global APP_ROOT # Ensure APP_ROOT is accessible
+    global last_played_wav # Added to manage cleanup
+    if mute_fred:
+        logging.info("F.R.E.D. is muted. Skipping speech output.")
+        return
+
+    if not text_to_speak.strip():
+        logging.info("No text provided to speak.")
+        return
+
+    if not os.path.exists(FRED_SPEAKER_WAV_PATH):
+        logging.error(f"FRED's speaker WAV file not found at '{FRED_SPEAKER_WAV_PATH}'. Cannot generate speech.")
+        logging.error("Please update FRED_SPEAKER_WAV_PATH in app.py.")
+        return
+
+    # Generate a unique filename for this speech output
+    unique_id = uuid.uuid4()
+    current_output_wav = os.path.join(APP_ROOT, f"fred_speech_output_{unique_id}.wav")
+
+    try:
+        # Attempt to delete the last played WAV file before generating a new one
+        if last_played_wav and os.path.exists(last_played_wav):
+            try:
+                os.remove(last_played_wav)
+                logging.info(f"Successfully deleted previous WAV file: {last_played_wav}")
+            except Exception as e:
+                logging.warning(f"Could not delete previous WAV file {last_played_wav}: {e}")
+        
+        if tts_engine is None:
+            logging.info(f"Initializing TTS engine with model: {XTTS_MODEL_NAME}...")
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            logging.info(f"TTS using device: {device}")
+            tts_engine = TTS(XTTS_MODEL_NAME).to(device)
+            logging.info("TTS engine initialized.")
+        
+        logging.info(f"F.R.E.D. speaking: \"{text_to_speak[:50]}...\" to {current_output_wav}")
+        tts_engine.tts_to_file(
+            text=text_to_speak,
+            speaker_wav=FRED_SPEAKER_WAV_PATH,
+            language=FRED_LANGUAGE,
+            file_path=current_output_wav # Use the unique filename
+        )
+        logging.info(f"F.R.E.D. speech saved to {current_output_wav}")
+
+        # Play the audio using playsound for background playback
+        try:
+            playsound.playsound(current_output_wav, block=False) # Play the unique file
+            logging.info(f"F.R.E.D. speech playback initiated with playsound: {current_output_wav}")
+            last_played_wav = current_output_wav # Update the last played WAV path
+        except Exception as e:
+            logging.error(f"Error playing sound with playsound: {e}", exc_info=True)
+            # Fallback or alternative playback method could be considered here if playsound fails critically
+
+    except Exception as e:
+        logging.error(f"Error in fred_speak: {e}", exc_info=True)
+        # Specific error for xtts_v2 license prompt if it occurs here via console interaction
+        if "You must confirm the following" in str(e):
+            logging.error("The TTS model requires license confirmation. Please run the script in an interactive terminal once to accept the terms if you haven't already.")
 
 # --- Helper Functions ---
 
@@ -229,22 +338,28 @@ def get_graph():
 def chat_endpoint():
     global conversation_history
     try:
+        logging.info("Entered event_stream try block.")
         data = request.json
         if not data:
             return jsonify({'error': 'Invalid JSON payload'}), 400
 
         user_message = data.get('message')
-        model_name = data.get('model', 'qwen3:30b-a3b') 
+        model_name = data.get('model', 'huihui_ai/qwen3-abliterated:8b') 
         ollama_base_url = data.get('ollama_url', 'http://localhost:11434').strip()
         max_tool_iterations = data.get('max_tool_iterations', 5)
+        mute_fred_flag = data.get('mute_fred', False) # Get mute flag from request
+
+        # Log the resolved model_name for this specific request
+        logging.info(f"--- Resolved Ollama Model for this request: {model_name} ---")
 
         if not user_message or not ollama_base_url:
             missing_field = 'message' if not user_message else 'Ollama URL'
             return jsonify({'error': f'Missing required field: {missing_field}'}), 400
 
-        logging.info(f"Chat request: Model='{model_name}', User Message: '{user_message[:50]}...'")
+        logging.info(f"Chat request: Model='{model_name}', User Message: '{user_message[:50]}...' Muted: {mute_fred_flag}")
 
         def event_stream():
+            logging.info("EVENT_STREAM: Entered function.")
             current_user_turn = {'role': 'user', 'content': user_message}
             conversation_history.append(current_user_turn) # Add to persistent history immediately
 
@@ -257,12 +372,23 @@ def chat_endpoint():
             # but not the current user turn which is formatted specially below.
             messages.extend(conversation_history[:-1]) 
             
+            # --- Inject pending tasks alert --- #
+            pending_tasks_alert = ""
+            try:
+                with lib.duckdb.connect(lib.DB_FILE) as con:
+                    pending_count_res = con.execute("SELECT COUNT(*) FROM pending_edge_creation_tasks WHERE status = 'pending';").fetchone()
+                    if pending_count_res and pending_count_res[0] > 20:
+                        pending_tasks_alert = f"Alert: There are {pending_count_res[0]} memory nodes awaiting full connection processing. Consider using the 'update_knowledge_graph_edges' tool.\n"
+            except Exception as e_alert:
+                logging.warning(f"Could not query pending edge tasks: {e_alert}")
+            # --- End inject pending tasks alert --- #
+
             formatted_user_input_for_llm = f"""(USER INPUT)
 {user_message}
 (END OF USER INPUT)
 
 (FRED DATABASE)
-The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{pending_tasks_alert}The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 (END OF FRED DATABASE)
 """
             messages.append({"role": "user", "content": formatted_user_input_for_llm})
@@ -272,22 +398,34 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             print(f">>> User input formatted for LLM:\n{formatted_user_input_for_llm}")
             print("-----------------------------------------")
 
+            logging.info(f"EVENT_STREAM: Preparing to initialize Ollama client with URL: '{ollama_base_url}'")
             client = ollama.Client(host=ollama_base_url)
+            logging.info("EVENT_STREAM: Ollama client object created.")
             
             assistant_response_final_content = ""
 
+            logging.info(f"EVENT_STREAM: Starting tool iteration loop (max_tool_iterations: {max_tool_iterations})...")
             for iteration in range(max_tool_iterations):
-                logging.info(f"Model call iteration {iteration + 1}")
+                logging.info(f"EVENT_STREAM: Model call iteration {iteration + 1}. Preparing for client.chat() with stream=False and thinking_mode_options.")
                 
                 response = client.chat(
                     model=model_name,
                     messages=messages,
                     tools=AVAILABLE_TOOLS,
-                    stream=False
+                    stream=False,
+                    options=thinking_mode_options # Added thinking mode options
                 )
+                logging.info(f"EVENT_STREAM: client.chat() with stream=False completed. Response message: {response.get('message', {}).get('content', '')[:50]}...")
                 
                 response_message = response.get('message', {})
                 assistant_interim_content = response_message.get('content', '')
+                # Print raw model output before stripping think tags
+                if assistant_interim_content:
+                    print("\n-----------------------------------------")
+                    print(f">>> Raw Model Output (Non-Streaming):\n{assistant_interim_content}")
+                    print("-----------------------------------------")
+                # Strip think tags from non-streaming direct response
+                assistant_interim_content = strip_think_tags(assistant_interim_content) if assistant_interim_content else ''
                 tool_calls = response_message.get('tool_calls')
 
                 # Append assistant's response (potentially with tool calls) to messages for next iteration
@@ -355,10 +493,10 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 {user_message}
 (END OF USER INPUT)
 
-(CONTEXT FROM TOOL RESULTS)
+(FRED DATABASE)
 {joined_results_for_llm}
 The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-(END OF CONTEXT FROM TOOL RESULTS)
+(END OF FRED DATABASE)
 """
                             # Update the last user message in 'messages' list for the LLM
                             for i in range(len(messages) -1, -1, -1):
@@ -384,21 +522,30 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
             # --- Final Response Generation --- 
             if assistant_response_final_content: # Already have final content from non-tool response
-                logging.info("Sending direct final response.")
+                logging.info(f"EVENT_STREAM: Preparing to speak direct response. Mute: {mute_fred_flag}. Content: '{assistant_response_final_content[:100]}...'")
                 yield json.dumps({'response': assistant_response_final_content}) + '\n'
                 conversation_history.append({'role': 'assistant', 'content': assistant_response_final_content})
+                fred_speak(assistant_response_final_content, mute_fred_flag) # Speak the direct response
             else:
-                logging.info("Generating final streaming response from LLM.")
+                logging.info("EVENT_STREAM: Preparing for final streaming response from LLM with non_thinking_mode_options.")
                 # The messages list now contains the full context including any tool exchanges
                 final_response_stream = client.chat(
                     model=model_name,
                     messages=messages,
-                    stream=True
+                    stream=True,
+                    options=thinking_mode_options # Added non-thinking mode options
                 )
                 aggregated_final_content = ""
                 for chunk in final_response_stream:
                     message_chunk = chunk.get('message', {})
                     content_chunk = message_chunk.get('content')
+                    # Print raw model output chunk before stripping think tags
+                    if content_chunk:
+                        print("\n-----------------------------------------")
+                        print(f">>> Raw Model Output Chunk (Streaming):\n{content_chunk}")
+                        print("-----------------------------------------")
+                    # Strip think tags from streaming response chunk
+                    content_chunk = strip_think_tags(content_chunk) if content_chunk else None
                     is_done_chunk = chunk.get('done', False)
 
                     if content_chunk:
@@ -406,14 +553,23 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                         yield json.dumps({'response': content_chunk}) + '\n'
                     
                     if is_done_chunk:
-                        logging.info("Final streaming from LLM finished.")
+                        logging.info("EVENT_STREAM: Final streaming from LLM finished.")
                         if aggregated_final_content:
+                            logging.info(f"EVENT_STREAM: Preparing to speak aggregated streamed response. Mute: {mute_fred_flag}. Content: '{aggregated_final_content[:100]}...'")
                             conversation_history.append({'role': 'assistant', 'content': aggregated_final_content})
+                            fred_speak(aggregated_final_content, mute_fred_flag) # Speak the aggregated streamed response
+                        else:
+                            logging.info("EVENT_STREAM: Aggregated final content is empty. Nothing to speak.")
                         break 
             
             yield json.dumps({'type': 'done'}) + '\n'
 
-        headers = {'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive'}
+        headers = {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no'  # Good practice for SSE with reverse proxies
+        }
         return Response(event_stream(), headers=headers)
 
     except ollama.ResponseError as e:
@@ -431,7 +587,6 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 
     except Exception as e:
         # ... (Error handling remains the same) ...
-        import traceback
         logging.error(f"[ERROR] {e}\n{traceback.format_exc()}")
         if conversation_history and conversation_history[-1].get('role') == 'user':
             conversation_history.pop()
@@ -452,7 +607,30 @@ def get_memory_viz_data():
         app.logger.error(f"Error fetching visualization data: {e}") # Use Flask logger
         return jsonify({"error": f"An internal error occurred: {e}"}), 500
 
+# --- WAV File Cleanup Function ---
+def cleanup_startup_wav_files():
+    global APP_ROOT
+    logging.info("Performing startup cleanup of old speech output WAV files...")
+    pattern = os.path.join(APP_ROOT, "fred_speech_output_*.wav")
+    count = 0
+    for f_path in glob.glob(pattern):
+        try:
+            os.remove(f_path)
+            logging.info(f"Deleted old WAV file: {f_path}")
+            count += 1
+        except Exception as e:
+            logging.warning(f"Could not delete old WAV file {f_path}: {e}")
+    if count > 0:
+        logging.info(f"Startup cleanup: Deleted {count} old WAV file(s).")
+    else:
+        logging.info("Startup cleanup: No old speech output WAV files found to delete.")
+# --- End WAV File Cleanup ---
+
 if __name__ == '__main__':
+    # --- Perform startup cleanup ---
+    cleanup_startup_wav_files() # Added call to cleanup WAV files
+    # --- End startup cleanup ---
+
     # Check Ollama connection
     try:
         ollama_check_url = (os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434') + '/').rstrip('/')

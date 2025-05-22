@@ -13,7 +13,7 @@ DB_FILE = os.path.join('memory', 'memory.db')  # Default that can be overridden
 OLLAMA_EMBED_URL = os.getenv('OLLAMA_EMBED_URL', 'http://localhost:11434/api/embeddings')
 OLLAMA_GENERATE_URL = os.getenv('OLLAMA_GENERATE_URL', 'http://localhost:11434/api/generate')
 EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
-LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'qwen3:30b-a3b') # As requested
+LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M') # As requested
 EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
 # How many similar nodes to check for automatic edge creation
@@ -64,6 +64,18 @@ def init_db():
                     PRIMARY KEY (sourceid, targetid, rel_type),
                     FOREIGN KEY (sourceid) REFERENCES nodes(nodeid),
                     FOREIGN KEY (targetid) REFERENCES nodes(nodeid)
+                );
+            """)
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS pending_edge_creation_tasks (
+                    task_id BIGINT PRIMARY KEY DEFAULT (CAST(strftime(current_timestamp, '%s%f') AS BIGINT)),
+                    node_id_to_process BIGINT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+                    attempts INTEGER DEFAULT 0,
+                    last_error TEXT,
+                    created_at TIMESTAMP DEFAULT current_timestamp,
+                    updated_at TIMESTAMP DEFAULT current_timestamp,
+                    FOREIGN KEY (node_id_to_process) REFERENCES nodes(nodeid)
                 );
             """)
         logging.info("Database initialized successfully.")
@@ -233,70 +245,17 @@ def add_memory(label, text, memory_type, parent_id=None, target_date=None):
                 new_nodeid = result[0]
                 logging.info(f"Memory node added successfully with ID: {new_nodeid}")
 
-                # 3. Attempt Automatic Edge Creation
-                logging.info(f"Attempting automatic edge creation for new node {new_nodeid}...")
-                try:
-                    similar_nodes = search_memory(text, limit=AUTO_EDGE_SIMILARITY_CHECK_LIMIT + 1)
-
-                    # Filter out self-reference for clearer logging
-                    non_self_similar_nodes = [node for node in similar_nodes if node['nodeid'] != new_nodeid]
-                    
-                    if not non_self_similar_nodes:
-                        logging.info(f"No similar nodes found other than itself. No edges created.")
-                        return new_nodeid
-                        
-                    logging.info(f"Found {len(non_self_similar_nodes)} relevant similar nodes for edge creation.")
-                    
-                    new_node_info_res = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ?", [new_nodeid]).fetchone()
-                    if not new_node_info_res:
-                        logging.error(f"Could not fetch details for newly added node {new_nodeid}. Skipping auto-edge creation.")
-                        return new_nodeid
-
-                    new_node_info = {"label": new_node_info_res[0], "text": new_node_info_res[1], "type": new_node_info_res[2]}
-
-                    added_edge_count = 0
-                    for similar_node in similar_nodes:
-                        similar_nodeid = similar_node['nodeid']
-                        if similar_nodeid == new_nodeid:
-                            continue  # Skip self-reference
-
-                        target_node_valid = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [similar_nodeid]).fetchone()
-                        if not target_node_valid:
-                            logging.warning(f"Skipping auto-edge to node {similar_nodeid} as it's missing or superseded.")
-                            continue
-
-                        target_node_info = {"label": target_node_valid[0], "text": target_node_valid[1], "type": target_node_valid[2]}
-
-                        logging.info(f"Checking relationship between new node {new_nodeid} and similar node {similar_nodeid}...")
-
-                        try:
-                            # Determine relationship type using LLM first
-                            determined_rel_type = determine_edge_type_llm(new_node_info, target_node_info)
-                            logging.info(f"LLM determined relationship from {new_nodeid} to {similar_nodeid} as: {determined_rel_type}")
-
-                            # Now call add_edge with the determined type and the connection
-                            add_edge(sourceid=new_nodeid,
-                                     targetid=similar_nodeid,
-                                     rel_type=determined_rel_type,
-                                     con=con)
-                            # Logging for success is now handled within add_edge
-                            added_edge_count += 1
-                            if added_edge_count >= AUTO_EDGE_SIMILARITY_CHECK_LIMIT:
-                                break # Stop if we've added enough edges
-
-                        except (ValueError, ConnectionError, RuntimeError, duckdb.Error) as auto_edge_e:
-                            # Log errors during automatic edge creation (determination or addition)
-                            # but don't raise to block memory addition. add_edge logs its own errors too.
-                            logging.error(f"Failed to automatically create edge from {new_nodeid} to {similar_nodeid} (logged by add_memory): {auto_edge_e}")
-                        except Exception as e:
-                             logging.error(f"Unexpected error during auto edge creation for {similar_nodeid}: {e}")
-
-                except ImportError:
-                     # This happens if duckdb is missing, needed for search_memory indirectly
-                     logging.error("DuckDB not found, skipping automatic edge creation.")
-                except Exception as e:
-                    # Log errors during the search/setup phase of auto-linking
-                    logging.error(f"Error during automatic edge creation setup for node {new_nodeid}: {e}")
+                # Add task for edge creation
+                # Using epoch microseconds for task_id to ensure uniqueness and ordering if needed
+                task_id = int(time.time() * 1000000) 
+                con.execute(
+                    """
+                    INSERT INTO pending_edge_creation_tasks (task_id, node_id_to_process)
+                    VALUES (?, ?);
+                    """,
+                    [task_id, new_nodeid]
+                )
+                logging.info(f"Pending edge creation task added for node {new_nodeid} with task_id {task_id}")
 
             # End of 'with duckdb.connect...' block, transaction commits automatically on success
             return new_nodeid
@@ -453,12 +412,21 @@ def add_edge(sourceid: int, targetid: int, rel_type: str | None = None, con: duc
     try:
         # Check if nodes exist and are not superseded
         source_node = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [sourceid]).fetchone()
-        target_node = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [targetid]).fetchone()
-
         if not source_node:
             raise ValueError(f"Source node {sourceid} not found or is superseded.")
-        if not target_node:
-            raise ValueError(f"Target node {targetid} not found or is superseded.")
+
+        # Modify target_node check based on rel_type
+        if rel_type == 'updates':
+            # For 'updates' relationship, the target (old node) CAN be superseded.
+            # We still need to ensure it exists.
+            target_node = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ?", [targetid]).fetchone()
+            if not target_node:
+                raise ValueError(f"Target node {targetid} (for 'updates' relationship) not found.")
+        else:
+            # For all other relationships, the target node must NOT be superseded
+            target_node = con.execute("SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL", [targetid]).fetchone()
+            if not target_node:
+                raise ValueError(f"Target node {targetid} not found or is superseded (for rel_type '{rel_type}').")
 
         source_node_info = {"label": source_node[0], "text": source_node[1], "type": source_node[2]}
         target_node_info = {"label": target_node[0], "text": target_node[1], "type": target_node[2]}
@@ -500,7 +468,7 @@ def add_edge(sourceid: int, targetid: int, rel_type: str | None = None, con: duc
          raise RuntimeError(f"Unexpected error adding edge: {e}") from e
 
 
-def search_memory(query_text, memory_type=None, limit=10, future_events_only=False, include_past_events=True, use_keyword_search=False):
+def search_memory(query_text, memory_type=None, limit=10, future_events_only=False, include_past_events=True, use_keyword_search=False, include_connections=False):
     """Searches memory nodes using cosine similarity and/or keyword matching.
 
     Args:
@@ -510,6 +478,7 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
         future_events_only: If True, only returns nodes with target_date in the future.
         include_past_events: If False, excludes nodes with target_date in the past.
         use_keyword_search: If True, performs a keyword search. If False (default), performs semantic search.
+        include_connections: If True, includes edge connections for each result node.
     """
     results = []
     node_ids_updated = set() # Track updated nodes to avoid duplicate updates
@@ -620,6 +589,69 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
                     node_ids_updated.update(node_ids)
                     logging.info(f"Updated last_access for {len(node_ids)} retrieved nodes.")
 
+            # Format results as dictionaries
+            formatted_results = []
+            for row in results:
+                node_data = {
+                    "nodeid": row[0],
+                    "label": row[1],
+                    "text": row[2],
+                    "type": row[3],
+                    "created_at": row[4],
+                    "last_access": row[5],
+                    "target_date": row[6],
+                    "similarity": row[7]
+                }
+                
+                # Add edge connections if requested
+                if include_connections and node_data["nodeid"]:
+                    nodeid = node_data["nodeid"]
+                    connections = []
+                    
+                    # Get outgoing edges for this node
+                    try:
+                        outgoing_edges = con.execute("""
+                            SELECT e.rel_type, e.targetid, n.label, n.type 
+                            FROM edges e
+                            JOIN nodes n ON e.targetid = n.nodeid
+                            WHERE e.sourceid = ? AND n.superseded_at IS NULL
+                        """, [nodeid]).fetchall()
+                        
+                        for edge in outgoing_edges:
+                            connections.append({
+                                "direction": "outgoing",
+                                "rel_type": edge[0],
+                                "target_nodeid": edge[1],
+                                "target_label": edge[2],
+                                "target_type": edge[3]
+                            })
+                    except Exception as e:
+                        logging.error(f"Error fetching outgoing edges for node {nodeid}: {e}")
+                    
+                    # Get incoming edges for this node
+                    try:
+                        incoming_edges = con.execute("""
+                            SELECT e.rel_type, e.sourceid, n.label, n.type 
+                            FROM edges e
+                            JOIN nodes n ON e.sourceid = n.nodeid
+                            WHERE e.targetid = ? AND n.superseded_at IS NULL
+                        """, [nodeid]).fetchall()
+                        
+                        for edge in incoming_edges:
+                            connections.append({
+                                "direction": "incoming",
+                                "rel_type": edge[0],
+                                "source_nodeid": edge[1],
+                                "source_label": edge[2],
+                                "source_type": edge[3]
+                            })
+                    except Exception as e:
+                        logging.error(f"Error fetching incoming edges for node {nodeid}: {e}")
+                    
+                    node_data["connections"] = connections
+                
+                formatted_results.append(node_data)
+
     except ImportError:
         logging.error("DuckDB library not found. Cannot perform memory search.")
         return []
@@ -630,20 +662,6 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
         logging.error(f"Unexpected critical error in search_memory: {e}")
         return []
 
-
-    # Format results as dictionaries
-    formatted_results = [
-        {
-            "nodeid": row[0],
-            "label": row[1],
-            "text": row[2],
-            "type": row[3],
-            "created_at": row[4],
-            "last_access": row[5],
-            "target_date": row[6],
-            "similarity": row[7]
-        } for row in results
-    ]
     return formatted_results
 
 
@@ -913,6 +931,187 @@ def forget_old_memories(days_old=180):
 
 
     return deleted_count
+
+def process_pending_edges(limit_per_run=5):
+    """Processes pending edge creation tasks from the queue.
+
+    Args:
+        limit_per_run (int): The maximum number of pending tasks to process in this run.
+
+    Returns:
+        dict: A summary of the processing.
+    """
+    summary = {
+        "nodes_processed_this_run": 0,
+        "edges_attempted_this_run": 0,
+        "edges_succeeded_this_run": 0,
+        "nodes_with_errors_this_run": 0,
+        "tasks_remaining_after_run": 0
+    }
+    now_ts = datetime.datetime.now()
+
+    try:
+        with duckdb.connect(DB_FILE) as con:
+            # Get tasks to process
+            pending_tasks_res = con.execute(
+                """
+                SELECT task_id, node_id_to_process FROM pending_edge_creation_tasks
+                WHERE status = 'pending'
+                ORDER BY created_at
+                LIMIT ?;
+                """,
+                [limit_per_run]
+            ).fetchall()
+
+            if not pending_tasks_res:
+                logging.info("No pending edge creation tasks found.")
+                # Query for total remaining to ensure accurate count
+                remaining_count_res = con.execute("SELECT COUNT(*) FROM pending_edge_creation_tasks WHERE status = 'pending';").fetchone()
+                summary["tasks_remaining_after_run"] = remaining_count_res[0] if remaining_count_res else 0
+                return summary
+
+            for task_id, node_id_to_process in pending_tasks_res:
+                logging.info(f"Processing task {task_id} for node {node_id_to_process}")
+                summary["nodes_processed_this_run"] += 1
+                node_had_error = False
+                edges_added_for_this_node = 0
+
+                try:
+                    # Start a transaction for this specific task's state changes and edge creations
+                    con.begin()
+                    
+                    # Mark task as processing
+                    con.execute(
+                        """
+                        UPDATE pending_edge_creation_tasks
+                        SET status = 'processing', attempts = attempts + 1, updated_at = ?
+                        WHERE task_id = ?;
+                        """,
+                        [now_ts, task_id]
+                    )
+                    # Fetch node details for which edges need to be created
+                    source_node_details_res = con.execute(
+                        "SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL",
+                        [node_id_to_process]
+                    ).fetchone()
+
+                    if not source_node_details_res:
+                        logging.warning(f"Node {node_id_to_process} for task {task_id} not found or is superseded. Marking task as failed.")
+                        con.execute(
+                            "UPDATE pending_edge_creation_tasks SET status = 'failed', last_error = ?, updated_at = ? WHERE task_id = ?;",
+                            ["Source node not found or superseded.", now_ts, task_id]
+                        )
+                        con.commit() # Commit status update for this task
+                        summary["nodes_with_errors_this_run"] += 1
+                        continue # Move to the next task
+
+                    source_node_info = {"label": source_node_details_res[0], "text": source_node_details_res[1], "type": source_node_details_res[2]}
+                    
+                    # Find similar nodes (search_memory creates its own connection, which is acceptable here)
+                    similar_nodes = search_memory(source_node_info['text'], limit=AUTO_EDGE_SIMILARITY_CHECK_LIMIT + 1)
+                    
+                    non_self_similar_nodes = [node for node in similar_nodes if node['nodeid'] != node_id_to_process]
+
+                    if not non_self_similar_nodes:
+                        logging.info(f"No similar nodes found (other than self) for node {node_id_to_process}. Task {task_id} completed.")
+                        con.execute(
+                            "UPDATE pending_edge_creation_tasks SET status = 'completed', updated_at = ? WHERE task_id = ?;",
+                            [now_ts, task_id]
+                        )
+                        con.commit() # Commit status update
+                        continue
+
+                    logging.info(f"Found {len(non_self_similar_nodes)} relevant similar nodes for edge creation for node {node_id_to_process}.")
+
+                    for similar_node in non_self_similar_nodes:
+                        similar_nodeid = similar_node['nodeid']
+                        # No need to check self-reference again as it's filtered
+
+                        # Check if target node is valid within the current transaction context
+                        target_node_valid_res = con.execute(
+                            "SELECT label, text, type FROM nodes WHERE nodeid = ? AND superseded_at IS NULL",
+                            [similar_nodeid]
+                        ).fetchone()
+
+                        if not target_node_valid_res:
+                            logging.warning(f"Skipping auto-edge from {node_id_to_process} to {similar_nodeid} as target is missing or superseded.")
+                            continue
+                        
+                        target_node_info = {"label": target_node_valid_res[0], "text": target_node_valid_res[1], "type": target_node_valid_res[2]}
+
+                        logging.info(f"Checking relationship between node {node_id_to_process} and similar node {similar_nodeid}...")
+                        
+                        determined_rel_type = determine_edge_type_llm(source_node_info, target_node_info) # Can raise
+                        logging.info(f"LLM determined relationship from {node_id_to_process} to {similar_nodeid} as: {determined_rel_type}")
+                        
+                        summary["edges_attempted_this_run"] += 1
+                        add_edge(sourceid=node_id_to_process,
+                                 targetid=similar_nodeid,
+                                 rel_type=determined_rel_type,
+                                 con=con) # add_edge uses the provided connection
+                        summary["edges_succeeded_this_run"] += 1
+                        edges_added_for_this_node += 1
+                        
+                        if edges_added_for_this_node >= AUTO_EDGE_SIMILARITY_CHECK_LIMIT:
+                            break
+                    
+                    # If loop completes without error for this node
+                    con.execute(
+                        "UPDATE pending_edge_creation_tasks SET status = 'completed', updated_at = ? WHERE task_id = ?;",
+                        [now_ts, task_id]
+                    )
+                    con.commit() # Commit successful processing of this task
+
+                except (ValueError, ConnectionError, RuntimeError, duckdb.Error) as e:
+                    logging.error(f"Error processing task {task_id} for node {node_id_to_process}: {e}")
+                    if con.in_transaction: #.is_active for newer duckdb versions
+                        con.rollback() # Rollback if error occurred mid-transaction for this task
+                    
+                    # Re-open connection/transaction for final status update if needed, or do it in a new one.
+                    # For simplicity, we'll assume the main connection 'con' is still usable or re-establish for this update.
+                    # However, a robust way is to ensure 'con' is always valid or use a new short-lived one for error update.
+                    try:
+                        with duckdb.connect(DB_FILE) as err_con: # Fresh connection for error update
+                             err_con.execute(
+                                "UPDATE pending_edge_creation_tasks SET status = 'failed', last_error = ?, attempts = attempts + 1, updated_at = ? WHERE task_id = ?;",
+                                [str(e)[:1024], now_ts, task_id] # Limit error message length
+                            ) # attempts already incremented when set to 'processing'
+                    except Exception as update_err:
+                        logging.error(f"Critical: Failed to even mark task {task_id} as failed: {update_err}")
+
+                    summary["nodes_with_errors_this_run"] += 1
+                    node_had_error = True # To prevent marking as completed outside
+                except Exception as e_unexpected: # Catch any other unexpected Python error
+                    logging.error(f"Unexpected Python error processing task {task_id} for node {node_id_to_process}: {e_unexpected}", exc_info=True)
+                    if con.in_transaction:
+                        con.rollback()
+                    try:
+                        with duckdb.connect(DB_FILE) as err_con:
+                            err_con.execute(
+                                "UPDATE pending_edge_creation_tasks SET status = 'failed', last_error = ?, attempts = attempts + 1, updated_at = ? WHERE task_id = ?;",
+                                [f"Unexpected: {str(e_unexpected)[:1000]}", now_ts, task_id]
+                            )
+                    except Exception as update_err:
+                        logging.error(f"Critical: Failed to mark task {task_id} as failed after unexpected error: {update_err}")
+                    summary["nodes_with_errors_this_run"] += 1
+                    node_had_error = True
+
+
+            # After processing the batch, query for remaining tasks
+            remaining_count_res = con.execute("SELECT COUNT(*) FROM pending_edge_creation_tasks WHERE status = 'pending';").fetchone()
+            summary["tasks_remaining_after_run"] = remaining_count_res[0] if remaining_count_res else 0
+
+    except ImportError:
+        logging.error("DuckDB library not found. Cannot process pending edges.")
+        # tasks_remaining_after_run will be 0, which is not ideal but reflects no processing happened.
+    except duckdb.Error as e:
+        logging.error(f"Database connection/query error in process_pending_edges: {e}")
+    except Exception as e:
+        logging.error(f"Unexpected critical error in process_pending_edges: {e}", exc_info=True)
+
+    logging.info(f"Pending edge processing run summary: {summary}")
+    return summary
+
 
 def clear_all_memory(force=False):
     """Deletes ALL nodes and edges from the database by dropping and re-initializing tables.

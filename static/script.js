@@ -14,6 +14,8 @@ const sidebarToggle = document.getElementById('sidebar-toggle');
 
 const activityLog = document.getElementById('activity-log'); // Get the activity log div
 
+let isFredMuted = false; // Variable to track mute state
+
 // --- Helper Functions ---
 
 function logToolActivity(message) {
@@ -218,6 +220,17 @@ document.addEventListener('DOMContentLoaded', () => {
         chatHistory.classList.toggle('expanded');
     });
     */
+
+    // --- Mute Button Logic ---
+    const muteFredButton = document.getElementById('muteFredButton'); // Get the mute button
+    if (muteFredButton) {
+        muteFredButton.addEventListener('click', () => {
+            isFredMuted = !isFredMuted;
+            muteFredButton.textContent = isFredMuted ? 'Unmute F.R.E.D.' : 'Mute F.R.E.D.';
+            console.log(`F.R.E.D. Muted: ${isFredMuted}`);
+        });
+    }
+    // --- End Mute Button Logic ---
 });
 
 // Check local storage on load
@@ -271,7 +284,7 @@ messageForm.addEventListener('submit', async (event) => {
                 message: userMessage,
                 model: selectedModel,
                 ollama_url: ollamaUrl,
-                // max_tool_iterations: 3 // Example, can be configurable
+                mute_fred: isFredMuted // Send mute state to server
             }),
         });
 
