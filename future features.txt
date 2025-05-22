@@ -22,3 +22,4 @@
 
 8. Context Fusion Engine: Integrates multimodal inputs (visual, audio, schedule, location) to establish comprehensive situational awareness 
 
+9. Speaker Diarization: Identifying and tracking individual speakers in multi-speaker conversations.
