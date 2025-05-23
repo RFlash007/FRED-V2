@@ -13,3 +13,10 @@ duckduckgo-search
 pytest
 requests-mock # For testing Ollama interactions 
 playsound==1.2.2 
+# Speech-to-Text dependencies
+faster-whisper>=1.1.0
+flask-socketio>=5.3.0
+python-socketio>=5.9.0
+soundfile>=0.12.1
+sounddevice>=0.4.6  # For direct audio capture like old system
+psutil>=5.9.0  # For system optimization and performance monitoring 

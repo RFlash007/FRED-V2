@@ -3,103 +3,241 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fred :: AI Assistant</title>
+    <title>F.R.E.D. :: Droid Interface</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/speech.css">
 </head>
 <body>
-    <!-- Fred Visualization as background layer -->
-    <div id="fred-visualization"></div>
+    <!-- F.R.E.D. Neural Network Background -->
+    <div id="fred-neural-bg" class="neural-background">
+        <canvas id="neural-canvas"></canvas>
+    </div>
     
-    <!-- Toggle sidebar button - Moved outside of fred-container for better visibility -->
-    <button id="sidebar-toggle" class="sidebar-toggle" aria-label="Toggle Sidebar">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
-    </button>
+    <!-- Ambient Pulse Indicator -->
+    <div id="fred-pulse" class="fred-pulse"></div>
     
-    <div class="fred-container">
-        <aside class="sidebar">
-            <div class="sidebar-header">
-                <h1>Fred</h1>
-                <!-- Pulsing dot added via CSS ::before -->
-            </div>
-
-            <div class="sidebar-section">
-                <h2>Memory Access</h2>
-                
-                <!-- Placeholder for memory content display -->
-                <div id="memory-content-display" style="font-size: 0.8em; opacity: 0.7; min-height: 40px;">
-                    Memory status updates will appear here.
-                </div>
-            </div>
-
-            <div class="sidebar-section">
-                <h2>Activity Log</h2>
-                <div id="activity-log" class="activity-log-display">
-                    <!-- Tool call activity will appear here -->
-                </div>
-            </div>
-
-            <div class="sidebar-section settings">
-                <h2>Configuration</h2>
-                <label for="model-select">Model:</label>
-                <select id="model-select">
-                    <option value="hf.co/unsloth/Qwen3-8B-GGUF:Q4_K_M" selected>Unsloth Qwen3 (8B Q4_K_M)</option>
-                    <option value="hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M">Unsloth Qwen3 (30B Q4_K_M)</option>
-                </select>
-
-                <label for="ollama-url">Server Endpoint:</label>
-                <input type="text" id="ollama-url" value="http://localhost:11434" placeholder="e.g., http://192.168.1.100:11434">
-
-                <!-- Dark Mode Toggle -->
-                <div class="dark-mode-toggle">
-                    <label for="dark-mode-switch">Dark Mode</label>
-                    <label class="switch">
-                        <input type="checkbox" id="dark-mode-switch">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Spacer to push potential footer items down -->
-            <div style="flex-grow: 1;"></div>
-
-            <div class="sidebar-section" style="margin-bottom: 0;">
-                 <p style="font-size: 0.75em; color: var(--fred-slate-light); text-align: center; opacity: 0.6;">Fred v0.1 - Local</p>
-            </div>
-        </aside>
-
-        <main class="chat-area">
-            <!-- Visualization Container - Moved to top of chat area -->
-            <div class="visualization-container">
-                <h2>F.R.E.D.'s Memory Mind Map</h2>
-                <svg id="mindMapVisualization" width="960" height="700"></svg>
+    <!-- Header Bar -->
+    <header class="fred-header">
+        <div class="header-content">
+            <div class="fred-logo">
+                <div class="logo-core"></div>
+                <span class="logo-text">F.R.E.D.</span>
+                <span class="logo-subtext">Droid Interface v2.0</span>
             </div>
             
-            <!-- Chat history restored to original position -->
-            <div id="chat-history">
-                <!-- Chat messages will appear here -->
-                <div class="message system">
-                    <p>Initializing Fred interface... Standing by.</p>
+            <div class="header-controls">
+                <div class="status-cluster">
+                    <div class="system-status" id="system-status">
+                        <div class="status-dot" id="status-dot"></div>
+                        <span id="status-text">Initializing...</span>
+                    </div>
+                </div>
+                
+                <button id="sidebar-toggle" class="control-btn" aria-label="Access Controls">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M3 6h18v2H3V6zm0 5h18v2H3v-2zm0 5h18v2H3v-2z"/>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </header>
+    
+    <div class="fred-interface">
+        <!-- Control Sidebar -->
+        <aside class="control-panel" id="control-panel">
+            <div class="panel-header">
+                <h2>System Controls</h2>
+                <div class="panel-close" id="panel-close">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                    </svg>
                 </div>
             </div>
-
-            <!-- Message Form restored to original position at the bottom -->
-            <form id="message-form">
-                <textarea id="message-input" placeholder="Interact with Fred..." rows="1"></textarea>
-                <button type="submit" title="Send Message">
-                    <!-- Simple Send Icon Placeholder (could use SVG) -->
-                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="feather feather-send"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                </button>
-                <button type="button" id="muteFredButton" style="margin-left: 10px;">Mute F.R.E.D.</button>
-            </form>
+            
+            <div class="panel-content">
+                <!-- Voice Control Section -->
+                <section class="control-section">
+                    <h3>Voice Interface</h3>
+                    <div class="voice-control-grid">
+                        <div id="speech-status" class="speech-status-card">
+                            <div class="status-header">
+                                <span id="speech-status-text">Initializing...</span>
+                                <div id="speech-status-dot" class="voice-status-dot offline"></div>
+                            </div>
+                            
+                            <button id="speech-toggle" class="voice-toggle enabled">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                                    <line x1="8" y1="23" x2="16" y2="23"></line>
+                                </svg>
+                                <span id="speech-toggle-text">VOICE ON</span>
+                            </button>
+                        </div>
+                        
+                        <div id="wake-word-info" class="wake-word-card">
+                            <div class="wake-word-label">Wake Commands</div>
+                            <div class="wake-word-commands">
+                                <span>"Hey F.R.E.D."</span>
+                                <span>"Okay F.R.E.D."</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Memory Access Section -->
+                <section class="control-section">
+                    <h3>Memory Matrix</h3>
+                    <div id="memory-content-display" class="memory-display">
+                        <div class="memory-placeholder">
+                            <div class="memory-icon">🧠</div>
+                            <span>Memory status updates will appear here</span>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- Activity Monitor -->
+                <section class="control-section">
+                    <h3>Activity Monitor</h3>
+                    <div id="activity-log" class="activity-monitor">
+                        <div class="activity-placeholder">
+                            <div class="activity-icon">⚡</div>
+                            <span>Tool activities will be logged here</span>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- System Configuration -->
+                <section class="control-section">
+                    <h3>Configuration</h3>
+                    <div class="config-grid">
+                        <div class="config-item">
+                            <label for="model-select">Neural Model</label>
+                            <select id="model-select" class="fred-select">
+                                <option value="hf.co/unsloth/Qwen3-8B-GGUF:Q4_K_M" selected>Qwen3-8B (Optimized)</option>
+                                <option value="hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M">Qwen3-30B (Enhanced)</option>
+                            </select>
+                        </div>
+                        
+                        <div class="config-item">
+                            <label for="ollama-url">Server Endpoint</label>
+                            <input type="text" id="ollama-url" class="fred-input" value="http://localhost:11434" placeholder="Server address...">
+                        </div>
+                        
+                        <div class="config-item toggle-item">
+                            <label for="dark-mode-switch">Dark Interface</label>
+                            <label class="fred-toggle">
+                                <input type="checkbox" id="dark-mode-switch">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+                
+                <!-- System Info -->
+                <div class="system-info">
+                    <div class="version-tag">F.R.E.D. v2.0 • LOCAL</div>
+                    <div class="build-info">Neural Networks Active</div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main Interface -->
+        <main class="chat-interface">
+            <!-- Neural Network Visualization -->
+            <div class="visualization-frame">
+                <div class="viz-header">
+                    <h2>F.R.E.D.'s Memory Solar System</h2>
+                    <div class="viz-controls">
+                        <button class="viz-btn" id="viz-reset">Reset View</button>
+                        <button class="viz-btn" id="viz-center">Center</button>
+                    </div>
+                </div>
+                <div class="visualization-container">
+                    <div class="solar-system-loading" id="solar-system-loading" style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-family: var(--font-mono); font-size: 14px;">
+                        <div style="text-align: center;">
+                            <div style="animation: pulse 2s ease-in-out infinite; margin-bottom: 12px;">🌌</div>
+                            <div>Initializing Memory Solar System...</div>
+                        </div>
+                    </div>
+                    <!-- 3D Solar System will be rendered here -->
+                </div>
+            </div>
+            
+            <!-- Conversation Area -->
+            <div class="conversation-area">
+                <div id="chat-history" class="chat-stream">
+                    <div class="message system-init">
+                        <div class="message-indicator">
+                            <div class="avatar system-avatar">
+                                <div class="avatar-core"></div>
+                            </div>
+                            <div class="message-meta">
+                                <span class="sender">F.R.E.D. SYSTEM</span>
+                                <span class="timestamp">Initializing</span>
+                            </div>
+                        </div>
+                        <div class="message-content">
+                            <p>Droid interface initialized. Standing by for your inevitably flawed input, sir.</p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Input Interface -->
+                <div class="input-interface">
+                    <form id="message-form" class="message-form">
+                        <div class="input-container">
+                            <textarea id="message-input" class="message-input" placeholder="Communicate with F.R.E.D..." rows="1" autocomplete="off"></textarea>
+                            <div class="input-actions">
+                                <button type="button" id="muteFredButton" class="action-btn mute-btn" title="Mute F.R.E.D.">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                        <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+                                    </svg>
+                                </button>
+                                <button type="submit" class="action-btn send-btn" title="Send Message">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                                    </svg>
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </main>
     </div>
+    
+    <!-- Speech Feedback Overlay -->
+    <div id="speech-feedback" class="speech-overlay hidden">
+        <div class="speech-animation">
+            <div class="pulse-rings">
+                <div class="pulse-ring"></div>
+                <div class="pulse-ring"></div>
+                <div class="pulse-ring"></div>
+            </div>
+            <div class="speech-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+            </div>
+        </div>
+        <div class="speech-text">
+            <p id="speech-feedback-text">Listening...</p>
+        </div>
+    </div>
 
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
     <script src="/static/script.js"></script>
+    <script src="/static/speech.js"></script>
     <script src="/static/mind-map.js"></script>
-    <!-- Mind map is now self-initializing, no need for extra configuration -->
+    <script src="/static/neural-bg.js"></script>
 </body>
 </html> 

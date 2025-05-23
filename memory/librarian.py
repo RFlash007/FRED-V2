@@ -6,6 +6,8 @@ import json
 import time
 import os # For potential environment variables later
 import logging
+import threading
+from contextlib import contextmanager
 
 # --- Configuration ---
 # Set default path inside the memory folder
@@ -18,6 +20,27 @@ EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
 # How many similar nodes to check for automatic edge creation
 AUTO_EDGE_SIMILARITY_CHECK_LIMIT = 3
+
+# Connection pooling
+_connection_lock = threading.Lock()
+_thread_connections = threading.local()
+
+@contextmanager
+def get_db_connection():
+    """Get a database connection with thread-local caching for efficiency."""
+    if not hasattr(_thread_connections, 'connection') or _thread_connections.connection is None:
+        _thread_connections.connection = duckdb.connect(DB_FILE)
+    
+    try:
+        yield _thread_connections.connection
+    except Exception as e:
+        # Close connection on error to ensure clean state
+        try:
+            _thread_connections.connection.close()
+        except:
+            pass
+        _thread_connections.connection = None
+        raise e
 
 # Define valid relationship types directly from schema for validation and prompting
 VALID_REL_TYPES = [
@@ -37,7 +60,7 @@ def init_db():
     """Initializes the DuckDB database and tables if they don't exist."""
     # This function will fail in environments without duckdb installed
     try:
-        with duckdb.connect(DB_FILE) as con:
+        with get_db_connection() as con:
             con.execute(f"""
                 CREATE TABLE IF NOT EXISTS nodes (
                     nodeid BIGINT PRIMARY KEY DEFAULT (CAST(strftime(current_timestamp, '%s%f') AS BIGINT)),

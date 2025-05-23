@@ -6,9 +6,40 @@ from decimal import Decimal # Added import for Decimal
 from duckduckgo_search import DDGS # Uncommented DuckDuckGo import
 # Import the librarian module
 import memory.librarian as lib
+from config import config
 
 # Change logging level to ERROR to reduce console clutter
 logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# --- Utility Functions ---
+def parse_target_date(target_date: str | None) -> datetime.datetime | None:
+    """Parse ISO format date string to datetime object."""
+    if not target_date:
+        return None
+    
+    try:
+        # Try full datetime format first (YYYY-MM-DDTHH:MM:SS)
+        return datetime.datetime.fromisoformat(target_date)
+    except ValueError:
+        try:
+            # Try date-only format (YYYY-MM-DD)
+            return datetime.datetime.strptime(target_date, "%Y-%m-%d")
+        except ValueError:
+            raise ValueError(f"Invalid target_date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
+
+def validate_memory_type(memory_type: str, field_name: str = "memory_type") -> None:
+    """Validate memory type is one of the allowed values."""
+    if memory_type not in ('Semantic', "Episodic", "Procedural"):
+        raise ValueError(f"Invalid {field_name} '{memory_type}' provided to tool.")
+
+def convert_datetime_for_json(obj: dict) -> dict:
+    """Convert datetime and Decimal objects to JSON-compatible types."""
+    for key, value in obj.items():
+        if isinstance(value, datetime.datetime):
+            obj[key] = value.isoformat()
+        elif isinstance(value, Decimal):
+            obj[key] = float(value)
+    return obj
 
 # --- Tool Definitions ---
 AVAILABLE_TOOLS = [
@@ -169,22 +200,8 @@ def tool_add_memory(label: str, text: str, memory_type: str, parent_id: int | No
     """Wrapper to call librarian.add_memory."""
     logging.info(f"Tool call: add_memory(label='{label}', type='{memory_type}', target_date='{target_date}')")
     try:
-        # Ensure memory_type is valid before calling lib function
-        if memory_type not in ('Semantic', "Episodic", "Procedural"):
-             raise ValueError(f"Invalid memory_type '{memory_type}' provided to tool.")
-        
-        # Parse the ISO format date string to datetime object if provided
-        parsed_target_date = None
-        if target_date:
-            try:
-                # Try full datetime format first (YYYY-MM-DDTHH:MM:SS)
-                parsed_target_date = datetime.datetime.fromisoformat(target_date)
-            except ValueError:
-                try:
-                    # Try date-only format (YYYY-MM-DD)
-                    parsed_target_date = datetime.datetime.strptime(target_date, "%Y-%m-%d")
-                except ValueError:
-                    raise ValueError(f"Invalid target_date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
+        validate_memory_type(memory_type)
+        parsed_target_date = parse_target_date(target_date)
         
         node_id = lib.add_memory(label=label, text=text, memory_type=memory_type, parent_id=parent_id, target_date=parsed_target_date)
         return {"success": True, "nodeid": node_id, "message": f"Memory added with ID {node_id}."}
@@ -203,22 +220,8 @@ def tool_supersede_memory(old_nodeid: int, new_label: str, new_text: str, new_me
             logging.error(error_message)
             return {"success": False, "error": error_message}
 
-         # Ensure memory_type is valid before calling lib function
-         if new_memory_type not in ('Semantic', "Episodic", "Procedural"):
-             raise ValueError(f"Invalid new_memory_type '{new_memory_type}' provided to tool.")
-         
-         # Parse the ISO format date string to datetime object if provided
-         parsed_target_date = None
-         if target_date:
-             try:
-                 # Try full datetime format first (YYYY-MM-DDTHH:MM:SS)
-                 parsed_target_date = datetime.datetime.fromisoformat(target_date)
-             except ValueError:
-                 try:
-                     # Try date-only format (YYYY-MM-DD)
-                     parsed_target_date = datetime.datetime.strptime(target_date, "%Y-%m-%d")
-                 except ValueError:
-                     raise ValueError(f"Invalid target_date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
+         validate_memory_type(new_memory_type, "new_memory_type")
+         parsed_target_date = parse_target_date(target_date)
          
          new_nodeid = lib.supersede_memory(old_nodeid=old_nodeid, new_label=new_label, new_text=new_text, new_memory_type=new_memory_type, target_date=parsed_target_date)
          return {"success": True, "new_nodeid": new_nodeid, "message": f"Memory {old_nodeid} superseded by {new_nodeid}."}
@@ -227,19 +230,22 @@ def tool_supersede_memory(old_nodeid: int, new_label: str, new_text: str, new_me
         return {"success": False, "error": str(e)}
 
 # Wrapper for searching memory
-def tool_search_memory(query_text: str, memory_type: str | None = None, limit: int = 10, future_events_only: bool = False, use_keyword_search: bool = False):
+def tool_search_memory(query_text: str, memory_type: str | None = None, limit: int = None, future_events_only: bool = False, use_keyword_search: bool = False):
     """Wrapper to call librarian.search_memory."""
     logging.info(f"Tool call: search_memory(query='{query_text}', type='{memory_type}', limit={limit}, future_events_only={future_events_only}, use_keyword_search={use_keyword_search})")
     try:
         # Validate memory_type if provided
-        if memory_type is not None and memory_type not in ('Semantic', "Episodic", "Procedural"):
-            raise ValueError(f"Invalid memory_type filter '{memory_type}' provided to tool.")
+        if memory_type is not None:
+            validate_memory_type(memory_type, "memory_type filter")
+        
+        # Use config default if no limit specified
+        search_limit = limit if limit is not None else config.MEMORY_SEARCH_LIMIT
         
         # Pass include_connections=True to get edge data in a single efficient query
         results = lib.search_memory(
             query_text=query_text, 
             memory_type=memory_type, 
-            limit=limit, 
+            limit=search_limit, 
             future_events_only=future_events_only, 
             use_keyword_search=use_keyword_search,
             include_connections=True  # Always include connections in the tool interface
@@ -247,11 +253,7 @@ def tool_search_memory(query_text: str, memory_type: str | None = None, limit: i
         
         # Convert datetime and Decimal objects to JSON-compatible types
         for result in results:
-            for key, value in result.items():
-                if isinstance(value, datetime.datetime):
-                    result[key] = value.isoformat()
-                elif isinstance(value, Decimal):
-                    result[key] = float(value) # Convert Decimal to float
+            convert_datetime_for_json(result)
             
         return {"success": True, "results": results}
     except Exception as e:
@@ -272,7 +274,7 @@ def search_web_information(query_text: str) -> str:
     """
     logging.info(f"Tool call: search_web_information(query_text='{query_text}')")
     try:
-        ddgs = DDGS(timeout=20) # Initialize with a timeout
+        ddgs = DDGS(timeout=config.OLLAMA_TIMEOUT) # Initialize with a timeout
         
         search_keywords = query_text # Use the provided query_text directly
         
@@ -285,7 +287,7 @@ def search_web_information(query_text: str) -> str:
                 keywords=search_keywords,
                 region="us-en",
                 safesearch="off",
-                max_results=3  # Limiting results for brevity
+                max_results=config.WEB_SEARCH_MAX_RESULTS  # Limiting results for brevity
             )
             if text_search_results:
                 text_results = text_search_results
@@ -299,7 +301,7 @@ def search_web_information(query_text: str) -> str:
                 keywords=search_keywords,
                 region="us-en",
                 safesearch="off",
-                max_results=2 # Limiting news results
+                max_results=config.WEB_SEARCH_NEWS_MAX_RESULTS # Limiting news results
             )
             if news_search_results:
                 news_results = news_search_results
@@ -322,7 +324,7 @@ def search_web_information(query_text: str) -> str:
             response = ddgs.chat(
                 keywords=combined_prompt,
                 model="gpt-4o-mini",
-                timeout=60
+                timeout=config.WEB_SEARCH_TIMEOUT
             )
             if response:
                 combined_results["llm_summary"] = response
@@ -351,9 +353,7 @@ def tool_get_node_by_id(nodeid: int):
             return {"success": False, "error": f"Node with ID {nodeid} not found or is superseded."}
         
         # Process datetime objects for JSON compatibility
-        for key, value in target_node.items():
-            if isinstance(value, datetime.datetime):
-                target_node[key] = value.isoformat()
+        convert_datetime_for_json(target_node)
         
         # Extract connections specific to this node
         connections = []
@@ -401,9 +401,7 @@ def tool_get_graph_data(center_nodeid: int, depth: int = 1):
         
         # Process datetime objects for JSON compatibility
         for node in graph_data.get('nodes', []):
-            for key, value in node.items():
-                if isinstance(value, datetime.datetime):
-                    node[key] = value.isoformat()
+            convert_datetime_for_json(node)
         
         return {"success": True, "result": graph_data}
     except Exception as e:

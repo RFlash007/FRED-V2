@@ -146,10 +146,15 @@ cython_debug/
 Thumbs.db
 
 # Specific to this project
-memory.db
+memory/memory.db
+memory/memory.db-*
+memory/*.db-wal
+memory/*.db-shm
 *.log
 open-webui/ 
 Ranking.txt
 features.txt
 incrementaluprgades
 system_prompt.txt
+
+FRED
