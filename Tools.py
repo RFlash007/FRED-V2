@@ -260,7 +260,7 @@ def tool_search_memory(query_text: str, memory_type: str | None = None, limit: i
         logging.error(f"Error in tool_search_memory: {e}", exc_info=True)
         return {"success": False, "error": str(e)}
 
-def search_web_information(query_text: str) -> str:
+def search_web_information(query_text: str) -> dict:
     """
     Searches the web for information using DuckDuckGo.
     This tool retrieves current information from the internet.
@@ -270,13 +270,11 @@ def search_web_information(query_text: str) -> str:
         query_text (str): The text to search for.
         
     Returns:
-        str: A JSON string containing the search results or an error message.
+        dict: A dictionary containing the search results or an error message.
     """
     logging.info(f"Tool call: search_web_information(query_text='{query_text}')")
     try:
-        ddgs = DDGS(timeout=config.OLLAMA_TIMEOUT) # Initialize with a timeout
-        
-        search_keywords = query_text # Use the provided query_text directly
+        ddgs = DDGS(timeout=config.WEB_SEARCH_TIMEOUT)
         
         text_results = []
         news_results = []
@@ -284,59 +282,88 @@ def search_web_information(query_text: str) -> str:
         # Perform text search
         try:
             text_search_results = ddgs.text(
-                keywords=search_keywords,
+                keywords=query_text,
                 region="us-en",
                 safesearch="off",
-                max_results=config.WEB_SEARCH_MAX_RESULTS  # Limiting results for brevity
+                max_results=config.WEB_SEARCH_MAX_RESULTS
             )
             if text_search_results:
                 text_results = text_search_results
         except Exception as e_text:
-            logging.warning(f"DuckDuckGo text search failed for '{search_keywords}': {e_text}")
-            # Optionally, include this warning in the output if desired
+            logging.warning(f"DuckDuckGo text search failed for '{query_text}': {e_text}")
 
         # Perform news search
         try:
             news_search_results = ddgs.news(
-                keywords=search_keywords,
+                keywords=query_text,
                 region="us-en",
                 safesearch="off",
-                max_results=config.WEB_SEARCH_NEWS_MAX_RESULTS # Limiting news results
+                max_results=config.WEB_SEARCH_NEWS_MAX_RESULTS
             )
             if news_search_results:
                 news_results = news_search_results
         except Exception as e_news:
-            logging.warning(f"DuckDuckGo news search failed for '{search_keywords}': {e_news}")
+            logging.warning(f"DuckDuckGo news search failed for '{query_text}': {e_news}")
 
         if not text_results and not news_results:
-            return json.dumps({"success": True, "results": "No information found from web search."})
+            return {"success": True, "results": "No information found from web search."}
         
-        combined_prompt = f"Summarize the following web search results: {text_results} {news_results}"
+        # Deduplicate results by URL
+        seen_urls = set()
+        unique_text_results = []
+        unique_news_results = []
+        
+        for result in text_results:
+            url = result.get('href', '')
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                unique_text_results.append(result)
+                
+        for result in news_results:
+            url = result.get('href', '')
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                unique_news_results.append(result)
 
         combined_results = {
-            "text_search_summary": text_results,
-            "news_search_summary": news_results
+            "text_search_results": unique_text_results,
+            "news_search_results": unique_news_results
         }
 
-        
+        # Create concise summary using local Ollama
         try:
-            # Single summarization call
-            response = ddgs.chat(
-                keywords=combined_prompt,
-                model="gpt-4o-mini",
-                timeout=config.WEB_SEARCH_TIMEOUT
-            )
-            if response:
-                combined_results["llm_summary"] = response
+            # Extract key info for prompt (titles and snippets only)
+            text_summaries = [f"• {r.get('title', '')}: {r.get('body', '')[:100]}..." 
+                            for r in unique_text_results[:3]]  # Limit to top 3
+            news_summaries = [f"• {r.get('title', '')}: {r.get('body', '')[:100]}..." 
+                            for r in unique_news_results[:2]]  # Limit to top 2
+            
+            prompt = f"""Query: {query_text}
+
+Web Results:
+{chr(10).join(text_summaries)}
+
+News Results:
+{chr(10).join(news_summaries)}
+
+Provide a 2-3 sentence summary of the key findings relevant to the query."""
+
+            summary_response = lib.call_ollama_generate(prompt, model="hf.co/unsloth/Qwen3-4B-GGUF:Q4_K_M")
+            if summary_response and isinstance(summary_response, dict):
+                combined_results["llm_summary"] = summary_response.get("summary", "Summary generation failed")
+            else:
+                combined_results["llm_summary"] = "Summary generation failed"
+                
         except Exception as e_summary:
-            logging.warning(f"DuckDuckGo LLM summary failed for '{combined_prompt}': {e_summary}")
-            combined_results["llm_summary"] = "Could not generate summary"
+            logging.warning(f"Local LLM summarization failed for '{query_text}': {e_summary}")
+            # Return raw results if LLM fails
+            combined_results["llm_summary"] = "Summarization failed - raw results provided"
         
-        return json.dumps({"success": True, "results": combined_results})
+        return {"success": True, "results": combined_results}
 
     except Exception as e:
-        logging.error(f"Error in search_web_information: {e}", exc_info=True)
-        return json.dumps({"success": False, "error": str(e)})
+        logging.error(f"Error in search_web_information for query '{query_text}': {e}", exc_info=True)
+        return {"success": False, "error": str(e)}
 
 # New tool to get a node by ID with its connections
 def tool_get_node_by_id(nodeid: int):
