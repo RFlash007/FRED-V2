@@ -20,6 +20,9 @@ import threading
 import time
 from config import config
 
+# Import STM module
+import short_term_memory as stm
+
 # State Management Class
 class FREDState:
     """Centralized state management for F.R.E.D."""
@@ -29,6 +32,8 @@ class FREDState:
         self.tts_engine = None
         self.last_played_wav = None
         self.stt_enabled = True
+        self.total_conversation_turns = 0  # Track conversation turns for STM
+        self.last_analyzed_message_index = 0  # Track last analyzed message for STM
         self._lock = threading.Lock()
     
     def add_conversation_turn(self, role, content, thinking=None):
@@ -38,6 +43,23 @@ class FREDState:
             if thinking:
                 turn['thinking'] = thinking
             self.conversation_history.append(turn)
+            
+            # Increment turn counter and check STM trigger
+            if role == 'assistant':  # Complete turn (user + assistant)
+                self.total_conversation_turns += 1
+                if self.total_conversation_turns % config.STM_TRIGGER_INTERVAL == 0:
+                    # Trigger STM analysis in background
+                    threading.Thread(
+                        target=stm.process_stm_analysis,
+                        args=(
+                            self.conversation_history.copy(), 
+                            self.last_analyzed_message_index,
+                            len(self.conversation_history)
+                        ),
+                        daemon=True
+                    ).start()
+                    # Update analyzed index to current position
+                    self.last_analyzed_message_index = len(self.conversation_history)
     
     def get_conversation_history(self):
         """Get a copy of conversation history."""
@@ -190,12 +212,17 @@ def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
     
     # Add current user message
     pending_tasks_alert = get_pending_tasks_alert()
+    
+    # Get STM context
+    stm_context = stm.query_stm_context(user_message)
+    stm_section = f"\n{stm_context}\n" if stm_context else ""
+    
     formatted_input = f"""(USER INPUT)
 {user_message}
 (END OF USER INPUT)
 
 (FRED DATABASE)
-{pending_tasks_alert}The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+{pending_tasks_alert}{stm_section}The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 (END OF FRED DATABASE)"""
     
     messages.append({"role": "user", "content": formatted_input})
