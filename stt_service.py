@@ -252,7 +252,7 @@ class STTService:
                                         # print(f"[DEBUG] Sending acknowledgment: '{response}'")
                                         
                                         # === TERMINAL LOGGING FOR WAKE WORD ===
-                                        print_transcription_to_terminal(f"WAKE WORD DETECTED -> Activating F.R.E.D. (Silent Mode)", "WAKE WORD")
+                                        print_transcription_to_terminal("WAKE WORD DETECTED -> Activating F.R.E.D. (Silent Mode)", "WAKE WORD")
                                         
                                         # REMOVED: Acknowledgment callback
                                         # if self.transcription_callback:
@@ -262,7 +262,7 @@ class STTService:
                                         self.is_listening = True
                                         self.speech_buffer = []
                                         self.last_speech_time = time.time()
-                                        print(f"[DEBUG] Now listening for commands silently. Buffer cleared.")
+                                        print("[DEBUG] Now listening for commands silently. Buffer cleared.")
                                         continue
 
                                 # Process speech while listening - EXACT same logic as old system
@@ -273,13 +273,13 @@ class STTService:
                                         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Stop word detected. Going to sleep.")
                                         
                                         # === TERMINAL LOGGING FOR STOP WORD ===
-                                        print_transcription_to_terminal(f"STOP WORD DETECTED -> Deactivating F.R.E.D.", "STOP WORD")
+                                        print_transcription_to_terminal("STOP WORD DETECTED -> Deactivating F.R.E.D.", "STOP WORD")
                                         
                                         if self.transcription_callback:
                                             self.transcription_callback("goodbye")
                                         self.is_listening = False
                                         self.speech_buffer = []
-                                        print(f"[DEBUG] Stopped listening. Buffer cleared.")
+                                        print("[DEBUG] Stopped listening. Buffer cleared.")
                                         continue
                                     
                                     # Add speech to buffer if it's not too short - EXACT same logic
@@ -314,18 +314,18 @@ class STTService:
                         
                         # Temporarily stop listening while processing - EXACT same as old system
                         self.is_listening = False
-                        print(f"[DEBUG] Temporarily stopped listening for processing")
+                        print("[DEBUG] Temporarily stopped listening for processing")
                         
                         try:
                             if self.transcription_callback:
-                                print(f"\nProcessing message through callback...")  # EXACT same as old system
+                                print("\nProcessing message through callback...")  # EXACT same as old system
                                 print(f"[DEBUG] Sending complete utterance to callback: '{complete_utterance}'")
                                 self.transcription_callback(complete_utterance)
                             
                             # Resume listening after response - EXACT same as old system
                             self.is_listening = True
                             print("\nListening for next input...")  # EXACT same as old system
-                            print(f"[DEBUG] Resumed listening after processing")
+                            print("[DEBUG] Resumed listening after processing")
                         except Exception as e:
                             print(f"\nError in callback processing: {str(e)}")  # EXACT same error message
                             logger.error(f"Error in callback processing: {str(e)}")

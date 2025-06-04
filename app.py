@@ -179,7 +179,7 @@ def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
                 # Recent messages: include full thinking
                 print(f"[THINKING] Including full thinking for recent message (age {age})")
                 full_content = f"<think>\n{thinking}\n</think>\n{content}"
-                print(f"[THINKING CONTEXT] Message with full thinking being sent to model:")
+                print("[THINKING CONTEXT] Message with full thinking being sent to model:")
                 print(f"{'='*50}")
                 print(full_content)
                 print(f"{'='*50}\n")
@@ -197,7 +197,7 @@ def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
                 summarized = prepare_messages_with_thinking._thinking_cache[cache_key]
                 if summarized:
                     full_content = f"<think>\n{summarized}\n</think>\n{content}"
-                    print(f"[THINKING CONTEXT] Message with summarized thinking being sent to model:")
+                    print("[THINKING CONTEXT] Message with summarized thinking being sent to model:")
                     print(f"{'='*50}")
                     print(full_content)
                     print(f"{'='*50}\n")
@@ -443,7 +443,7 @@ def chat_endpoint():
                     
                     # Print tool results
                     if tool_outputs:
-                        print(f"\n[TOOL RESULTS] Tool execution results:")
+                        print("\n[TOOL RESULTS] Tool execution results:")
                         print(f"{'='*50}")
                         for i, output in enumerate(tool_outputs):
                             tool_call_id = output.get('tool_call_id', 'unknown')
@@ -520,7 +520,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                         # Print full streaming response when done
                         if streaming_response:
                             print(f"\n{'='*60}")
-                            print(f"[MODEL RESPONSE] Full streaming response:")
+                            print("[MODEL RESPONSE] Full streaming response:")
                             print(f"{'='*60}")
                             print(streaming_response)
                             print(f"{'='*60}\n")
@@ -671,7 +671,7 @@ if __name__ == '__main__':
         requests.get(config.OLLAMA_BASE_URL, timeout=2)
         print(f"[INFO] Ollama connected at {config.OLLAMA_BASE_URL}")
     except:
-        logging.warning(f"Could not connect to Ollama")
+        logging.warning("Could not connect to Ollama")
     
     # Initialize TTS
     initialize_tts()
