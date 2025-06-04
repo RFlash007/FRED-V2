@@ -25,7 +25,7 @@ def parse_target_date(target_date: str | None) -> datetime.datetime | None:
             # Try date-only format (YYYY-MM-DD)
             return datetime.datetime.strptime(target_date, "%Y-%m-%d")
         except ValueError:
-            raise ValueError(f"Invalid target_date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
+            raise ValueError("Invalid target_date format. Use ISO format (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
 
 def validate_memory_type(memory_type: str, field_name: str = "memory_type") -> None:
     """Validate memory type is one of the allowed values."""
