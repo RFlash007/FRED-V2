@@ -4,12 +4,10 @@ import numpy as np
 import requests
 import logging
 import threading
-import time
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from sklearn.metrics.pairwise import cosine_similarity
 from config import config
-import os
 
 # STM Database path
 STM_DB_PATH = "short_term_memory.db"
@@ -132,7 +130,6 @@ def check_similarity_and_store(content: str, source_messages: List[Dict], messag
         
         # Load existing embeddings
         existing_embeddings = []
-        existing_ids = []
         
         with sqlite3.connect(STM_DB_PATH) as conn:
             cursor = conn.execute("SELECT id, embedding FROM short_term_memories ORDER BY created_at DESC")
@@ -140,7 +137,6 @@ def check_similarity_and_store(content: str, source_messages: List[Dict], messag
                 stm_id, embedding_blob = row
                 embedding = np.frombuffer(embedding_blob, dtype=np.float32)
                 existing_embeddings.append(embedding)
-                existing_ids.append(stm_id)
         
         # Check similarity if we have existing memories
         if existing_embeddings:
