@@ -64,6 +64,7 @@ class Config:
     STM_MAX_MEMORIES = 100                      # total capacity
     STM_SIMILARITY_THRESHOLD = 0.85             # deduplication threshold
     STM_RETRIEVAL_LIMIT = 2                     # results per query
+    STM_RETRIEVAL_THRESHOLD = 0.3               # similarity threshold for context retrieval
     STM_ANALYSIS_MODEL = "hf.co/unsloth/Qwen3-4B-GGUF:Q4_K_M"  # configurable model for analysis
     
     # Wake Words and Commands

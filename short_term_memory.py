@@ -200,7 +200,7 @@ def query_stm_context(user_message: str) -> str:
                 embedding = np.frombuffer(embedding_blob, dtype=np.float32)
                 
                 similarity = cosine_similarity([query_embedding], [embedding])[0][0]
-                if similarity > 0.3:  # Lower threshold for context retrieval
+                if similarity > config.STM_RETRIEVAL_THRESHOLD:
                     relevant_memories.append((content, created_at, similarity))
         
         if not relevant_memories:
