@@ -1,0 +1,4 @@
+aiortc
+picamera2
+numpy
+sounddevice
