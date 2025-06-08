@@ -67,6 +67,13 @@ class Config:
     STM_RETRIEVAL_THRESHOLD = 0.3               # similarity threshold for context retrieval
     STM_ANALYSIS_MODEL = "hf.co/unsloth/Qwen3-4B-GGUF:Q4_K_M"  # configurable model for analysis
     
+    # Vision Configuration
+    VISION_PROCESSING_INTERVAL = 5              # seconds between vision processing
+    VISION_MODEL = "gemma3:4b"                  # multimodal model for vision
+    VISION_ENABLED = True                       # enable/disable vision processing
+    VISION_FRAME_QUALITY = 0.7                 # JPEG compression quality (0.5-1.0)
+    VISION_MAX_DESCRIPTION_LENGTH = 500         # max chars for scene description
+    
     # Wake Words and Commands
     WAKE_WORDS = [
         "fred", "hey fred", "okay fred", 

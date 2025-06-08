@@ -34,7 +34,7 @@ class STTService:
         self.is_initialized = False
         
         # FIX 1: Use proper queue instead of deque like old system
-        self.audio_queue = queue.Queue()  # Changed from deque to queue.Queue
+        self.audio_queue = queue.Queue()  # Now stores (audio_data, from_pi) tuples
         self.speech_buffer = []  # Text-based buffering like v1
         self.processing_thread = None
         self.is_processing = False
@@ -124,7 +124,7 @@ class STTService:
         """Callback function for audio stream - EXACTLY like old system"""
         if status:
             print(f"Status: {status}", file=sys.stderr)
-        self.audio_queue.put(indata.copy())
+        self.audio_queue.put((indata.copy(), False))  # (audio_data, from_pi)
     
     def start_processing(self, callback):
         """Start the audio processing thread with direct audio capture"""
@@ -209,8 +209,15 @@ class STTService:
                     time.sleep(0.1)
                     continue
                 
-                # Get audio chunk - flatten and convert like old system
-                audio_chunk = self.audio_queue.get()
+                # Get audio chunk - handle both old and new queue formats
+                queue_item = self.audio_queue.get()
+                
+                # Handle both old and new queue formats
+                if isinstance(queue_item, tuple):
+                    audio_chunk, from_pi = queue_item
+                else:
+                    audio_chunk, from_pi = queue_item, False
+                
                 audio_data = audio_chunk.flatten().astype(np.float32)  # EXACT same as old system
                 
                 # Calculate audio level - EXACT same as old system
@@ -276,7 +283,7 @@ class STTService:
                                         print_transcription_to_terminal("STOP WORD DETECTED -> Deactivating F.R.E.D.", "STOP WORD")
                                         
                                         if self.transcription_callback:
-                                            self.transcription_callback("goodbye")
+                                            self.transcription_callback("goodbye", from_pi)
                                         self.is_listening = False
                                         self.speech_buffer = []
                                         print("[DEBUG] Stopped listening. Buffer cleared.")
@@ -320,7 +327,7 @@ class STTService:
                             if self.transcription_callback:
                                 print("\nProcessing message through callback...")  # EXACT same as old system
                                 print(f"[DEBUG] Sending complete utterance to callback: '{complete_utterance}'")
-                                self.transcription_callback(complete_utterance)
+                                self.transcription_callback(complete_utterance, from_pi)
                             
                             # Resume listening after response - EXACT same as old system
                             self.is_listening = True

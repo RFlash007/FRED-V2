@@ -16,6 +16,7 @@ import torch
 from TTS.api import TTS
 import traceback
 from stt_service import stt_service
+from vision_service import vision_service
 import threading
 import time
 from config import config
@@ -228,6 +229,29 @@ def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
     messages.append({"role": "user", "content": formatted_input})
     return messages
 
+def prepare_messages_with_visual_context(system_prompt, user_message, ollama_client):
+    """Prepare messages with visual context for Pi glasses input."""
+    messages = prepare_messages_with_thinking(system_prompt, user_message, ollama_client)
+    
+    # Get current visual context
+    visual_context = vision_service.get_current_visual_context()
+    
+    # Inject visual context into the user message
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get('role') == 'user':
+            existing_content = messages[i]['content']
+            
+            # Find the FRED DATABASE section and inject visual context
+            if "(FRED DATABASE)" in existing_content:
+                # Insert visual context after the database header
+                parts = existing_content.split("(FRED DATABASE)", 1)
+                if len(parts) == 2:
+                    enhanced_content = f"{parts[0]}(FRED DATABASE)\nCurrent Visual Context (Pi Glasses): {visual_context}\n{parts[1]}"
+                    messages[i]['content'] = enhanced_content
+            break
+    
+    return messages
+
 def get_pending_tasks_alert():
     """Get pending tasks alert if needed."""
     try:
@@ -377,6 +401,7 @@ def chat_endpoint():
         ollama_base_url = data.get('ollama_url', config.OLLAMA_BASE_URL).strip()
         max_tool_iterations = data.get('max_tool_iterations', config.MAX_TOOL_ITERATIONS)
         mute_fred = data.get('mute_fred', False)
+        from_pi_glasses = data.get('from_pi_glasses', False)
         
         if not user_message or not ollama_base_url:
             return jsonify({'error': 'Missing required fields'}), 400
@@ -386,7 +411,12 @@ def chat_endpoint():
             fred_state.add_conversation_turn('user', user_message)
             
             client = ollama.Client(host=ollama_base_url)
-            messages = prepare_messages_with_thinking(SYSTEM_PROMPT, user_message, client)
+            
+            # Enhanced message preparation with visual context
+            if from_pi_glasses:
+                messages = prepare_messages_with_visual_context(SYSTEM_PROMPT, user_message, client)
+            else:
+                messages = prepare_messages_with_thinking(SYSTEM_PROMPT, user_message, client)
             
             assistant_response = ""
             raw_thinking = ""
@@ -574,8 +604,8 @@ def get_memory_connections(node_id):
         return jsonify({'error': str(e)}), 500
 
 # STT Functions
-def process_transcription(text):
-    """Process transcribed text."""
+def process_transcription(text, from_pi=False):
+    """Process transcribed text with optional visual context."""
     if not text or not text.strip():
         return
     
@@ -591,12 +621,19 @@ def process_transcription(text):
     
     def process_voice():
         try:
-            url = f"http://localhost:{os.environ.get('PORT', 5000)}/chat"
-            response = requests.post(url, json={
+            # Prepare request data
+            request_data = {
                 'message': text,
-                'model': 'hf.co/unsloth/Qwen3-8B-GGUF:Q4_K_M',
+                'model': config.DEFAULT_MODEL,  # Use configured default model, not hardcoded
                 'mute_fred': False
-            }, stream=True)
+            }
+            
+            # Add visual context flag for glasses input
+            if from_pi:
+                request_data['from_pi_glasses'] = True
+            
+            url = f"http://localhost:{os.environ.get('PORT', 5000)}/chat"
+            response = requests.post(url, json=request_data, stream=True)
             
             if response.status_code == 200:
                 full_response = ""

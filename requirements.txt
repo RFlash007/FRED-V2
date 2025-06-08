@@ -24,3 +24,4 @@ scikit-learn>=1.3.0  # For STM cosine similarity
 aiortc>=1.5.0
 av>=10.0.0
 numpy>=1.23.0
+Pillow>=10.0.0  # For vision processing image conversion

@@ -15,12 +15,35 @@ def create_local_tracks(video=True, audio=True):
         except Exception:
             pass
     if audio:
-        try:
-            mic = MediaPlayer('default', format='pulse')
-            if mic.audio:
-                tracks.append(mic.audio)
-        except Exception:
-            pass
+                # Try multiple audio configurations until one works
+        audio_configs = [
+            ('default', 'pulse'),           # PulseAudio default
+            ('pulse', None),               # Pulse without explicit format  
+            ('default', None),             # System default
+            ('hw:1', None),                # Direct hardware card 1
+            ('plughw:1', None),           # Hardware with plugin support
+        ]
+        
+        print("Trying to create audio track...")
+        for device, fmt in audio_configs:
+            try:
+                print(f"  Attempting: {device} with {fmt}")
+                mic = MediaPlayer(device, format=fmt, options={
+                    'sample_rate': '16000',
+                    'channels': '1'
+                })
+                if mic.audio:
+                    tracks.append(mic.audio)
+                    print(f"✅ Audio working with: {device} ({fmt})")
+                    break
+                else:
+                    print(f"  No audio stream from {device}")
+            except Exception as e:
+                print(f"  Error with {device} ({fmt}): {e}")
+                continue
+        
+        if not any(hasattr(t, 'kind') and getattr(t, 'kind', None) == 'audio' for t in tracks):
+            print("❌ Failed to create any audio track!")
     return tracks
 
 
