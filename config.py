@@ -57,6 +57,7 @@ class Config:
     # Memory Configuration
     MEMORY_SEARCH_LIMIT = 10
     GRAPH_VISUALIZATION_LIMIT = 10
+    MAX_CONVERSATION_MESSAGES = 50              # Maximum messages in conversation history
     
     # STM Configuration
     STM_TRIGGER_INTERVAL = 5                    # conversation turns
@@ -68,7 +69,7 @@ class Config:
     STM_ANALYSIS_MODEL = "hf.co/unsloth/Qwen3-4B-GGUF:Q4_K_M"  # configurable model for analysis
     
     # Vision Configuration
-    VISION_PROCESSING_INTERVAL = 5              # seconds between vision processing
+    VISION_PROCESSING_INTERVAL = 10              # seconds between vision processing
     VISION_MODEL = "gemma3:4b"                  # multimodal model for vision
     VISION_ENABLED = True                       # enable/disable vision processing
     VISION_FRAME_QUALITY = 0.7                 # JPEG compression quality (0.5-1.0)

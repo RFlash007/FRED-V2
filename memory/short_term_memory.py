@@ -4,13 +4,14 @@ import numpy as np
 import requests
 import logging
 import threading
+import os
 from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from sklearn.metrics.pairwise import cosine_similarity
 from config import config
 
 # STM Database path
-STM_DB_PATH = "short_term_memory.db"
+STM_DB_PATH = os.path.join("memory", "short_term_memory.db")
 
 # Thread-safe cache for embeddings
 class STMCache:

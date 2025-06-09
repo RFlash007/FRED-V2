@@ -22,7 +22,7 @@ import time
 from config import config
 
 # Import STM module
-import short_term_memory as stm
+import memory.short_term_memory as stm
 
 # State Management Class
 class FREDState:
@@ -38,12 +38,27 @@ class FREDState:
         self._lock = threading.Lock()
     
     def add_conversation_turn(self, role, content, thinking=None):
-        """Thread-safe conversation history management."""
+        """Thread-safe conversation history management with automatic cleanup."""
         with self._lock:
             turn = {'role': role, 'content': content}
             if thinking:
                 turn['thinking'] = thinking
             self.conversation_history.append(turn)
+            
+            # Check if we need to remove old messages
+            if len(self.conversation_history) > config.MAX_CONVERSATION_MESSAGES:
+                messages_to_remove = len(self.conversation_history) - config.MAX_CONVERSATION_MESSAGES
+                
+                # Log the cleanup action
+                logging.info(f"Conversation history cleanup: removing {messages_to_remove} old messages (keeping {config.MAX_CONVERSATION_MESSAGES})")
+                
+                # Remove oldest messages
+                self.conversation_history = self.conversation_history[messages_to_remove:]
+                
+                # Adjust STM tracking indices to account for removed messages
+                self.last_analyzed_message_index = max(0, self.last_analyzed_message_index - messages_to_remove)
+                
+                logging.info(f"Adjusted last_analyzed_message_index to {self.last_analyzed_message_index}")
             
             # Increment turn counter and check STM trigger
             if role == 'assistant':  # Complete turn (user + assistant)
@@ -81,6 +96,16 @@ class FREDState:
         """Get TTS engine."""
         with self._lock:
             return self.tts_engine
+    
+    def get_conversation_stats(self):
+        """Get conversation statistics for monitoring."""
+        with self._lock:
+            return {
+                'current_messages': len(self.conversation_history),
+                'max_messages': config.MAX_CONVERSATION_MESSAGES,
+                'total_turns': self.total_conversation_turns,
+                'last_analyzed_index': self.last_analyzed_message_index
+            }
 
 # Global state instance
 fred_state = FREDState()
@@ -600,6 +625,14 @@ def get_memory_connections(node_id):
             })
         else:
             return jsonify({'error': result.get('error', 'Not found')}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/conversation/stats')
+def get_conversation_stats():
+    """Get conversation statistics for debugging."""
+    try:
+        return jsonify(fred_state.get_conversation_stats())
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
