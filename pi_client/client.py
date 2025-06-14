@@ -36,8 +36,7 @@ def create_local_tracks(video=True, audio=True):
                         main={"size": (640, 480), "format": "RGB888"},
                         controls={
                             "FrameRate": 15,
-                            # Using 'Off' can improve performance on Pi Zero
-                            "NoiseReductionMode": libcamera.controls.NoiseReductionModeEnum.Off,
+                            # "NoiseReductionMode": libcamera.controls.NoiseReductionModeEnum.Off, # Removed: Causes crash on newer libcamera
                         },
                         buffer_count=2  # Minimize buffer for low latency
                     )

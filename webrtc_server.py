@@ -278,16 +278,15 @@ async def fred_acknowledgment(data):
             data_channels.discard(channel)
 
 async def cleanup(app):
-    coros = [pc.close() for pc in pcs]
-    await asyncio.gather(*coros)
+    # This is still valuable for graceful shutdown
+    print("🧹 Cleaning up server resources...")
+    for pc in pcs:
+        if pc.connectionState != "closed":
+            await pc.close()
     pcs.clear()
-    data_channels.clear()
-    pi_clients.clear()
-    
-    # Stop vision processing
-    vision_service.set_pi_connection_status(False)
-    
-    await sio_client.disconnect()
+    if 'fred_client_task' in app:
+        app['fred_client_task'].cancel()
+        await app['fred_client_task']
 
 async def init_app():
     """Initialize the WebRTC server and connect to main F.R.E.D. server"""
@@ -312,10 +311,7 @@ async def main():
     args = parser.parse_args()
 
     if args.verbose:
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
     if args.cert_file:
         ssl_context = ssl.SSLContext()
@@ -323,25 +319,24 @@ async def main():
     else:
         ssl_context = None
 
-    print(f"======== F.R.E.D. WebRTC Server ========")
-    print(f"🚀 Listening on http://{args.host}:{args.port}")
-    print("==========================================")
     app = web.Application()
+    app.on_startup.append(init_app)
     app.on_shutdown.append(cleanup)
     app.router.add_get("/", index)
     app.router.add_post("/offer", offer)
-    await init_app()
-    web.run_app(app, host=args.host, port=args.port, ssl_context=ssl_context)
 
+    print(f"======== F.R.E.D. WebRTC Server ========")
+    print(f"🔐 Authentication: {'Enabled' if FRED_AUTH_TOKEN else 'Disabled'}")
+    print(f"🔢 Max connections: {MAX_CONNECTIONS}")
+    print(f"🚀 Listening on http://{args.host}:{args.port}")
+    print("==========================================")
+    
+    web.run_app(app, host=args.host, port=args.port, ssl_context=ssl_context)
 
 if __name__ == "__main__":
     try:
-        main_asyncio_task = asyncio.run(main())
+        asyncio.run(main())
     except KeyboardInterrupt:
-        print("⌨️ Server shutting down...")
+        print("\n⌨️ Server shutting down manually...")
     finally:
-        # Clean up any remaining peer connections
-        for pc in pcs:
-            asyncio.run(pc.close())
-        pcs.clear()
         print("✅ Server shutdown complete.")
