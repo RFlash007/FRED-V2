@@ -5,8 +5,50 @@ import os
 import json
 import time
 import sys
+import base64
+import tempfile
+import subprocess
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer
+
+def play_audio_from_base64(audio_b64, format_type='wav'):
+    """Decode base64 audio and play it on the Pi."""
+    try:
+        # Decode base64 audio
+        audio_data = base64.b64decode(audio_b64)
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
+            temp_file.write(audio_data)
+            temp_file_path = temp_file.name
+        
+        print(f"🎵 Playing F.R.E.D.'s voice ({len(audio_data)} bytes)")
+        
+        # Play using aplay (ALSA) - most reliable on Pi
+        try:
+            subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
+            print("✅ Audio played successfully")
+        except subprocess.CalledProcessError:
+            # Fallback to paplay (PulseAudio)
+            try:
+                subprocess.run(['paplay', temp_file_path], check=True, capture_output=True)
+                print("✅ Audio played successfully (PulseAudio)")
+            except subprocess.CalledProcessError:
+                # Last resort: mpv
+                try:
+                    subprocess.run(['mpv', '--no-video', temp_file_path], check=True, capture_output=True)
+                    print("✅ Audio played successfully (mpv)")
+                except subprocess.CalledProcessError as e:
+                    print(f"❌ All audio playback methods failed: {e}")
+        
+        # Clean up temporary file
+        try:
+            os.unlink(temp_file_path)
+        except Exception:
+            pass
+            
+    except Exception as e:
+        print(f"❌ Audio playback error: {e}")
 import numpy as np
 
 
@@ -300,7 +342,28 @@ async def run(server_url):
     
     @channel.on('message')
     def on_message(message):
-        print(f'\n🤖 F.R.E.D.: {message}')
+        if message.startswith('[HEARTBEAT_ACK]'):
+            print(f"🤖 F.R.E.D.: {message}")
+        elif message.startswith('[ACK]'):
+            ack_text = message.replace('[ACK] ', '')
+            print(f"🤖 F.R.E.D.: {ack_text}")
+        elif message.startswith('[AUDIO_BASE64:'):
+            # Handle incoming audio from F.R.E.D.
+            try:
+                # Extract format and audio data
+                header_end = message.find(']')
+                format_info = message[14:header_end]  # Skip '[AUDIO_BASE64:'
+                audio_b64 = message[header_end + 1:]
+                
+                print(f"🎵 Received audio from F.R.E.D. ({len(audio_b64)} chars, format: {format_info})")
+                
+                # Decode and play audio
+                play_audio_from_base64(audio_b64, format_info)
+                
+            except Exception as e:
+                print(f"❌ Error processing audio: {e}")
+        else:
+            print(f'\n🤖 F.R.E.D.: {message}')
         print('🎤 Listening...')
     
     @channel.on('close')

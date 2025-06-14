@@ -92,7 +92,7 @@ class Config:
     VISION_MODEL = "gemma3:4b"                  # multimodal model for vision
     VISION_ENABLED = True                       # enable/disable vision processing
     VISION_FRAME_QUALITY = 1.0                 # JPEG compression quality - Maximum for Gemma 3 (896x896 native)
-    VISION_MAX_DESCRIPTION_LENGTH = 500         # max chars for scene description
+    VISION_MAX_DESCRIPTION_LENGTH = 0           # max chars for scene description (0 = unlimited)
     
     # Pi Glasses Configuration
     PI_HEARTBEAT_INTERVAL = 30                  # seconds between heartbeats

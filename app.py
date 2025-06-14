@@ -288,8 +288,14 @@ def get_pending_tasks_alert():
         pass
     return ""
 
-def fred_speak(text, mute_fred=False):
-    """Generate and play speech using TTS."""
+def fred_speak(text, mute_fred=False, target_device='local'):
+    """Generate and play speech using TTS.
+    
+    Args:
+        text: Text to speak
+        mute_fred: Whether to mute output
+        target_device: 'local' for main computer, 'pi' for Pi glasses, 'all' for both
+    """
     if mute_fred or not text.strip() or not os.path.exists(config.FRED_SPEAKER_WAV_PATH):
         return
     
@@ -317,7 +323,19 @@ def fred_speak(text, mute_fred=False):
             file_path=output_path
         )
         
-        playsound.playsound(output_path, block=False)
+        # Route audio based on target device
+        if target_device in ['local', 'all']:
+            # Play locally on main computer
+            playsound.playsound(output_path, block=False)
+            print(f"🔊 Playing locally: {text[:50]}...")
+        
+        if target_device in ['pi', 'all']:
+            # Send audio to Pi glasses
+            send_audio_to_pi(output_path, text)
+        
+        if target_device not in ['local', 'pi', 'all']:
+            print(f"⚠️ Unknown target device '{target_device}', defaulting to local")
+            playsound.playsound(output_path, block=False)
         
         # Schedule cleanup after a delay
         def delayed_cleanup():
@@ -333,6 +351,30 @@ def fred_speak(text, mute_fred=False):
         
     except Exception as e:
         logging.error(f"TTS error: {e}")
+
+def send_audio_to_pi(audio_file_path, text):
+    """Send audio file to connected Pi clients."""
+    try:
+        import base64
+        
+        # Read audio file and encode as base64
+        with open(audio_file_path, 'rb') as f:
+            audio_data = f.read()
+        
+        audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+        
+        # Send via SocketIO to WebRTC server
+        socketio.emit('fred_audio', {
+            'audio_data': audio_b64,
+            'text': text,
+            'format': 'wav'
+        })
+        
+        print(f"🎤 Audio sent to Pi glasses: {len(audio_data)} bytes - '{text[:30]}...'")
+        
+    except Exception as e:
+        logging.error(f"Error sending audio to Pi: {e}")
+        print(f"❌ Failed to send audio to Pi: {e}")
 
 def cleanup_wav_files():
     """Clean up old WAV files."""
@@ -587,8 +629,10 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # Store response with thinking in history
             fred_state.add_conversation_turn('assistant', assistant_response, raw_thinking.strip())
             
-            # TTS
-            fred_speak(assistant_response, mute_fred)
+            # TTS - route audio to appropriate device
+            from_pi_glasses = data.get('from_pi_glasses', False)
+            target_device = 'pi' if from_pi_glasses else 'local'
+            fred_speak(assistant_response, mute_fred, target_device)
             yield json.dumps({'type': 'done'}) + '\n'
         
         return Response(event_stream(), headers={
@@ -647,7 +691,9 @@ def process_transcription(text, from_pi=False):
     if text.startswith("_acknowledge_"):
         acknowledgment = text.replace("_acknowledge_", "")
         socketio.emit('fred_acknowledgment', {'text': acknowledgment})
-        fred_speak(acknowledgment)
+        # Route acknowledgment to appropriate device
+        target_device = 'pi' if from_pi else 'local'
+        fred_speak(acknowledgment, target_device=target_device)
         return
     
     socketio.emit('transcription_result', {'text': text})

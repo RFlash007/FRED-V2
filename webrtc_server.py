@@ -215,6 +215,7 @@ async def offer(request):
                         print(f"🎵 Audio frame #{frame_count} received from {client_ip}")
                     pcm = frame.to_ndarray()
                     # Mark this audio as coming from Pi and forward to STT pipeline
+                    # The True flag indicates this audio came from Pi glasses
                     stt_service.audio_queue.put((pcm, True))  # (audio_data, from_pi)
             elif track.kind == 'video':
                 print("📹 Setting up video frame processing...")
@@ -295,7 +296,7 @@ async def voice_response(data):
         for channel in data_channels.copy():
             try:
                 channel.send(response_text)
-                print(f"Sent to Pi: {response_text}")
+                print(f"📱 Text sent to Pi: {response_text[:50]}...")
             except Exception as e:
                 print(f"Failed to send to Pi: {e}")
                 data_channels.discard(channel)
@@ -311,6 +312,27 @@ async def fred_acknowledgment(data):
         except Exception as e:
             print(f"Failed to send acknowledgment to Pi: {e}")
             data_channels.discard(channel)
+
+@sio_client.event
+async def fred_audio(data):
+    """Forward F.R.E.D.'s audio responses to Pi clients"""
+    audio_b64 = data.get('audio_data', '')
+    text = data.get('text', '')
+    audio_format = data.get('format', 'wav')
+    
+    if audio_b64:
+        print(f"🎤 Received audio from F.R.E.D. ({len(audio_b64)} chars base64)")
+        
+        # Send audio to all connected Pi clients
+        for channel in data_channels.copy():
+            try:
+                channel.send(f"[AUDIO_BASE64:{audio_format}]{audio_b64}")
+                print(f"🎵 Audio sent to Pi glasses: {text[:50]}...")
+            except Exception as e:
+                print(f"❌ Failed to send audio to Pi: {e}")
+                data_channels.discard(channel)
+    else:
+        print("⚠️ No audio data received from F.R.E.D.")
 
 async def cleanup(app):
     # This is still valuable for graceful shutdown
