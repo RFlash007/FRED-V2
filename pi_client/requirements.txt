@@ -2,3 +2,5 @@ aiortc
 picamera2
 numpy
 sounddevice
+av
+requests

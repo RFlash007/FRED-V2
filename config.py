@@ -16,6 +16,25 @@ class Config:
     HOST = '0.0.0.0'
     DEBUG = False
     
+    # WebRTC Configuration
+    WEBRTC_PORT = int(os.environ.get('WEBRTC_PORT', 8080))
+    WEBRTC_HOST = '0.0.0.0'
+    
+    # Security Configuration
+    FRED_AUTH_TOKEN = os.environ.get('FRED_AUTH_TOKEN', 'fred_pi_glasses_2024')
+    MAX_PI_CONNECTIONS = int(os.environ.get('MAX_PI_CONNECTIONS', 3))
+    
+    # ngrok Configuration
+    NGROK_ENABLED = os.environ.get('NGROK_ENABLED', 'true').lower() == 'true'
+    NGROK_AUTH_TOKEN = os.environ.get('NGROK_AUTH_TOKEN', '2yCKXFFreg1EEaQK6RGb3Kbdt6f_4owEF1Xji51DMheaKDV5U')
+    
+    # ICE/STUN Configuration for WebRTC
+    ICE_SERVERS = [
+        {"urls": "stun:stun.l.google.com:19302"},
+        {"urls": "stun:stun1.l.google.com:19302"},
+        {"urls": "stun:stun2.l.google.com:19302"}
+    ]
+    
     # Ollama Configuration
     OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
     OLLAMA_EMBED_URL = os.getenv('OLLAMA_EMBED_URL', 'http://localhost:11434/api/embeddings')
@@ -75,6 +94,12 @@ class Config:
     VISION_FRAME_QUALITY = 0.7                 # JPEG compression quality (0.5-1.0)
     VISION_MAX_DESCRIPTION_LENGTH = 500         # max chars for scene description
     
+    # Pi Glasses Configuration
+    PI_HEARTBEAT_INTERVAL = 30                  # seconds between heartbeats
+    PI_CONNECTION_TIMEOUT = 60                  # seconds before considering Pi disconnected
+    PI_RECONNECT_MAX_RETRIES = 5               # maximum reconnection attempts
+    PI_RECONNECT_BACKOFF_MAX = 30              # maximum backoff time in seconds
+    
     # Wake Words and Commands
     WAKE_WORDS = [
         "fred", "hey fred", "okay fred", 
@@ -107,6 +132,26 @@ class Config:
     def get_stt_blocksize(cls):
         """Calculate STT blocksize."""
         return int(cls.STT_BLOCK_DURATION * cls.STT_SAMPLE_RATE)
+    
+    @classmethod
+    def get_webrtc_config(cls):
+        """Get WebRTC configuration dictionary."""
+        return {
+            'host': cls.WEBRTC_HOST,
+            'port': cls.WEBRTC_PORT,
+            'auth_token': cls.FRED_AUTH_TOKEN,
+            'max_connections': cls.MAX_PI_CONNECTIONS,
+            'ice_servers': cls.ICE_SERVERS
+        }
+    
+    @classmethod
+    def get_ngrok_config(cls):
+        """Get ngrok configuration dictionary."""
+        return {
+            'enabled': cls.NGROK_ENABLED,
+            'auth_token': cls.NGROK_AUTH_TOKEN,
+            'port': cls.WEBRTC_PORT
+        }
 
 # Global config instance
 config = Config() 

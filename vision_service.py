@@ -44,8 +44,10 @@ class VisionService:
         """Store the latest frame from WebRTC"""
         try:
             self.current_frame = frame
+            print(f"📸 Frame received and stored (size: {frame.width}x{frame.height})")
         except Exception as e:
             logger.error(f"Error storing frame: {e}")
+            print(f"❌ Frame storage error: {e}")
     
     def start_continuous_processing(self):
         """Start the continuous vision processing loop"""
@@ -65,11 +67,15 @@ class VisionService:
     
     async def _processing_loop(self):
         """Main processing loop - runs every N seconds when Pi is connected"""
+        print("🔄 Vision processing loop started")
         while self.is_processing and self.pi_connected:
             try:
                 if self.current_frame and time.time() - self.last_processing_time >= self.processing_interval:
+                    print(f"🎯 Processing frame (interval: {self.processing_interval}s)")
                     await self._process_current_frame()
                     self.last_processing_time = time.time()
+                elif not self.current_frame:
+                    print("⏳ Waiting for first frame...")
                 
                 await asyncio.sleep(1)  # Check every second
                 
