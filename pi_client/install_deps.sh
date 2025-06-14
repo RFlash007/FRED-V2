@@ -22,20 +22,22 @@ sudo apt-get install -y python3-pip python3-dev python3-venv libcamera-apps port
 # --- Virtual Environment Setup ---
 VENV_DIR=".venv"
 
+# Force recreation of the venv to apply the correct settings
 if [ -d "$VENV_DIR" ]; then
-    echo "✅ Virtual environment '$VENV_DIR' already exists. Skipping re-creation."
-else
-    echo "🐍 Creating Python virtual environment at project root..."
-    python3 -m venv $VENV_DIR
+    echo "🗑️ Removing existing virtual environment to apply new settings..."
+    rm -rf "$VENV_DIR"
 fi
 
-echo " activating virtual environment..."
-source $VENV_DIR/bin/activate
+echo "🐍 Creating Python virtual environment (with access to system packages)..."
+python3 -m venv --system-site-packages "$VENV_DIR"
+
+echo "✅ Activating virtual environment..."
+source "$VENV_DIR"/bin/activate
 
 # Remove picamera2 from requirements.txt to avoid conflicts with the system package
 REQUIREMENTS_FILE="pi_client/requirements.txt"
 if grep -q "picamera2" "$REQUIREMENTS_FILE"; then
-    echo "Removing 'picamera2' from $REQUIREMENTS_FILE to use system version..."
+    echo "✂️ Removing 'picamera2' from $REQUIREMENTS_FILE to use system version..."
     # Use a temporary file and move to be compatible with sed on different systems
     sed '/^picamera2/d' "$REQUIREMENTS_FILE" > "$REQUIREMENTS_FILE.tmp" && mv "$REQUIREMENTS_FILE.tmp" "$REQUIREMENTS_FILE"
 fi
@@ -60,4 +62,4 @@ echo "   libcamera-hello -t 5000"
 echo ""
 echo "🚀 To run the client, from the FRED-V2 directory, you must first activate the environment:"
 echo "   source .venv/bin/activate"
-echo "   python3 pi_client/client.py" 
+echo "   python3 pi_client/client.py --server http://YOUR_SERVER_IP:8080" 

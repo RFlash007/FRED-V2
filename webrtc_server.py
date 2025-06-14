@@ -9,6 +9,8 @@ import json
 import hashlib
 import time
 import logging
+import argparse
+import ssl
 
 # Import configuration
 from config import config
@@ -296,22 +298,50 @@ async def init_app():
     except Exception as e:
         print(f"Failed to connect to F.R.E.D. main server: {e}")
 
-app = web.Application()
-app.router.add_get('/', index)
-app.router.add_post('/offer', offer)
-app.on_startup.append(lambda app: asyncio.create_task(init_app()))
-app.on_shutdown.append(cleanup)
-
-if __name__ == '__main__':
-    # Configure logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
+async def main():
+    parser = argparse.ArgumentParser(description="F.R.E.D. WebRTC server")
+    parser.add_argument("--cert-file", help="SSL certificate file (for HTTPS)")
+    parser.add_argument("--key-file", help="SSL key file (for HTTPS)")
+    parser.add_argument(
+        "--host", default="0.0.0.0", help="Host for HTTP server (default: 0.0.0.0)"
     )
-    
-    print("🚀 Starting F.R.E.D. WebRTC Server")
-    print(f"🔐 Authentication: {'Enabled' if FRED_AUTH_TOKEN else 'Disabled'}")
-    print(f"🔢 Max connections: {MAX_CONNECTIONS}")
-    print("📡 Listening on 0.0.0.0:8080")
-    
-    web.run_app(app, host=config.WEBRTC_HOST, port=config.WEBRTC_PORT)
+    parser.add_argument(
+        "--port", type=int, default=8080, help="Port for HTTP server (default: 8080)"
+    )
+    parser.add_argument("--verbose", "-v", action="count")
+    args = parser.parse_args()
+
+    if args.verbose:
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+
+    if args.cert_file:
+        ssl_context = ssl.SSLContext()
+        ssl_context.load_cert_chain(args.cert_file, args.key_file)
+    else:
+        ssl_context = None
+
+    print(f"======== F.R.E.D. WebRTC Server ========")
+    print(f"🚀 Listening on http://{args.host}:{args.port}")
+    print("==========================================")
+    app = web.Application()
+    app.on_shutdown.append(cleanup)
+    app.router.add_get("/", index)
+    app.router.add_post("/offer", offer)
+    await init_app()
+    web.run_app(app, host=args.host, port=args.port, ssl_context=ssl_context)
+
+
+if __name__ == "__main__":
+    try:
+        main_asyncio_task = asyncio.run(main())
+    except KeyboardInterrupt:
+        print("⌨️ Server shutting down...")
+    finally:
+        # Clean up any remaining peer connections
+        for pc in pcs:
+            asyncio.run(pc.close())
+        pcs.clear()
+        print("✅ Server shutdown complete.")
