@@ -22,7 +22,24 @@ MAX_CONNECTIONS = config.MAX_PI_CONNECTIONS
 pcs = set()
 data_channels = set()  # Store data channels for sending responses back to Pi
 pi_clients = set()  # Track Pi clients for vision processing
+client_video_tracks = {}  # Store video tracks for on-demand frame requests
 connection_timestamps = {}  # Track connection times for rate limiting
+
+async def request_frame_from_client(client_ip):
+    """Request a fresh frame from a specific client"""
+    if client_ip not in client_video_tracks:
+        print(f"⚠️ No video track available for {client_ip}")
+        return None
+    
+    try:
+        track = client_video_tracks[client_ip]
+        print(f"📸 Requesting fresh frame from {client_ip}")
+        frame = await track.recv()
+        print(f"✅ Fresh frame received from {client_ip} (size: {frame.width}x{frame.height})")
+        return frame
+    except Exception as e:
+        print(f"❌ Failed to request frame from {client_ip}: {e}")
+        return None
 
 # SocketIO client to connect to main F.R.E.D. server
 sio_client = socketio.AsyncClient()
@@ -182,6 +199,11 @@ async def offer(request):
         @pc.on('track')
         async def on_track(track):
             print(f"📡 Received {track.kind} track from Pi client {client_ip}")
+            print(f"📡 Track ID: {getattr(track, 'id', 'unknown')}")
+            print(f"📡 Track kind: {track.kind}")
+            print(f"📡 Track readyState: {getattr(track, 'readyState', 'unknown')}")
+            print(f"📡 Track enabled: {getattr(track, 'enabled', 'unknown')}")
+            print(f"📡 Track muted: {getattr(track, 'muted', 'unknown')}")
             if track.kind == 'audio':
                 print("🎤 Setting up audio frame processing...")
                 frame_count = 0
@@ -196,28 +218,30 @@ async def offer(request):
                     stt_service.audio_queue.put((pcm, True))  # (audio_data, from_pi)
             elif track.kind == 'video':
                 print("📹 Setting up video frame processing...")
+                print(f"📹 Video track details: {track}")
+                print(f"📹 Track readyState: {getattr(track, 'readyState', 'unknown')}")
                 frame_count = 0
-                @track.on('frame')
-                async def on_frame(frame):
-                    nonlocal frame_count
+                
+                # Store track for on-demand frame requests
+                client_video_tracks[client_ip] = track
+                print(f"📹 Video track registered for on-demand processing from {client_ip}")
+                print(f"📹 Track stored for future frame requests")
+                
+                # Test: Request first frame immediately
+                try:
+                    print(f"🎬 Testing: Requesting first frame from {client_ip}")
+                    frame = await track.recv()
                     frame_count += 1
-                    if frame_count % 30 == 0:  # Log every 30th frame
-                        print(f"📷 Video frame #{frame_count} received from {client_ip} (size: {frame.width}x{frame.height})")
+                    print(f"🎬 FIRST FRAME RECEIVED from {client_ip} (size: {frame.width}x{frame.height})")
                     
-                    try:
-                        # Store frame for vision processing
-                        vision_service.store_latest_frame(frame)
-                        
-                        # Debug: Confirm frame was stored
-                        if frame_count == 1:
-                            print(f"✅ First video frame successfully stored for vision processing")
-                        elif frame_count % 100 == 0:
-                            print(f"📊 Frame #{frame_count} stored - vision processing should be active")
-                            
-                    except Exception as frame_error:
-                        print(f"❌ Error storing video frame #{frame_count}: {frame_error}")
-                        import traceback
-                        traceback.print_exc()
+                    # Store frame for vision processing
+                    vision_service.store_latest_frame(frame)
+                    print(f"✅ First video frame successfully stored for vision processing")
+                    
+                except Exception as e:
+                    print(f"❌ Error receiving first frame from {client_ip}: {e}")
+                    import traceback
+                    traceback.print_exc()
             
             # Add track to recorder safely
             if recorder:
@@ -230,8 +254,19 @@ async def offer(request):
 
         @pc.on('connectionstatechange')
         async def on_connectionstatechange():
-            print(f"Connection state changed to {pc.connectionState} for {client_ip}")
-            if pc.connectionState in ('failed', 'closed'):  # handle normal closure too
+            print(f"🔗 Connection state changed to {pc.connectionState} for {client_ip}")
+            print(f"🔗 ICE connection state: {getattr(pc, 'iceConnectionState', 'unknown')}")
+            print(f"🔗 ICE gathering state: {getattr(pc, 'iceGatheringState', 'unknown')}")
+            print(f"🔗 Signaling state: {getattr(pc, 'signalingState', 'unknown')}")
+            
+            if pc.connectionState == 'connected':
+                print(f"✅ WebRTC fully connected for {client_ip}")
+            elif pc.connectionState in ('failed', 'closed'):
+                print(f"❌ WebRTC connection terminated for {client_ip}")
+                # Clean up video track reference
+                if client_ip in client_video_tracks:
+                    del client_video_tracks[client_ip]
+                    print(f"🧹 Cleaned up video track for {client_ip}")
                 await pc.close()
                 pcs.discard(pc)  # free slot for new connections
 
@@ -288,7 +323,7 @@ async def cleanup(app):
         app['fred_client_task'].cancel()
         await app['fred_client_task']
 
-async def init_app():
+async def init_app(app):
     """Initialize the WebRTC server and connect to main F.R.E.D. server"""
     try:
         # Connect to main F.R.E.D. server
@@ -325,13 +360,20 @@ async def main():
     app.router.add_get("/", index)
     app.router.add_post("/offer", offer)
 
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host=args.host, port=args.port, ssl_context=ssl_context)
+    await site.start()
+    
     print(f"======== F.R.E.D. WebRTC Server ========")
     print(f"🔐 Authentication: {'Enabled' if FRED_AUTH_TOKEN else 'Disabled'}")
     print(f"🔢 Max connections: {MAX_CONNECTIONS}")
     print(f"🚀 Listening on http://{args.host}:{args.port}")
     print("==========================================")
-    
-    web.run_app(app, host=args.host, port=args.port, ssl_context=ssl_context)
+
+    # Keep server running until interrupted
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
     try:
@@ -339,4 +381,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n⌨️ Server shutting down manually...")
     finally:
+        # This cleanup is for when running the file directly
+        if runner:
+            asyncio.run(runner.cleanup())
         print("✅ Server shutdown complete.")

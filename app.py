@@ -733,6 +733,15 @@ def handle_voice_message(data):
             'timestamp': datetime.now().isoformat()
         })
 
+# --- Main Execution ---
+def run_app():
+    """Starts the F.R.E.D. main server using Flask-SocketIO."""
+    print(f"[INFO] Starting F.R.E.D. server on http://{config.HOST}:{config.PORT}")
+    try:
+        socketio.run(app, host=config.HOST, port=config.PORT, debug=False, use_reloader=False)
+    except Exception as e:
+        print(f"Error starting F.R.E.D. server: {e}")
+
 if __name__ == '__main__':
     cleanup_wav_files()
     
@@ -750,5 +759,4 @@ if __name__ == '__main__':
     stt_service.initialize()
     
     # Start server
-    print(f"[INFO] Starting F.R.E.D. server on http://{config.HOST}:{config.PORT}")
-    socketio.run(app, debug=config.DEBUG, port=config.PORT, host=config.HOST)
+    run_app()

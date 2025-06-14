@@ -4,116 +4,121 @@ F.R.E.D. with WebRTC Startup Script
 Runs both the main F.R.E.D. server and WebRTC server for Pi glasses integration
 """
 
-import subprocess
+import asyncio
 import threading
-import time
 import sys
 import os
 import json
 import requests
+import time
+import aiohttp
 from config import config
 
 # Global variable to store tunnel info
-tunnel_info = {"webrtc_url": None, "main_url": None}
+tunnel_info = {"webrtc_server": None, "main_url": None}
 
-def start_ngrok_tunnel():
-    """Start ngrok tunnel for WebRTC server and return public URL"""
+# It's better to import the functions directly
+from app import run_app as run_fred_server
+from webrtc_server import main as run_webrtc_server_async
+
+async def start_ngrok_tunnel():
+    """Start ngrok tunnel asynchronously."""
     try:
         print("🌐 Starting ngrok tunnel for remote access...")
+        ngrok_process = await asyncio.create_subprocess_exec(
+            "ngrok", "http", str(config.WEBRTC_PORT),
+            "--log", "stdout",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        # It's tricky to get the URL when ngrok is a subprocess in asyncio
+        # We will use the API method which is more reliable.
+        await asyncio.sleep(3) # Give ngrok time to start up the API
+
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.get("http://localhost:4040/api/tunnels", timeout=5) as response:
+                    tunnels = await response.json()
+                    for tunnel in tunnels.get('tunnels', []):
+                        if tunnel['config']['addr'].endswith(str(config.WEBRTC_PORT)):
+                            public_url = tunnel['public_url']
+                            tunnel_info["webrtc_server"] = public_url
+                            print(f"✅ ngrok tunnel active: {public_url}")
+                            # Save tunnel info for Pi client
+                            with open('tunnel_info.json', 'w') as f:
+                                json.dump({"webrtc_server": public_url}, f)
+                            return ngrok_process
+            except Exception as e:
+                print(f"⚠️  Could not get ngrok tunnel URL via API: {e}")
         
-        # Start ngrok for WebRTC server (using config port)
-        ngrok_process = subprocess.Popen([
-            "ngrok", "http", str(config.WEBRTC_PORT), 
-            "--log=stdout",
-            "--log-level=info"
-        ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
-        # Give ngrok time to start
-        time.sleep(3)
-        
-        # Get tunnel URL from ngrok API
-        try:
-            response = requests.get("http://localhost:4040/api/tunnels", timeout=5)
-            tunnels = response.json()
-            
-            for tunnel in tunnels.get('tunnels', []):
-                if tunnel['config']['addr'] == f'http://localhost:{config.WEBRTC_PORT}':
-                    public_url = tunnel['public_url']
-                    tunnel_info["webrtc_url"] = public_url
-                    print(f"✅ ngrok tunnel active: {public_url}")
-                    
-                    # Save tunnel info for Pi client
-                    with open('tunnel_info.json', 'w') as f:
-                        json.dump({"webrtc_server": public_url}, f)
-                    
-                    return ngrok_process
-        except Exception as e:
-            print(f"⚠️  Could not get ngrok tunnel URL: {e}")
-            print("   Check if ngrok is properly configured with auth token")
-            
         return ngrok_process
-        
     except Exception as e:
         print(f"❌ Failed to start ngrok tunnel: {e}")
         return None
 
-def run_fred_server():
-    """Run the main F.R.E.D. Flask server"""
-    print("🤖 Starting F.R.E.D. main server...")
-    subprocess.run([sys.executable, "app.py"], cwd=os.getcwd())
+async def run_server(name, command):
+    """Run a server command as a subprocess."""
+    print(f"🚀 Starting {name}...")
+    process = await asyncio.create_subprocess_exec(
+        sys.executable, command,
+        stdout=sys.stdout,
+        stderr=sys.stderr,
+        cwd=os.getcwd()
+    )
+    return process
 
-def run_webrtc_server():
-    """Run the WebRTC server for Pi glasses"""
-    print("📡 Starting WebRTC server for Pi glasses...")
-    # Give main server time to start first
-    time.sleep(3)
-    subprocess.run([sys.executable, "webrtc_server.py"], cwd=os.getcwd())
-
-def main():
-    print("🚀 Starting F.R.E.D. with Pi Glasses Support")
-    print("=" * 50)
+async def run_with_ngrok():
+    """Run the WebRTC server with optional ngrok tunnel."""
+    ngrok_process = None
     
-    # Start ngrok tunnel first
-    ngrok_process = start_ngrok_tunnel()
-    
-    print(f"Main F.R.E.D. server: http://localhost:{config.PORT}")
-    print(f"WebRTC server: http://localhost:{config.WEBRTC_PORT}")
-    
-    if tunnel_info["webrtc_url"]:
-        print(f"Remote WebRTC access: {tunnel_info['webrtc_url']}")
-        print("🌍 Pi glasses can connect from anywhere!")
+    if config.NGROK_ENABLED:
+        print("🌐 ngrok is enabled - starting tunnel...")
+        ngrok_process = await start_ngrok_tunnel()
+        if ngrok_process:
+            print("✅ ngrok tunnel started successfully")
+        else:
+            print("⚠️ ngrok tunnel failed to start, continuing with local access only")
     else:
-        print("⚠️  No remote tunnel - Pi glasses limited to local network")
-    
-    print(f"Vision processing: {config.VISION_MODEL} (Pi glasses only)")
-    print("Pi client should connect to WebRTC server")
-    print("=" * 50)
-    
-    # Start both servers in separate threads
-    fred_thread = threading.Thread(target=run_fred_server, daemon=True)
-    webrtc_thread = threading.Thread(target=run_webrtc_server, daemon=True)
+        print("🏠 ngrok disabled - local network access only")
     
     try:
-        fred_thread.start()
-        webrtc_thread.start()
-        
-        # Keep main thread alive
-        while True:
-            time.sleep(1)
-            
+        await run_webrtc_server_async()
+    finally:
+        if ngrok_process:
+            print("🌐 Shutting down ngrok tunnel...")
+            ngrok_process.terminate()
+            await ngrok_process.wait()
+
+def main():
+    """
+    Main function to start and manage F.R.E.D. servers.
+    - F.R.E.D. Flask server runs in a separate thread.
+    - WebRTC aiohttp server runs in the main thread's asyncio loop.
+    """
+    print("🚀 Starting F.R.E.D. with Pi Glasses Support")
+    print("=" * 50)
+
+    # 1. Run the Flask/SocketIO server in its own thread
+    # This is necessary because it uses its own blocking eventlet server.
+    fred_thread = threading.Thread(target=run_fred_server, daemon=True)
+    fred_thread.start()
+    print("🤖 F.R.E.D. main server thread started.")
+    
+    # Give the main server a moment to start before the WebRTC server,
+    # as the WebRTC server may try to connect to it.
+    time.sleep(5)
+
+    # 2. Run the aiohttp WebRTC server with ngrok tunnel in the main thread using asyncio
+    try:
+        print("📡 Starting WebRTC server with tunnel support...")
+        asyncio.run(run_with_ngrok())
     except KeyboardInterrupt:
         print("\n🛑 Shutting down F.R.E.D. servers...")
-        
-        # Cleanup ngrok process
-        if ngrok_process:
-            ngrok_process.terminate()
-            print("🌐 ngrok tunnel stopped")
-        
-        # Cleanup tunnel info file
-        if os.path.exists('tunnel_info.json'):
-            os.remove('tunnel_info.json')
-            
-        sys.exit(0)
+    finally:
+        # The servers are daemonized or will shut down on loop completion
+        print("✅ Shutdown sequence initiated.")
+        # Note: Proper cleanup of the WebRTC runner is handled within webrtc_server.py
+        # on loop cancellation. The fred_thread is a daemon and will exit with the main thread.
 
 if __name__ == "__main__":
     main() 

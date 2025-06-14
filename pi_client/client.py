@@ -31,11 +31,14 @@ def create_local_tracks(video=True, audio=True):
                     print("📸 Initializing Picamera2...")
                     self.picam2 = Picamera2()
                     
-                    # Configure for low-latency streaming
+                    # Configure for Gemma 3 optimal quality (896x896 square)
                     config = self.picam2.create_video_configuration(
-                        main={"size": (640, 480), "format": "RGB888"},
+                        main={"size": (896, 896), "format": "RGB888"},  # Gemma 3 native resolution
                         controls={
-                            "FrameRate": 15,
+                            "FrameRate": 5,  # Lower FPS for on-demand processing
+                            "Brightness": 0.1,  # Slightly brighter for better AI analysis
+                            "Contrast": 1.1,    # Enhanced contrast
+                            "Saturation": 1.0,  # Natural colors
                             # "NoiseReductionMode": libcamera.controls.NoiseReductionModeEnum.Off, # Removed: Causes crash on newer libcamera
                         },
                         buffer_count=2  # Minimize buffer for low latency

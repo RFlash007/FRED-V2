@@ -91,7 +91,7 @@ class Config:
     VISION_PROCESSING_INTERVAL = 10              # seconds between vision processing
     VISION_MODEL = "gemma3:4b"                  # multimodal model for vision
     VISION_ENABLED = True                       # enable/disable vision processing
-    VISION_FRAME_QUALITY = 0.7                 # JPEG compression quality (0.5-1.0)
+    VISION_FRAME_QUALITY = 1.0                 # JPEG compression quality - Maximum for Gemma 3 (896x896 native)
     VISION_MAX_DESCRIPTION_LENGTH = 500         # max chars for scene description
     
     # Pi Glasses Configuration
