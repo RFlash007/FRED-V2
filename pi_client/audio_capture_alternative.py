@@ -64,8 +64,10 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
             
             def audio_callback(indata, frames, time, status):
                 try:
-                    if status:
-                        print(f"🎧 PortAudio status: {status}")
+                    if status and ('overflow' in str(status).lower()):
+                        # Throttle spam – print every 20th overflow warning
+                        if (self.samples_sent // (self.sample_rate * 0.02)) % 20 == 0:
+                            print(f"🎧 PortAudio status: {status}")
 
                     # Flatten to mono float32 regardless of channel count
                     mono = indata.mean(axis=1).astype(np.float32)
@@ -132,8 +134,8 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
             # format for WebRTC / Opus encoding in aiortc.
             pcm_f32 = np.array(samples, dtype=np.float32)
             pcm_i16 = (np.clip(pcm_f32, -1.0, 1.0) * 32767).astype(np.int16)
-            pcm_i16 = pcm_i16.reshape(1, -1)  # (channels, samples)
 
+            # Interleaved mono s16 expects a 1-D array of samples
             frame = AudioFrame.from_ndarray(pcm_i16, format='s16', layout='mono')
             frame.sample_rate = self.sample_rate
             frame.pts = self.samples_sent
