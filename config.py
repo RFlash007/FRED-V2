@@ -89,9 +89,9 @@ class Config:
     
     # Vision Configuration
     VISION_PROCESSING_INTERVAL = 10              # seconds between vision processing
-    VISION_MODEL = "gemma3:4b"                  # multimodal model for vision
+    VISION_MODEL = "llama3.2-vision:11b"        # multimodal model for vision (1120x1120 optimal)
     VISION_ENABLED = True                       # enable/disable vision processing
-    VISION_FRAME_QUALITY = 1.0                 # JPEG compression quality - Maximum for Gemma 3 (896x896 native)
+    VISION_FRAME_QUALITY = 1.0                 # JPEG compression quality - Maximum for Llama 3.2 Vision (1120x1120 optimal)
     VISION_MAX_DESCRIPTION_LENGTH = 0           # max chars for scene description (0 = unlimited)
     
     # Pi Glasses Configuration

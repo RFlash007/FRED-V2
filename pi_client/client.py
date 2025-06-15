@@ -73,9 +73,15 @@ def create_local_tracks(video=True, audio=True):
                     print("📸 Initializing Picamera2...")
                     self.picam2 = Picamera2()
                     
-                    # Configure for Gemma 3 optimal quality (896x896 square)
+                    # Configure for Llama 3.2 Vision 11B - Full FOV approach
+                    # Capture at maximum available resolution for full field of view
+                    sensor_modes = self.picam2.sensor_modes
+                    max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
+                    max_res = max_mode['size']
+                    print(f"🎯 Using full FOV at {max_res} (will resize to 1120x1120)")
+                    
                     config = self.picam2.create_video_configuration(
-                        main={"size": (896, 896), "format": "RGB888"},  # Gemma 3 native resolution
+                        main={"size": max_res, "format": "RGB888"},  # Full sensor resolution for maximum FOV
                         controls={
                             "FrameRate": 5,  # Lower FPS for on-demand processing
                             "Brightness": 0.1,  # Slightly brighter for better AI analysis
@@ -102,7 +108,18 @@ def create_local_tracks(video=True, audio=True):
                     except Exception as e:
                         print(f"💥 Failed to capture frame from Picamera2: {e}")
                         # As a fallback, create a black frame. This prevents the stream from dying.
-                        array = np.zeros((480, 640, 3), dtype=np.uint8)
+                        array = np.zeros((1120, 1120, 3), dtype=np.uint8)
+                    
+                    # Always resize to perfect 1120x1120 for Llama 3.2 Vision (preserves full FOV)
+                    if array.shape[:2] != (1120, 1120):
+                        from PIL import Image
+                        img = Image.fromarray(array)
+                        # Use high-quality Lanczos resampling to preserve detail while resizing
+                        img_resized = img.resize((1120, 1120), Image.Resampling.LANCZOS)
+                        array = np.array(img_resized)
+                        if self.frame_count == 1:
+                            original_shape = img.size
+                            print(f"📐 Full FOV: {original_shape} → 1120x1120 (preserving entire field of view)")
                     
                     # Convert to video frame for aiortc
                     frame = av.VideoFrame.from_ndarray(array, format="rgb24")

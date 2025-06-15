@@ -116,7 +116,7 @@ class VisionService:
             logger.error(f"Error requesting frame from Pi: {e}")
     
     async def _process_current_frame(self):
-        """Process the current frame with Gemma3:4b"""
+        """Process the current frame with Llama 3.2 Vision 11B"""
         if not self.current_frame:
             return
         
@@ -131,7 +131,7 @@ class VisionService:
             print(f"📝 Vision prompt created: {len(prompt)} chars")
             
             print("🧠 Sending to Ollama for vision analysis...")
-            # Call Gemma3:4b
+            # Call Llama 3.2 Vision 11B
             response = await asyncio.to_thread(
                 self.ollama_client.chat,
                 model=self.model,
@@ -160,7 +160,7 @@ class VisionService:
             
         except ollama.ResponseError as e:
             print(f"❌ Ollama vision model error: {e}")
-            print("💡 Make sure 'ollama serve' is running and 'gemma3:4b' model is installed")
+            print("💡 Make sure 'ollama serve' is running and 'llama3.2-vision:11b' model is installed")
             logger.error(f"Ollama vision model error: {e}")
             self.current_scene_description = "Vision processing temporarily unavailable."
         except Exception as e:
@@ -171,7 +171,7 @@ class VisionService:
     
     def _create_vision_prompt(self):
         """Create detailed prompt for scene analysis"""
-        base_prompt = """You are receiving a 896x896 pixel image optimized for your vision processing. Describe this scene in comprehensive detail, including:
+        base_prompt = """Describe this scene in comprehensive detail, including:
 - All objects, people, and their specific positions/locations
 - Current activities or actions taking place
 - Environmental context (lighting, setting, atmosphere)

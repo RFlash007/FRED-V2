@@ -206,17 +206,44 @@ async def offer(request):
             print(f"📡 Track muted: {getattr(track, 'muted', 'unknown')}")
             if track.kind == 'audio':
                 print("🎤 Setting up audio frame processing...")
+                print(f"🎤 Audio track details: {track}")
+                print(f"🎤 Track readyState: {getattr(track, 'readyState', 'unknown')}")
                 frame_count = 0
-                @track.on('frame')
-                async def on_frame(frame):
+                
+                # Create a task to consume audio frames from the track
+                async def consume_audio_frames():
                     nonlocal frame_count
-                    frame_count += 1
-                    if frame_count % 100 == 0:  # Log every 100th frame to avoid spam
-                        print(f"🎵 Audio frame #{frame_count} received from {client_ip}")
-                    pcm = frame.to_ndarray()
-                    # Mark this audio as coming from Pi and forward to STT pipeline
-                    # The True flag indicates this audio came from Pi glasses
-                    stt_service.audio_queue.put((pcm, True))  # (audio_data, from_pi)
+                    print(f"🎤 Starting audio frame consumption loop for {client_ip}")
+                    
+                    try:
+                        while True:
+                            frame = await track.recv()
+                            frame_count += 1
+                            
+                            if frame_count == 1:
+                                print(f"🎤 FIRST AUDIO FRAME RECEIVED from {client_ip}")
+                            elif frame_count % 100 == 0:
+                                print(f"🎵 Audio frame #{frame_count} received from {client_ip}")
+                            
+                            pcm = frame.to_ndarray()
+                            
+                            # Convert stereo to mono if needed (STT expects mono)
+                            if len(pcm.shape) > 1 and pcm.shape[1] > 1:
+                                pcm = pcm.mean(axis=1)  # Average stereo channels to mono
+                                print(f"🎤 Converted stereo to mono for STT processing")
+                            
+                            # Mark this audio as coming from Pi and forward to STT pipeline
+                            # The True flag indicates this audio came from Pi glasses
+                            print(f"🎤 Forwarding Pi audio to STT: {pcm.shape} samples from {client_ip}")
+                            stt_service.audio_queue.put((pcm, True))  # (audio_data, from_pi)
+                            
+                    except Exception as e:
+                        print(f"❌ Audio frame consumption ended for {client_ip}: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                print(f"🎤 Starting audio frame consumption task for {client_ip}")
+                asyncio.create_task(consume_audio_frames())
             elif track.kind == 'video':
                 print("📹 Setting up video frame processing...")
                 print(f"📹 Video track details: {track}")

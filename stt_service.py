@@ -215,8 +215,11 @@ class STTService:
                 # Handle both old and new queue formats
                 if isinstance(queue_item, tuple):
                     audio_chunk, from_pi = queue_item
+                    if from_pi:
+                        print(f"[DEBUG] Processing Pi audio chunk ({len(audio_chunk)} samples)")
                 else:
                     audio_chunk, from_pi = queue_item, False
+                    print(f"[DEBUG] Processing local audio chunk ({len(audio_chunk)} samples)")
                 
                 audio_data = audio_chunk.flatten().astype(np.float32)  # EXACT same as old system
                 
@@ -244,14 +247,16 @@ class STTService:
                             text = segment.text.strip().lower()
                             
                             if text and text != "thanks for watching!":
-                                print(f"\nDetected text: {text}")  # EXACT same debug as old system
+                                source_type = "Pi Glasses" if from_pi else "Local Computer"
+                                print(f"\nDetected text from {source_type}: {text}")  # EXACT same debug as old system
                                 
                                 # === TERMINAL LOGGING FOR TRANSCRIPTION ===
-                                print_transcription_to_terminal(text, "SPEECH-TO-TEXT")
+                                print_transcription_to_terminal(f"[{source_type}] {text}", "SPEECH-TO-TEXT")
                                 
                                 # Check for wake words when not listening - EXACT same logic
                                 if not self.is_listening:
                                     wake_word_found = any(wake_word in text for wake_word in self.wake_words)
+                                    print(f"[DEBUG] Checking wake words in '{text}'. Found: {wake_word_found} (from {source_type})")
                                     if wake_word_found:
                                         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Wake word detected! Listening...")
                                         # REMOVED: Acknowledgment response - F.R.E.D. now listens silently
@@ -325,8 +330,9 @@ class STTService:
                         
                         try:
                             if self.transcription_callback:
-                                print("\nProcessing message through callback...")  # EXACT same as old system
-                                print(f"[DEBUG] Sending complete utterance to callback: '{complete_utterance}'")
+                                source_type = "Pi Glasses" if from_pi else "Local Computer"
+                                print(f"\nProcessing message from {source_type} through callback...")  # EXACT same as old system
+                                print(f"[DEBUG] Sending complete utterance to callback: '{complete_utterance}' (from_pi={from_pi})")
                                 self.transcription_callback(complete_utterance, from_pi)
                             
                             # Resume listening after response - EXACT same as old system
