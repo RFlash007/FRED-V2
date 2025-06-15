@@ -138,7 +138,8 @@ class STTService:
         self.is_running = True
         self.terminate_event.clear()
         
-        # FIX 5: Start direct audio stream like old system
+        # FIX 5: Start direct audio stream like old system (ONLY if no Pi glasses connected)
+        # Skip local audio capture if Pi glasses are providing audio via WebRTC
         try:
             self.stream = sd.InputStream(
                 samplerate=self.sample_rate,
@@ -149,8 +150,10 @@ class STTService:
             self.stream.start()
             print("[DEBUG] Direct audio stream started successfully")
         except Exception as e:
-            logger.error(f"Failed to start audio stream: {e}")
-            return False
+            logger.warning(f"Failed to start local audio stream (this is normal if using Pi glasses): {e}")
+            # Don't return False - Pi glasses audio will be handled via WebRTC
+            self.stream = None
+            print("🍇 Local audio disabled - Pi glasses audio will be used via WebRTC")
         
         # Calibrate silence threshold like v1
         self.calibrate_silence_threshold()
@@ -180,6 +183,13 @@ class STTService:
     
     def calibrate_silence_threshold(self):
         """Calibrate the silence threshold based on ambient noise - EXACTLY like old system"""
+        if self.stream is None:
+            print("🍇 Pi glasses mode - skipping microphone calibration (will use Pi audio)")
+            self.silence_threshold = 0.01  # Default threshold for Pi glasses
+            print(f"Using default Pi glasses threshold: {self.silence_threshold:.6f}")
+            print()
+            return
+            
         print("Calibrating microphone... Please remain quiet.")
         start_time = time.time()
         

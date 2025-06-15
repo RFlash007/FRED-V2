@@ -19,13 +19,13 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
     """
     kind = "audio"
     
-    def __init__(self, device=None, sample_rate=16000, channels=1, blocksize=1024):
+    def __init__(self, device=None, sample_rate=16000, channels=1, blocksize=512):
         super().__init__()
         self.device = device
         self.sample_rate = sample_rate
         self.channels = channels
         self.blocksize = blocksize
-        self.audio_queue = queue.Queue(maxsize=10)
+        self.audio_queue = queue.Queue(maxsize=5)  # Smaller queue to prevent overflow
         self.stream = None
         self._running = False
         
@@ -51,6 +51,9 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
                 audio_data = indata.copy().astype(np.float32)
                 if not self.audio_queue.full():
                     self.audio_queue.put(audio_data)
+                else:
+                    # Drop frames if queue is full to prevent overflow
+                    pass
             
             self.stream = sd.InputStream(
                 device=self.device,
@@ -199,7 +202,7 @@ def create_sounddevice_audio_track():
             device=device_id,
             sample_rate=16000,
             channels=1,
-            blocksize=1024
+            blocksize=512  # Smaller blocks to reduce overflow
         )
         
         return audio_track
