@@ -128,9 +128,13 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
                 # size. Convert to numpy array for AudioFrame.
                 samples = [self.audio_buffer.popleft() for _ in range(frame_samples)]
 
-            pcm = np.array(samples, dtype=np.float32).reshape(1, -1)  # (channels, samples) mono planar
+            # Convert to 16-bit signed PCM which is the most widely supported
+            # format for WebRTC / Opus encoding in aiortc.
+            pcm_f32 = np.array(samples, dtype=np.float32)
+            pcm_i16 = (np.clip(pcm_f32, -1.0, 1.0) * 32767).astype(np.int16)
+            pcm_i16 = pcm_i16.reshape(1, -1)  # (channels, samples)
 
-            frame = AudioFrame.from_ndarray(pcm, format='flt', layout='mono')
+            frame = AudioFrame.from_ndarray(pcm_i16, format='s16', layout='mono')
             frame.sample_rate = self.sample_rate
             frame.pts = self.samples_sent
             frame.time_base = self.time_base
