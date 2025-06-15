@@ -12,6 +12,8 @@ from av import AudioFrame
 import threading
 import queue
 import collections
+from collections import deque
+from fractions import Fraction
 
 
 class SoundDeviceAudioTrack(MediaStreamTrack):
@@ -27,11 +29,18 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
         self.channels = channels
         self.blocksize = blocksize
         
-        # Use a circular buffer instead of queue for better performance
-        import collections
-        self.buffer_size = 8192  # Large enough buffer
-        self.audio_buffer = collections.deque(maxlen=self.buffer_size)
+        # Use a circular buffer for incoming audio samples. We store raw float32 mono
+        # samples so 1 item = 1 sample. At 16 kHz, 1 second ≈ 16_000 samples. Keep
+        # a few seconds of history to absorb scheduling jitter but not too much
+        # to consume memory unnecessarily.
+        self.buffer_size = self.sample_rate * 5  # 5-second rolling buffer
+        self.audio_buffer = deque(maxlen=self.buffer_size)
         self.buffer_lock = threading.Lock()
+        
+        # Keep track of how many samples we have already sent so PTS values are
+        # monotonic and WebRTC can sync correctly.
+        self.samples_sent = 0
+        self.time_base = Fraction(1, self.sample_rate)
         
         self.stream = None
         self._running = False
@@ -53,16 +62,16 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
             
             def audio_callback(indata, frames, time, status):
                 if status:
+                    # Overflow / underflow warnings are common on low-power
+                    # devices. We log them once so the user knows something
+                    # happened but we do **not** stop the stream.
                     print(f"Audio status: {status}")
-                    
-                # Convert to the format expected by aiortc
-                audio_data = indata.copy().astype(np.float32).flatten()
-                
-                # Add to circular buffer (automatically drops old data if full)
+
+                # Flatten to mono float32 regardless of channel count
+                mono = indata.mean(axis=1).astype(np.float32)
+
                 with self.buffer_lock:
-                    self.audio_buffer.extend(audio_data)
-                    
-                # No overflow handling needed - deque automatically drops old data
+                    self.audio_buffer.extend(mono)
             
             self.stream = sd.InputStream(
                 device=self.device,
@@ -95,28 +104,32 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
             self.start()
         
         try:
-            # Get single sample from circular buffer
-            sample_data = None
+            # We will produce 20 ms of audio per frame which is commonly used by
+            # WebRTC. At 16 kHz that is 0.02 * 16000 = 320 samples.
+            frame_samples = int(self.sample_rate * 0.02)
+
+            # Wait until we have enough samples. This yields control so other
+            # tasks can run without blocking the event loop for long periods.
+            while True:
+                with self.buffer_lock:
+                    if len(self.audio_buffer) >= frame_samples:
+                        break
+                await asyncio.sleep(0.001)  # 1 ms back-off
+
             with self.buffer_lock:
-                if len(self.audio_buffer) > 0:
-                    # Take one sample from the buffer
-                    sample_data = np.array([self.audio_buffer.popleft()], dtype=np.float32)
-            
-            # If no data available, send silence
-            if sample_data is None:
-                sample_data = np.zeros(1, dtype=np.float32)
-            
-            # Reshape for mono audio (1 sample, 1 channel)
-            sample_data = sample_data.reshape(1, 1)
-            
-            frame = AudioFrame.from_ndarray(
-                sample_data,
-                format='flt', 
-                layout='mono' if self.channels == 1 else 'stereo'
-            )
+                # Collect exactly `frame_samples` to maintain constant frame
+                # size. Convert to numpy array for AudioFrame.
+                samples = [self.audio_buffer.popleft() for _ in range(frame_samples)]
+
+            pcm = np.array(samples, dtype=np.float32).reshape(1, -1)  # (channels, samples)
+
+            frame = AudioFrame.from_ndarray(pcm, format='flt', layout='mono')
             frame.sample_rate = self.sample_rate
-            frame.pts = None
-            
+            frame.pts = self.samples_sent
+            frame.time_base = self.time_base
+
+            self.samples_sent += frame_samples
+
             return frame
             
         except Exception as e:
