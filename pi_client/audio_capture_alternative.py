@@ -33,7 +33,7 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
         # samples so 1 item = 1 sample. At 16 kHz, 1 second ≈ 16_000 samples. Keep
         # a few seconds of history to absorb scheduling jitter but not too much
         # to consume memory unnecessarily.
-        self.buffer_size = self.sample_rate * 5  # 5-second rolling buffer
+        self.buffer_size = self.sample_rate * 2  # 2-second rolling buffer is sufficient
         self.audio_buffer = deque(maxlen=self.buffer_size)
         self.buffer_lock = threading.Lock()
         
@@ -45,9 +45,11 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
         self.stream = None
         self._running = False
         
-        # Start audio capture immediately when track is created
-        print("🎤 Auto-starting audio capture for WebRTC...")
-        self.start()
+        # We will start capturing on-demand the moment the first WebRTC
+        # `recv()` call arrives.  This avoids filling the ring-buffer before
+        # the peer connection is ready and prevents the initial overflow we
+        # have observed.
+        print("🎤 Audio capture will start on first recv() call…")
         
     def start(self):
         """Start audio capture"""
@@ -202,7 +204,7 @@ def create_sounddevice_audio_track():
             device=device_id,
             sample_rate=16000,
             channels=1,
-            blocksize=320  # 20 ms blocks at 16 kHz to match WebRTC frame size
+            blocksize=0  # Let PortAudio choose optimal blocksize; we still frame at 20 ms
         )
         
         return audio_track
