@@ -79,25 +79,49 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
     
     async def recv(self):
         """Receive audio frames for WebRTC"""
-        if not self._running:
+        if not self._running:  
             self.start()
         
+        # We need to store partial blocks between calls
+        if not hasattr(self, '_current_block'):
+            self._current_block = None
+            self._block_index = 0
+        
         try:
-            # Get audio data from queue (with timeout)
-            audio_data = await asyncio.get_event_loop().run_in_executor(
-                None, self.audio_queue.get, True, 0.1
-            )
+            # If we don't have a current block, get a new one
+            if self._current_block is None:
+                audio_data = await asyncio.get_event_loop().run_in_executor(
+                    None, self.audio_queue.get, True, 0.1
+                )
+                self._current_block = audio_data
+                self._block_index = 0
             
-            # Convert entire block to AudioFrame for aiortc
-            # aiortc can handle block-based audio frames efficiently
-            frame = AudioFrame.from_ndarray(
-                audio_data,
-                format='flt',
-                layout='mono' if self.channels == 1 else 'stereo'
-            )
-            frame.sample_rate = self.sample_rate
-            frame.pts = None  # Let aiortc handle timestamps
-            return frame
+            # Send one sample from the current block
+            if self._block_index < len(self._current_block):
+                # Get single sample and reshape to (1, channels)
+                sample = self._current_block[self._block_index:self._block_index+1]
+                
+                frame = AudioFrame.from_ndarray(
+                    sample,
+                    format='flt', 
+                    layout='mono' if self.channels == 1 else 'stereo'
+                )
+                frame.sample_rate = self.sample_rate
+                frame.pts = None
+                
+                self._block_index += 1
+                
+                # If we've sent all samples from this block, get ready for next block
+                if self._block_index >= len(self._current_block):
+                    self._current_block = None
+                    self._block_index = 0
+                
+                return frame
+            else:
+                # This shouldn't happen, but just in case
+                self._current_block = None
+                self._block_index = 0
+                raise Exception("Block index out of range")
             
         except queue.Empty:
             # Return silence if no audio available
