@@ -11,6 +11,7 @@ from aiortc import RTCPeerConnection, MediaStreamTrack
 from av import AudioFrame
 import threading
 import queue
+import collections
 
 
 class SoundDeviceAudioTrack(MediaStreamTrack):
@@ -25,7 +26,13 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
         self.sample_rate = sample_rate
         self.channels = channels
         self.blocksize = blocksize
-        self.audio_queue = queue.Queue(maxsize=5)  # Smaller queue to prevent overflow
+        
+        # Use a circular buffer instead of queue for better performance
+        import collections
+        self.buffer_size = 8192  # Large enough buffer
+        self.audio_buffer = collections.deque(maxlen=self.buffer_size)
+        self.buffer_lock = threading.Lock()
+        
         self.stream = None
         self._running = False
         
@@ -47,13 +54,15 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
             def audio_callback(indata, frames, time, status):
                 if status:
                     print(f"Audio status: {status}")
+                    
                 # Convert to the format expected by aiortc
-                audio_data = indata.copy().astype(np.float32)
-                if not self.audio_queue.full():
-                    self.audio_queue.put(audio_data)
-                else:
-                    # Drop frames if queue is full to prevent overflow
-                    pass
+                audio_data = indata.copy().astype(np.float32).flatten()
+                
+                # Add to circular buffer (automatically drops old data if full)
+                with self.buffer_lock:
+                    self.audio_buffer.extend(audio_data)
+                    
+                # No overflow handling needed - deque automatically drops old data
             
             self.stream = sd.InputStream(
                 device=self.device,
@@ -85,62 +94,35 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
         if not self._running:  
             self.start()
         
-        # We need to store partial blocks between calls
-        if not hasattr(self, '_current_block'):
-            self._current_block = None
-            self._block_index = 0
-        
         try:
-            # If we don't have a current block, get a new one
-            if self._current_block is None:
-                audio_data = await asyncio.get_event_loop().run_in_executor(
-                    None, self.audio_queue.get, True, 0.1
-                )
-                self._current_block = audio_data
-                self._block_index = 0
+            # Get single sample from circular buffer
+            sample_data = None
+            with self.buffer_lock:
+                if len(self.audio_buffer) > 0:
+                    # Take one sample from the buffer
+                    sample_data = np.array([self.audio_buffer.popleft()], dtype=np.float32)
             
-            # Send one sample from the current block
-            if self._block_index < len(self._current_block):
-                # Get single sample and reshape to (1, channels)
-                sample = self._current_block[self._block_index:self._block_index+1]
-                
-                frame = AudioFrame.from_ndarray(
-                    sample,
-                    format='flt', 
-                    layout='mono' if self.channels == 1 else 'stereo'
-                )
-                frame.sample_rate = self.sample_rate
-                frame.pts = None
-                
-                self._block_index += 1
-                
-                # If we've sent all samples from this block, get ready for next block
-                if self._block_index >= len(self._current_block):
-                    self._current_block = None
-                    self._block_index = 0
-                
-                return frame
-            else:
-                # This shouldn't happen, but just in case
-                self._current_block = None
-                self._block_index = 0
-                raise Exception("Block index out of range")
+            # If no data available, send silence
+            if sample_data is None:
+                sample_data = np.zeros(1, dtype=np.float32)
             
-        except queue.Empty:
-            # Return silence if no audio available
-            silence = np.zeros((1, self.channels), dtype=np.float32)
+            # Reshape for mono audio (1 sample, 1 channel)
+            sample_data = sample_data.reshape(1, 1)
+            
             frame = AudioFrame.from_ndarray(
-                silence,
-                format='flt',
+                sample_data,
+                format='flt', 
                 layout='mono' if self.channels == 1 else 'stereo'
             )
             frame.sample_rate = self.sample_rate
             frame.pts = None
+            
             return frame
+            
         except Exception as e:
             print(f"Error receiving audio frame: {e}")
             # Return silence on error to keep the stream going
-            silence = np.zeros((1, self.channels), dtype=np.float32)
+            silence = np.zeros((1, 1), dtype=np.float32)
             frame = AudioFrame.from_ndarray(
                 silence,
                 format='flt',
