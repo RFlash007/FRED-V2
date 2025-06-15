@@ -11,6 +11,7 @@ import time
 import logging
 import argparse
 import ssl
+import numpy as np
 
 # Import configuration
 from config import config
@@ -216,30 +217,37 @@ async def offer(request):
                     print(f"🎤 Starting audio frame consumption loop for {client_ip}")
                     
                     try:
+                        buffer = []
+                        total_samples = 0
+                        CHUNK_TARGET = 8000  # 0.5 s @ 16 kHz
+
                         while True:
                             frame = await track.recv()
                             frame_count += 1
-                            
+
                             if frame_count == 1:
                                 print(f"🎤 FIRST AUDIO FRAME RECEIVED from {client_ip}")
-                            elif frame_count % 100 == 0:
+                            elif frame_count % 500 == 0:
                                 print(f"🎵 Audio frame #{frame_count} received from {client_ip}")
-                            
+
                             pcm = frame.to_ndarray()
 
-                            # pcm.shape for mono should be (1, samples)
-                            if pcm.ndim == 2 and pcm.shape[0] > 1:
-                                # More than 1 channel – down-mix to mono on axis 0
-                                pcm = pcm.mean(axis=0)
-                                if frame_count % 200 == 0:
-                                    print("🎤 Down-mixed multi-channel audio to mono")
+                            # Shape (1, samples) -> flatten to samples
+                            if pcm.ndim == 2:
+                                pcm = pcm.flatten()
 
-                            # Forward to STT – throttle log noise
-                            if frame_count <= 5 or frame_count % 200 == 0:
-                                print(f"🎤 Forwarding Pi audio to STT: {pcm.shape} from {client_ip}")
+                            buffer.append(pcm)
+                            total_samples += pcm.shape[0]
 
-                            stt_service.audio_queue.put((pcm, True))  # (audio_data, from_pi)
-                            
+                            if total_samples >= CHUNK_TARGET:
+                                chunk = np.concatenate(buffer)
+                                stt_service.audio_queue.put((chunk, True))
+                                buffer = []
+                                total_samples = 0
+                                # Occasional debug
+                                if frame_count % 1000 == 0:
+                                    print(f"🎤 Sent {len(chunk)} samples to STT from {client_ip}")
+
                     except Exception as e:
                         print(f"❌ Audio frame consumption ended for {client_ip}: {e}")
                         import traceback

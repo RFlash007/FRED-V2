@@ -148,8 +148,6 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
 
             if self.samples_sent == frame_samples:
                 print("🚀 FIRST AUDIO FRAME SENT!")
-            elif self.samples_sent % (frame_samples * 50) == 0:  # every second
-                print(f"📢 Sent {self.samples_sent // frame_samples} audio frames")
 
             return frame
             
