@@ -121,7 +121,7 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
                 # size. Convert to numpy array for AudioFrame.
                 samples = [self.audio_buffer.popleft() for _ in range(frame_samples)]
 
-            pcm = np.array(samples, dtype=np.float32)  # (samples,)
+            pcm = np.array(samples, dtype=np.float32).reshape(1, -1)  # (channels, samples) mono planar
 
             frame = AudioFrame.from_ndarray(pcm, format='flt', layout='mono')
             frame.sample_rate = self.sample_rate
