@@ -89,10 +89,11 @@ class Config:
     
     # Vision Configuration
     VISION_PROCESSING_INTERVAL = 10              # seconds between vision processing
-    VISION_MODEL = "llama3.2-vision:11b"        # multimodal model for vision (1120x1120 optimal)
+    VISION_MODEL = "qwen2.5vl:7b"               # multimodal model for vision (3584x3584 maximum)
     VISION_ENABLED = True                       # enable/disable vision processing
-    VISION_FRAME_QUALITY = 1.0                 # JPEG compression quality - Maximum for Llama 3.2 Vision (1120x1120 optimal)
+    VISION_FRAME_QUALITY = 1.0                 # JPEG compression quality - Maximum for Qwen 2.5-VL (3584x3584 maximum)
     VISION_MAX_DESCRIPTION_LENGTH = 0           # max chars for scene description (0 = unlimited)
+    VISION_RESOLUTION = 3584                    # maximum resolution for Qwen 2.5-VL (3584x3584 = 12.8 MP)
     
     # Pi Glasses Configuration
     PI_HEARTBEAT_INTERVAL = 30                  # seconds between heartbeats

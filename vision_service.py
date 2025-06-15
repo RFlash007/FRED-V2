@@ -116,7 +116,7 @@ class VisionService:
             logger.error(f"Error requesting frame from Pi: {e}")
     
     async def _process_current_frame(self):
-        """Process the current frame with Llama 3.2 Vision 11B"""
+        """Process the current frame with Qwen 2.5-VL 7B"""
         if not self.current_frame:
             return
         
@@ -131,7 +131,7 @@ class VisionService:
             print(f"📝 Vision prompt created: {len(prompt)} chars")
             
             print("🧠 Sending to Ollama for vision analysis...")
-            # Call Llama 3.2 Vision 11B
+            # Call Qwen 2.5-VL 7B
             response = await asyncio.to_thread(
                 self.ollama_client.chat,
                 model=self.model,
@@ -160,7 +160,7 @@ class VisionService:
             
         except ollama.ResponseError as e:
             print(f"❌ Ollama vision model error: {e}")
-            print("💡 Make sure 'ollama serve' is running and 'llama3.2-vision:11b' model is installed")
+            print("💡 Make sure 'ollama serve' is running and 'qwen2.5vl:7b' model is installed")
             logger.error(f"Ollama vision model error: {e}")
             self.current_scene_description = "Vision processing temporarily unavailable."
         except Exception as e:
