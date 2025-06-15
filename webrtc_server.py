@@ -226,15 +226,18 @@ async def offer(request):
                                 print(f"🎵 Audio frame #{frame_count} received from {client_ip}")
                             
                             pcm = frame.to_ndarray()
-                            
-                            # Convert stereo to mono if needed (STT expects mono)
-                            if len(pcm.shape) > 1 and pcm.shape[1] > 1:
-                                pcm = pcm.mean(axis=1)  # Average stereo channels to mono
-                                print(f"🎤 Converted stereo to mono for STT processing")
-                            
-                            # Mark this audio as coming from Pi and forward to STT pipeline
-                            # The True flag indicates this audio came from Pi glasses
-                            print(f"🎤 Forwarding Pi audio to STT: {pcm.shape} samples from {client_ip}")
+
+                            # pcm.shape for mono should be (1, samples)
+                            if pcm.ndim == 2 and pcm.shape[0] > 1:
+                                # More than 1 channel – down-mix to mono on axis 0
+                                pcm = pcm.mean(axis=0)
+                                if frame_count % 200 == 0:
+                                    print("🎤 Down-mixed multi-channel audio to mono")
+
+                            # Forward to STT – throttle log noise
+                            if frame_count <= 5 or frame_count % 200 == 0:
+                                print(f"🎤 Forwarding Pi audio to STT: {pcm.shape} from {client_ip}")
+
                             stt_service.audio_queue.put((pcm, True))  # (audio_data, from_pi)
                             
                     except Exception as e:
