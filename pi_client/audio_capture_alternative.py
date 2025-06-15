@@ -22,7 +22,7 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
     """
     kind = "audio"
     
-    def __init__(self, device=None, sample_rate=16000, channels=1, blocksize=512):
+    def __init__(self, device=None, sample_rate=16000, channels=1, blocksize=320):
         super().__init__()
         self.device = device
         self.sample_rate = sample_rate
@@ -130,6 +130,11 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
 
             self.samples_sent += frame_samples
 
+            if self.samples_sent == frame_samples:
+                print("🚀 FIRST AUDIO FRAME SENT!")
+            elif self.samples_sent % (frame_samples * 50) == 0:  # every second
+                print(f"📢 Sent {self.samples_sent // frame_samples} audio frames")
+
             return frame
             
         except Exception as e:
@@ -197,7 +202,7 @@ def create_sounddevice_audio_track():
             device=device_id,
             sample_rate=16000,
             channels=1,
-            blocksize=512  # Smaller blocks to reduce overflow
+            blocksize=320  # 20 ms blocks at 16 kHz to match WebRTC frame size
         )
         
         return audio_track
