@@ -84,19 +84,16 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
                 None, self.audio_queue.get, True, 0.1
             )
             
-            # Convert from block format to individual samples for aiortc
-            # aiortc expects samples one at a time, not in blocks
-            for i in range(len(audio_data)):
-                # Create individual frame for each sample
-                sample = audio_data[i].reshape(1, self.channels)
-                frame = AudioFrame.from_ndarray(
-                    sample,
-                    format='flt',
-                    layout='mono' if self.channels == 1 else 'stereo'
-                )
-                frame.sample_rate = self.sample_rate
-                frame.pts = None  # Let aiortc handle timestamps
-                return frame
+            # Convert entire block to AudioFrame for aiortc
+            # aiortc can handle block-based audio frames efficiently
+            frame = AudioFrame.from_ndarray(
+                audio_data,
+                format='flt',
+                layout='mono' if self.channels == 1 else 'stereo'
+            )
+            frame.sample_rate = self.sample_rate
+            frame.pts = None  # Let aiortc handle timestamps
+            return frame
             
         except queue.Empty:
             # Return silence if no audio available

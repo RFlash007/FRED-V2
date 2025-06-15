@@ -171,13 +171,7 @@ class VisionService:
     
     def _create_vision_prompt(self):
         """Create detailed prompt for scene analysis"""
-        base_prompt = """Describe this scene in comprehensive detail, including:
-- All objects, people, and their specific positions/locations
-- Current activities or actions taking place
-- Environmental context (lighting, setting, atmosphere)
-- Any text, screens, or displays visible
-- Spatial relationships between elements
-- Colors, materials, and notable details
+        base_prompt = """Describe this scene concisely, focusing on key objects/people, their positions/actions, environmental factors, text content, spatial relationships, and notable colors/materials.
 
 """
         

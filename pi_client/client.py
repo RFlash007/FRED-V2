@@ -78,7 +78,7 @@ def create_local_tracks(video=True, audio=True):
                     sensor_modes = self.picam2.sensor_modes
                     max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
                     max_res = max_mode['size']
-                    print(f"🎯 Using full FOV at {max_res} (will resize to 3584x3584 for Qwen 2.5-VL maximum quality)")
+                    print(f"🎯 Using native resolution {max_res} = {(max_res[0] * max_res[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL - no upscaling needed!)")
                     
                     config = self.picam2.create_video_configuration(
                         main={"size": max_res, "format": "RGB888"},  # Full sensor resolution for maximum FOV
@@ -107,19 +107,13 @@ def create_local_tracks(video=True, audio=True):
                         array = self.picam2.capture_array("main")
                     except Exception as e:
                         print(f"💥 Failed to capture frame from Picamera2: {e}")
-                        # As a fallback, create a black frame. This prevents the stream from dying.
-                        array = np.zeros((3584, 3584, 3), dtype=np.uint8)
+                        # As a fallback, create a black frame at native resolution
+                        array = np.zeros((2464, 3280, 3), dtype=np.uint8)
                     
-                    # Always resize to perfect 3584x3584 for Qwen 2.5-VL maximum quality (preserves full FOV)
-                    if array.shape[:2] != (3584, 3584):
-                        from PIL import Image
-                        img = Image.fromarray(array)
-                        # Use high-quality Lanczos resampling to preserve detail while resizing
-                        img_resized = img.resize((3584, 3584), Image.Resampling.LANCZOS)
-                        array = np.array(img_resized)
-                        if self.frame_count == 1:
-                            original_shape = img.size
-                            print(f"📐 Full FOV: {original_shape} → 3584x3584 (Qwen 2.5-VL maximum quality - 12.8 MP)")
+                    # Use native camera resolution - no resizing needed!
+                    # Native 3280x2464 = 8.1 MP is within Qwen 2.5-VL's 12.8 MP budget
+                    if self.frame_count == 1:
+                        print(f"📐 Native Resolution: {array.shape[1]}x{array.shape[0]} = {(array.shape[0] * array.shape[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL)")
                     
                     # Convert to video frame for aiortc
                     frame = av.VideoFrame.from_ndarray(array, format="rgb24")
