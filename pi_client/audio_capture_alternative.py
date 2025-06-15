@@ -29,6 +29,10 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
         self.stream = None
         self._running = False
         
+        # Start audio capture immediately when track is created
+        print("🎤 Auto-starting audio capture for WebRTC...")
+        self.start()
+        
     def start(self):
         """Start audio capture"""
         if self._running:

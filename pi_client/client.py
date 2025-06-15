@@ -159,34 +159,35 @@ def create_local_tracks(video=True, audio=True):
             if audio_track:
                 tracks.append(audio_track)
                 print("✅ Audio working with sounddevice")
-                return tracks
+                # Don't return early - continue to add video track if requested
         except ImportError:
             print("  sounddevice not available, trying ALSA methods")
         except Exception as e:
             print(f"  sounddevice failed: {e}")
         
-        # Basic ALSA approaches with correct format syntax
-        audio_configs = [
-            ('hw:3,0', None, {'sample_rate': '16000', 'channels': '1'}),  # Your CORSAIR card
-            ('hw:1,0', None, {'sample_rate': '16000', 'channels': '1'}),
-            ('hw:0,0', None, {'sample_rate': '16000', 'channels': '1'}),
-            ('default', None, {'sample_rate': '16000', 'channels': '1'}),
-        ]
-        
-        for device, fmt, options in audio_configs:
-            try:
-                print(f"  Trying ALSA device: {device}")
-                player = MediaPlayer(device, format='alsa', options=options)
-                if player.audio:
-                    tracks.append(player.audio)
-                    print(f"✅ Audio working: {device}")
-                    break
-            except Exception as e:
-                print(f"  Failed {device}: {e}")
-                continue
-        
+        # Basic ALSA approaches with correct format syntax (only if sounddevice didn't work)
         if not any(hasattr(t, 'kind') and getattr(t, 'kind', None) == 'audio' for t in tracks):
-            print("⚠️  No audio capture working - continuing without audio")
+            audio_configs = [
+                ('hw:3,0', None, {'sample_rate': '16000', 'channels': '1'}),  # Your CORSAIR card
+                ('hw:1,0', None, {'sample_rate': '16000', 'channels': '1'}),
+                ('hw:0,0', None, {'sample_rate': '16000', 'channels': '1'}),
+                ('default', None, {'sample_rate': '16000', 'channels': '1'}),
+            ]
+            
+            for device, fmt, options in audio_configs:
+                try:
+                    print(f"  Trying ALSA device: {device}")
+                    player = MediaPlayer(device, format='alsa', options=options)
+                    if player.audio:
+                        tracks.append(player.audio)
+                        print(f"✅ Audio working: {device}")
+                        break
+                except Exception as e:
+                    print(f"  Failed {device}: {e}")
+                    continue
+            
+            if not any(hasattr(t, 'kind') and getattr(t, 'kind', None) == 'audio' for t in tracks):
+                print("⚠️  No audio capture working - continuing without audio")
     
     print(f"📊 Total tracks created: {len(tracks)}")
     for i, track in enumerate(tracks):
