@@ -135,7 +135,10 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
             pcm_f32 = np.array(samples, dtype=np.float32)
             pcm_i16 = (np.clip(pcm_f32, -1.0, 1.0) * 32767).astype(np.int16)
 
-            # Interleaved mono s16 expects a 1-D array of samples
+            # For packed (interleaved) formats, PyAV expects shape (samples, channels)
+            # so we provide (320, 1) for mono.
+            pcm_i16 = np.expand_dims(pcm_i16, axis=1)
+
             frame = AudioFrame.from_ndarray(pcm_i16, format='s16', layout='mono')
             frame.sample_rate = self.sample_rate
             frame.pts = self.samples_sent
