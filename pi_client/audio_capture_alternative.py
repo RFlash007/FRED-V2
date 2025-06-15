@@ -63,17 +63,18 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
             print(f"   Channels: {self.channels}")
             
             def audio_callback(indata, frames, time, status):
-                if status:
-                    # Overflow / underflow warnings are common on low-power
-                    # devices. We log them once so the user knows something
-                    # happened but we do **not** stop the stream.
-                    print(f"Audio status: {status}")
+                try:
+                    if status:
+                        print(f"🎧 PortAudio status: {status}")
 
-                # Flatten to mono float32 regardless of channel count
-                mono = indata.mean(axis=1).astype(np.float32)
+                    # Flatten to mono float32 regardless of channel count
+                    mono = indata.mean(axis=1).astype(np.float32)
 
-                with self.buffer_lock:
-                    self.audio_buffer.extend(mono)
+                    with self.buffer_lock:
+                        self.audio_buffer.extend(mono)
+                except Exception as cb_err:
+                    # Catch ANY error so the stream doesn't silently abort
+                    print(f"💥 Audio callback exception: {cb_err}")
             
             self.stream = sd.InputStream(
                 device=self.device,
@@ -94,11 +95,15 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
     
     def stop(self):
         """Stop audio capture"""
+        print("⚠️ SoundDeviceAudioTrack.stop() invoked – cleaning up stream")
         if self.stream:
-            self.stream.stop()
-            self.stream.close()
-            self._running = False
-            print("🛑 Audio capture stopped")
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception as e:
+                print(f"⚠️ Error closing stream: {e}")
+        self._running = False
+        print("🛑 Audio capture stopped")
     
     async def recv(self):
         """Receive audio frames for WebRTC"""
