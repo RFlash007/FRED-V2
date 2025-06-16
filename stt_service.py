@@ -231,7 +231,16 @@ class STTService:
                     audio_chunk, from_pi = queue_item, False
                     print(f"[DEBUG] Processing local audio chunk ({len(audio_chunk)} samples)")
                 
-                audio_data = audio_chunk.flatten().astype(np.float32)  # EXACT same as old system
+                # Normalize audio to float32 [-1, 1] for Whisper
+                if isinstance(audio_chunk, np.ndarray):
+                    if np.issubdtype(audio_chunk.dtype, np.integer):
+                        # Assume int16 range
+                        audio_data = audio_chunk.astype(np.float32) / 32768.0
+                    else:
+                        audio_data = audio_chunk.flatten().astype(np.float32)
+                else:
+                    # Fallback – ensure numpy
+                    audio_data = np.asarray(audio_chunk, dtype=np.float32) / 32768.0
                 
                 # Calculate audio level - EXACT same as old system
                 audio_level = np.abs(audio_data).mean()
