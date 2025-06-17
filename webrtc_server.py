@@ -12,6 +12,7 @@ import logging
 import argparse
 import ssl
 import numpy as np
+from scipy.signal import resample_poly
 
 # Import configuration
 from config import config
@@ -219,8 +220,8 @@ async def offer(request):
                     try:
                         buffer = []
                         total_samples = 0
-                        # Use same 5-second (80 000-sample) block size as local mic path for consistency
-                        CHUNK_TARGET = config.get_stt_blocksize()  # 80 000 samples @ 16 kHz
+                        # Pi-audio: use ~3-second chunk (48 000 samples @16 kHz) for lower latency
+                        CHUNK_TARGET = config.STT_SAMPLE_RATE * 3  # 48 000 samples
 
                         while True:
                             frame = await track.recv()
@@ -236,6 +237,18 @@ async def offer(request):
                             # Shape (1, samples) -> flatten to samples
                             if pcm.ndim == 2:
                                 pcm = pcm.flatten()
+
+                            # Ensure sample rate consistency (WebRTC delivers 48 kHz by default)
+                            input_sr = getattr(frame, 'sample_rate', 48000)
+                            target_sr = config.STT_SAMPLE_RATE
+                            if input_sr != target_sr:
+                                try:
+                                    pcm_f32 = pcm.astype(np.float32)
+                                    pcm_resampled = resample_poly(pcm_f32, target_sr, input_sr)
+                                    pcm = np.clip(pcm_resampled, -32768, 32767).astype(np.int16)
+                                except Exception as rs_err:
+                                    print(f"⚠️ Resample error ({input_sr}->{target_sr}): {rs_err}")
+                                    # fallback: use original pcm (may reduce accuracy)
 
                             buffer.append(pcm)
                             total_samples += pcm.shape[0]

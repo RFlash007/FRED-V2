@@ -629,8 +629,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # Store response with thinking in history
             fred_state.add_conversation_turn('assistant', assistant_response, raw_thinking.strip())
             
-            # TTS - route audio to appropriate device
-            from_pi_glasses = data.get('from_pi_glasses', False)
+            # TTS - route audio to appropriate device (use outer-scope flag)
             target_device = 'pi' if from_pi_glasses else 'local'
             fred_speak(assistant_response, mute_fred, target_device)
             yield json.dumps({'type': 'done'}) + '\n'

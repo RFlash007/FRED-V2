@@ -50,7 +50,7 @@ class STTService:
         self.blocksize = config.get_stt_blocksize()
         
         # FIX 3: Match old system VAD settings exactly
-        self.silence_threshold = config.STT_SILENCE_THRESHOLD  # Exact same as old system
+        self.silence_threshold = 0.007  # Default threshold for Pi glasses audio (user adjustment)
         self.calibration_samples = []
         self.calibration_duration = config.STT_CALIBRATION_DURATION  # seconds
         self.silence_duration = config.STT_SILENCE_DURATION  # Exact same as old system (not 0.8)
