@@ -219,7 +219,8 @@ async def offer(request):
                     try:
                         buffer = []
                         total_samples = 0
-                        CHUNK_TARGET = 8000  # 0.5 s @ 16 kHz
+                        # Increase chunk size to ~1 s (16 000 samples) for better Whisper accuracy
+                        CHUNK_TARGET = 16000  # 1 s @ 16 kHz
 
                         while True:
                             frame = await track.recv()

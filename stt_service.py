@@ -65,6 +65,9 @@ class STTService:
         self.stop_words = config.STOP_WORDS
         self.acknowledgments = config.ACKNOWLEDGMENTS
         
+        # Counter to throttle debug logs for Pi audio chunks
+        self._pi_chunk_counter = 0
+        
     def initialize(self):
         """Initialize the Whisper model with maximum performance optimization"""
         if self.is_initialized:
@@ -226,7 +229,10 @@ class STTService:
                 if isinstance(queue_item, tuple):
                     audio_chunk, from_pi = queue_item
                     if from_pi:
-                        print(f"[DEBUG] Processing Pi audio chunk ({len(audio_chunk)} samples)")
+                        # Throttle verbose logging to avoid console spam – print every 20th chunk (~10 s)
+                        self._pi_chunk_counter += 1
+                        if self._pi_chunk_counter % 20 == 0:
+                            print(f"[DEBUG] Processing Pi audio chunk #{self._pi_chunk_counter} ({len(audio_chunk)} samples)")
                 else:
                     audio_chunk, from_pi = queue_item, False
                     print(f"[DEBUG] Processing local audio chunk ({len(audio_chunk)} samples)")
