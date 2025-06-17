@@ -1,3 +1,10 @@
+#!/usr/bin/env python3
+
+"""
+Speech-to-Text Service for F.R.E.D.
+Ultra-fast Whisper Large V3 Turbo with Vault-Tec Integration
+"""
+
 import io
 import threading
 import time
@@ -14,7 +21,7 @@ import psutil  # Add for system optimization
 import sounddevice as sd  # ADD: Direct audio capture like old system
 import queue  # ADD: Proper queue for audio processing
 import sys  # ADD: For printing to stderr
-from config import config
+from config import *
 
 # === TERMINAL TRANSCRIPTION LOGGING ===
 def print_transcription_to_terminal(text, source="TRANSCRIPTION"):
@@ -44,16 +51,16 @@ class STTService:
         self.processing_audio = False  # Prevent double processing
         
         # FIX 2: Match old system audio settings exactly
-        self.sample_rate = config.STT_SAMPLE_RATE
-        self.channels = config.STT_CHANNELS
-        self.block_duration = config.STT_BLOCK_DURATION  # 5 second blocks like v1
-        self.blocksize = config.get_stt_blocksize()
+        self.sample_rate = STT_SAMPLE_RATE
+        self.channels = STT_CHANNELS
+        self.block_duration = STT_BLOCK_DURATION
+        self.blocksize = int(self.sample_rate * self.block_duration)
         
         # FIX 3: Match old system VAD settings exactly
-        self.silence_threshold = config.STT_SILENCE_THRESHOLD  # Default for local mic (will be recalibrated)
+        self.silence_threshold = STT_SILENCE_THRESHOLD  # Default for local mic (will be recalibrated)
         self.calibration_samples = []
-        self.calibration_duration = config.STT_CALIBRATION_DURATION  # seconds
-        self.silence_duration = config.STT_SILENCE_DURATION  # Exact same as old system (not 0.8)
+        self.calibration_duration = STT_CALIBRATION_DURATION  # seconds
+        self.silence_duration = STT_SILENCE_DURATION  # Exact same as old system (not 0.8)
         
         # ADD: Audio stream components like old system
         self.stream = None
@@ -61,24 +68,25 @@ class STTService:
         self.is_running = False
         
         # Wake words and responses like v1
-        self.wake_words = config.WAKE_WORDS
-        self.stop_words = config.STOP_WORDS
-        self.acknowledgments = config.ACKNOWLEDGMENTS
+        self.wake_words = WAKE_WORDS
+        self.stop_words = STOP_WORDS
+        self.acknowledgments = ACKNOWLEDGMENTS
         
         # Counter to throttle debug logs for Pi audio chunks
         self._pi_chunk_counter = 0
         
-        # Phrases to ignore due to Whisper hallucinations on silence
+        # Enhanced phrases to ignore due to Whisper hallucinations on silence
         self._ignore_phrases = {
             "thanks for watching!", "thanks for watching", " thanks for watching!", " thanks for watching",
             "thank you for watching", "thank you for watching!", " thank you for watching",
             "please subscribe", "like and subscribe", "don't forget to subscribe",
             "see you next time", "see you later", "goodbye", " goodbye",
-            "music", " music", "♪", "[music]", "[Music]", "(music)", "(Music)"
+            "music", " music", "♪", "[music]", "[Music]", "(music)", "(Music)",
+            "subtitles by", "captions by", "transcribed by", "transcription by"
         }
         
         # Separate threshold for Pi audio
-        self.pi_silence_threshold = config.STT_PI_SILENCE_THRESHOLD
+        self.pi_silence_threshold = STT_PI_SILENCE_THRESHOLD
         self._pi_threshold_set = False
         
         # Throttle frequency of continuous audio-level debug prints
@@ -89,7 +97,7 @@ class STTService:
         """Initialize the Whisper model with maximum performance optimization"""
         if self.is_initialized:
             return True
-            
+
         try:
             # Detect system capabilities
             cpu_cores = os.cpu_count()
@@ -99,20 +107,17 @@ class STTService:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             
             # Use quantized model for speed while maintaining accuracy
-            if device == "cuda":
-                compute_type = config.STT_COMPUTE_TYPE if hasattr(config, 'STT_COMPUTE_TYPE') else "int8"
-            else:
-                compute_type = "int8"  # Always use quantized on CPU
+            compute_type = STT_COMPUTE_TYPE
             
-            logger.info(f"[VAULT-NET] Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM")
-            logger.info(f"[NEURAL-NET] Initializing Whisper large-v3 (quantized) on {device.upper()}")
+            print(f"[VAULT-NET] Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM")
+            print(f"[NEURAL-NET] Initializing Whisper {STT_MODEL_SIZE} (quantized) on {device.upper()}")
             
             # Optimize CPU threads - use most but not all cores to avoid blocking
             cpu_threads = max(1, cpu_cores - 1)
             
-            # Use large-v3 model with quantization for best accuracy/speed balance
-            model_size = config.STT_MODEL_SIZE
-            logger.info(f"[JARVIS-MODE] Loading {model_size} model with {compute_type} quantization")
+            # Use turbo model with quantization for best speed/accuracy balance
+            model_size = STT_MODEL_SIZE
+            print(f"[JARVIS-MODE] Loading {model_size} model with {compute_type} quantization")
             
             # Initialize with optimized settings for real-time accuracy
             self.model = WhisperModel(
@@ -132,12 +137,12 @@ class STTService:
                     current_process.nice(psutil.HIGH_PRIORITY_CLASS)
                 else:  # Linux/Mac
                     current_process.nice(-10)  # Higher priority
-                logger.info("[SYSTEM] High priority mode enabled for real-time processing")
+                print("[SYSTEM] High priority mode enabled for real-time processing")
             except Exception as e:
                 logger.warning(f"[WARNING] Could not set process priority: {e}")
             
             self.is_initialized = True
-            logger.info(f"[SUCCESS] Speech recognition online - {model_size} quantized model ready")
+            print(f"[SUCCESS] Speech recognition online - {model_size} quantized model ready")
             return True
             
         except Exception as e:
@@ -223,9 +228,11 @@ class STTService:
                 audio_data = self.audio_queue.get()
                 audio_level = np.abs(audio_data).mean()  # Simple amplitude like v1
                 self.calibration_samples.append(audio_level)
-                print(f"[DEBUG] Calibration sample: {audio_level:.6f}")
+                # Reduced calibration logging frequency
+                if len(self.calibration_samples) % 5 == 0:
+                    print(f"[DEBUG] Calibration sample: {audio_level:.6f}")
             time.sleep(0.1)
-        
+                
         if self.calibration_samples:
             # Set threshold slightly above the average ambient noise like v1
             avg_noise = np.mean(self.calibration_samples)
@@ -237,7 +244,7 @@ class STTService:
         print()
     
     def _process_audio_loop(self):
-        """Main audio processing loop - EXACTLY like old system"""
+        """Main audio processing loop with reduced debug spam"""
         while self.is_processing and not self.terminate_event.is_set():
             try:
                 if self.audio_queue.empty():
@@ -258,13 +265,15 @@ class STTService:
                         print(f"[DEBUG] Pi silence threshold set to {self.silence_threshold:.6f}")
 
                     if from_pi:
-                        # Throttle verbose logging to avoid console spam – print every 20th chunk (~10 s)
+                        # MAJOR SPAM REDUCTION: Print every 3000th chunk instead of every 20th
                         self._pi_chunk_counter += 1
-                        if self._pi_chunk_counter % 20 == 0:
+                        if self._pi_chunk_counter % 3000 == 0:
                             print(f"[DEBUG] Processing Pi audio chunk #{self._pi_chunk_counter} ({len(audio_chunk)} samples)")
                 else:
                     audio_chunk, from_pi = queue_item, False
-                    print(f"[DEBUG] Processing local audio chunk ({len(audio_chunk)} samples)")
+                    # Reduced local audio logging too
+                    if self._debug_counter % 1000 == 0:
+                        print(f"[DEBUG] Processing local audio chunk ({len(audio_chunk)} samples)")
                 
                 # Normalize audio to float32 [-1, 1] for Whisper
                 if isinstance(audio_chunk, np.ndarray):
@@ -280,31 +289,36 @@ class STTService:
                 # Calculate audio level - EXACT same as old system
                 audio_level = np.abs(audio_data).mean()
                 
-                # Debug audio levels periodically - like old system
+                # REDUCED DEBUG: Audio levels much less frequently
                 if self.is_listening:
                     now = time.time()
-                    if now - self._last_level_log > 0.5:  # print at most twice per second
-                        print(f"\rAudio level: {audio_level:.6f} (Threshold: {self.silence_threshold:.6f})", end="")
+                    if now - self._last_level_log > 5.0:  # Reduced from 0.5s to 5s
+                        print(f"Audio level: {audio_level:.6f} (Threshold: {self.silence_threshold:.6f})")
                         self._last_level_log = now
                 
                 # Only process audio if level is above threshold
                 if audio_level > self.silence_threshold:
-                    # Concise processing indicator
+                    # REDUCED processing indicator frequency
                     self._debug_counter += 1
-                    if self._debug_counter % 5 == 0:  # Every 5th detection
+                    if self._debug_counter % 1000 == 0:  # Reduced from every 5th to every 1000th
+                        print(f"[PROCESSING] Speech data sent to recognition system")
                         print(f"[PROCESSING] Audio level: {audio_level:.6f}")
+                    
+                    # Show frame processing much less frequently
+                    if from_pi and self._debug_counter % 2000 == 0:
+                        print(f"[AUDIO] {self._debug_counter} frames processed")
                         
                     try:
-                        # Optimized transcription settings for accuracy
+                        # Enhanced transcription settings with turbo model optimizations
                         segments_gen, info = self.model.transcribe(
                             audio_data,
                             language="en",
-                            beam_size=config.STT_BEAM_SIZE if hasattr(config, 'STT_BEAM_SIZE') else 5,
-                            temperature=config.STT_TEMPERATURE if hasattr(config, 'STT_TEMPERATURE') else 0.0,
+                            beam_size=STT_BEAM_SIZE,
+                            temperature=STT_TEMPERATURE,
                             condition_on_previous_text=False,  # Prevent context contamination
                             word_timestamps=True,
-                            vad_filter=True,  # Use Whisper's built-in VAD
-                            vad_parameters={"min_silence_duration_ms": 500},  # 0.5s minimum silence
+                            vad_filter=STT_VAD_FILTER,
+                            vad_parameters=STT_VAD_PARAMETERS,
                             initial_prompt="This is a voice command to F.R.E.D., an AI assistant.",  # Context prompt
                             compression_ratio_threshold=2.4,
                             log_prob_threshold=-1.0,
@@ -313,15 +327,14 @@ class STTService:
 
                         # Convert generator to list for safe multiple passes
                         segments = list(segments_gen)
-                        if from_pi and segments and self._debug_counter % 10 == 0:  # Concise Pi logging
-                            print(f"[PIP-BOY] Processed {len(segments)} speech segments")
 
                         for segment in segments:
                             text = segment.text.strip().lower()
                             
                             # Enhanced hallucination filtering
                             if any(phrase in text for phrase in self._ignore_phrases):
-                                if self._debug_counter % 20 == 0:  # Occasional hallucination logging
+                                # REDUCED hallucination logging frequency
+                                if self._debug_counter % 500 == 0:
                                     print(f"[FILTER] Blocked hallucination: '{text[:30]}...'")
                                 continue
                             
@@ -371,7 +384,9 @@ class STTService:
                                         print_transcription_to_terminal(f"[COMMAND] {text} (Buffer: {len(self.speech_buffer)})", "VOICE COMMAND")
 
                     except Exception as e:
-                        print(f"[ERROR] Transcription failed: {str(e)}")
+                        # REDUCED error logging frequency
+                        if self._debug_counter % 100 == 0:
+                            print(f"[ERROR] Transcription failed: {str(e)}")
                         logger.error(f"Error during transcription: {str(e)}")
                 else:
                     # Check for complete utterance with improved logic
@@ -400,8 +415,10 @@ class STTService:
                             self.is_listening = True
 
             except Exception as e:
-                logger.error(f"Error in audio processing loop: {e}")
-                print(f"[DEBUG] Audio processing loop error: {e}")
+                # REDUCED error loop logging frequency
+                if self._debug_counter % 200 == 0:
+                    logger.error(f"Error in audio processing loop: {e}")
+                    print(f"[DEBUG] Audio processing loop error: {e}")
                 time.sleep(0.5)
             
             # ADD: Same timing as old system
@@ -462,5 +479,25 @@ class STTService:
             logger.error(f"Error transcribing file: {e}")
             return ""
 
+    def add_audio_data(self, audio_data, from_pi=False):
+        """Add audio data to processing queue - for WebRTC integration"""
+        self.audio_queue.put((audio_data, from_pi))
+
 # Global STT service instance
-stt_service = STTService() 
+stt_service = STTService()
+
+def main():
+    """Initialize and run F.R.E.D.'s voice recognition service"""
+    print("[VAULT-TEC] F.R.E.D. Neural Voice Recognition System")
+    print("=" * 55)
+    
+    try:
+        service = stt_service
+        asyncio.run(service.start_server())
+    except KeyboardInterrupt:
+        print("\n[SHUTDOWN] Voice recognition matrix offline")
+    except Exception as e:
+        print(f"[CRITICAL] Voice system initialization failed: {e}")
+
+if __name__ == "__main__":
+    main() 
