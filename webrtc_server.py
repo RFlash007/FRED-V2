@@ -219,8 +219,8 @@ async def offer(request):
                     try:
                         buffer = []
                         total_samples = 0
-                        # Increase chunk size to ~2 s (32 000 samples) for better Whisper accuracy/wake-word detection
-                        CHUNK_TARGET = 32000  # 2 s @ 16 kHz
+                        # Use same 5-second (80 000-sample) block size as local mic path for consistency
+                        CHUNK_TARGET = config.get_stt_blocksize()  # 80 000 samples @ 16 kHz
 
                         while True:
                             frame = await track.recv()

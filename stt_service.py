@@ -68,6 +68,9 @@ class STTService:
         # Counter to throttle debug logs for Pi audio chunks
         self._pi_chunk_counter = 0
         
+        # Phrases to ignore due to Whisper hallucinations on silence
+        self._ignore_phrases = {"thanks for watching!", "thanks for watching", " thanks for watching!", " thanks for watching"}
+        
     def initialize(self):
         """Initialize the Whisper model with maximum performance optimization"""
         if self.is_initialized:
@@ -188,7 +191,7 @@ class STTService:
         """Calibrate the silence threshold based on ambient noise - EXACTLY like old system"""
         if self.stream is None:
             print("🍇 Pi glasses mode - skipping microphone calibration (will use Pi audio)")
-            self.silence_threshold = 0.01  # Default threshold for Pi glasses
+            self.silence_threshold = 0.012  # Default threshold for Pi glasses audio
             print(f"Using default Pi glasses threshold: {self.silence_threshold:.6f}")
             print()
             return
@@ -260,20 +263,28 @@ class STTService:
                     print(f"\nDetected text processing... Level: {audio_level:.6f} > {self.silence_threshold:.6f}")
                     try:
                         # FIX 6: Use EXACT transcription settings as old system
-                        segments, _ = self.model.transcribe(
+                        segments_gen, _ = self.model.transcribe(
                             audio_data,  # Use flattened audio like old system
                             language="en",
-                            sample_rate=self.sample_rate,
                             beam_size=5,  # Same as old system
+                            condition_on_previous_text=False,
                             word_timestamps=True  # Same as old system
-                            # REMOVED all the extra parameters that old system doesn't use
                         )
 
+                        # Convert generator to list for safe multiple passes
+                        segments = list(segments_gen)
                         if from_pi:
-                            print(f"[DEBUG] Whisper returned {len(segments)} segments for Pi chunk")
+                            print(f"[DEBUG] Whisper produced {len(segments)} segments for Pi chunk")
 
                         for segment in segments:
+                            if from_pi:
+                                print(f"[DEBUG] Pi raw segment: '{segment.text}'")
                             text = segment.text.strip().lower()
+                            
+                            # Filter out known hallucination phrases
+                            if text in self._ignore_phrases:
+                                print(f"[DEBUG] Ignored hallucinated phrase: '{text}'")
+                                continue
                             
                             if text and text != "thanks for watching!":
                                 source_type = "Pi Glasses" if from_pi else "Local Computer"
