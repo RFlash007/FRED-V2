@@ -1,365 +1,496 @@
-#!/usr/bin/env python3
-
-"""
-F.R.E.D. Pip-Boy Interface v2.0
-Field Operations Communication System
-
-Advanced AI-powered reconnaissance and communication device
-for wasteland operations and mainframe connectivity.
-"""
-
 import asyncio
+import argparse
+import requests
+import os
 import json
 import time
-import argparse
-import contextlib
-import io
-from aiortc import RTCPeerConnection, RTCSessionDescription, VideoStreamTrack, AudioStreamTrack
-from aiortc.contrib.media import MediaRecorder
-import aiohttp
-import cv2
-import numpy as np
-import logging
-
-# Configure logging to suppress verbose output
-logging.getLogger("libav").setLevel(logging.CRITICAL)
-logging.getLogger("aioice").setLevel(logging.CRITICAL)
-logging.getLogger("aiortc").setLevel(logging.CRITICAL)
-
-# Suppress Picamera2 verbose logging
 import sys
-old_stdout = sys.stdout
-old_stderr = sys.stderr
+import base64
+import tempfile
+import subprocess
+from aiortc import RTCPeerConnection, RTCSessionDescription
+from aiortc.contrib.media import MediaPlayer
 
-def print_vault_header():
-    """Display the Pip-Boy startup sequence"""
+def play_audio_from_base64(audio_b64, format_type='wav'):
+    """Decode base64 audio and play it on the Pi."""
+    try:
+        # Decode base64 audio
+        audio_data = base64.b64decode(audio_b64)
+        print(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
+            temp_file.write(audio_data)
+            temp_file_path = temp_file.name
+        
+        # Play using aplay (ALSA) - most reliable on Pi
+        try:
+            subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
+            print("[SUCCESS] F.R.E.D. voice transmission complete")
+        except subprocess.CalledProcessError as e:
+            # Fallback to paplay (PulseAudio)
+            try:
+                subprocess.run(['paplay', temp_file_path], check=True, capture_output=True)
+                print("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)")
+            except subprocess.CalledProcessError as e2:
+                # Last resort: mpv
+                try:
+                    subprocess.run(['mpv', '--no-video', temp_file_path], check=True, capture_output=True)
+                    print("[SUCCESS] F.R.E.D. voice transmission complete (mpv)")
+                except subprocess.CalledProcessError as e3:
+                    print(f"[CRITICAL] All audio protocols failed - check Pip-Boy speakers")
+        
+        # Clean up temporary file
+        try:
+            os.unlink(temp_file_path)
+        except Exception as cleanup_err:
+            print(f"[WARNING] Failed to purge audio cache: {cleanup_err}")
+            
+    except Exception as e:
+        print(f"[CRITICAL] Audio playback system failure: {e}")
+
+import numpy as np
+
+
+def create_local_tracks(video=True, audio=True):
+    tracks = []
+    
+    if video:
+        print("🎥 Setting up video with Picamera2...")
+        try:
+            from picamera2 import Picamera2
+            import libcamera
+            from aiortc import VideoStreamTrack
+            import av
+
+            class PiCamera2Track(VideoStreamTrack):
+                """
+                A video track that streams video from a Picamera2 camera.
+                This is the modern, recommended approach for Raspberry Pi.
+                """
+                def __init__(self):
+                    super().__init__()
+                    print("📸 Initializing Picamera2...")
+                    self.picam2 = Picamera2()
+                    
+                    # Configure for Qwen 2.5-VL 7B - Maximum quality approach
+                    # Capture at maximum available resolution for full field of view
+                    sensor_modes = self.picam2.sensor_modes
+                    max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
+                    max_res = max_mode['size']
+                    print(f"🎯 Using native resolution {max_res} = {(max_res[0] * max_res[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL - no upscaling needed!)")
+                    
+                    config = self.picam2.create_video_configuration(
+                        main={"size": max_res, "format": "RGB888"},  # Full sensor resolution for maximum FOV
+                        controls={
+                            "FrameRate": 5,  # Lower FPS for on-demand processing
+                            "Brightness": 0.1,  # Slightly brighter for better AI analysis
+                            "Contrast": 1.1,    # Enhanced contrast
+                            "Saturation": 1.0,  # Natural colors
+                            # "NoiseReductionMode": libcamera.controls.NoiseReductionModeEnum.Off, # Removed: Causes crash on newer libcamera
+                        },
+                        buffer_count=2  # Minimize buffer for low latency
+                    )
+                    self.picam2.configure(config)
+                    self.picam2.start()
+                    
+                    self.frame_count = 0
+                    self.start_time = time.time()
+                    print("✅ Picamera2 initialized successfully.")
+
+                async def recv(self):
+                    """Receive video frames from the camera."""
+                    pts, time_base = await self.next_timestamp()
+                    
+                    # Get the frame from Picamera2
+                    try:
+                        array = self.picam2.capture_array("main")
+                    except Exception as e:
+                        print(f"💥 Failed to capture frame from Picamera2: {e}")
+                        # As a fallback, create a black frame at native resolution
+                        array = np.zeros((2464, 3280, 3), dtype=np.uint8)
+                    
+                    # Use native camera resolution - no resizing needed!
+                    # Native 3280x2464 = 8.1 MP is within Qwen 2.5-VL's 12.8 MP budget
+                    if self.frame_count == 1:
+                        print(f"📐 Native Resolution: {array.shape[1]}x{array.shape[0]} = {(array.shape[0] * array.shape[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL)")
+                    
+                    # Convert to video frame for aiortc
+                    frame = av.VideoFrame.from_ndarray(array, format="rgb24")
+                    frame.pts = pts
+                    frame.time_base = time_base
+
+                    self.frame_count += 1
+                    if self.frame_count == 1:
+                        print(f"🚀 First frame sent! Size: {array.shape}")
+                    elif self.frame_count % 150 == 0: # Log every ~10 seconds
+                        elapsed = time.time() - self.start_time
+                        if elapsed > 0:
+                            fps = self.frame_count / elapsed
+                            print(f"📊 Sent {self.frame_count} frames. Average FPS: {fps:.2f}")
+
+                    return frame
+
+                def __del__(self):
+                    """Cleanup camera resources."""
+                    print("🧹 Stopping Picamera2...")
+                    if self.picam2.is_open:
+                        self.picam2.stop()
+                    print("✅ Picamera2 stopped.")
+
+            tracks.append(PiCamera2Track())
+            print("✅ Picamera2 video track created successfully!")
+            
+        except ImportError:
+            print("❌ Picamera2 library not found. Please run: pip install picamera2")
+        except Exception as e:
+            print(f"❌ Picamera2 video setup failed: {e}")
+            print("   Ensure libcamera is working. You can test with 'libcamera-hello'.")
+            import traceback
+            traceback.print_exc()
+    
+    if audio:
+        print("🎤 Setting up audio...")
+        
+        # Try sounddevice first if available
+        try:
+            from audio_capture_alternative import create_sounddevice_audio_track
+            audio_track = create_sounddevice_audio_track()
+            if audio_track:
+                tracks.append(audio_track)
+                print("✅ Audio working with sounddevice")
+                # Don't return early - continue to add video track if requested
+        except ImportError:
+            print("  sounddevice not available, trying ALSA methods")
+        except Exception as e:
+            print(f"  sounddevice failed: {e}")
+        
+        # Basic ALSA approaches with correct format syntax (only if sounddevice didn't work)
+        if not any(hasattr(t, 'kind') and getattr(t, 'kind', None) == 'audio' for t in tracks):
+            audio_configs = [
+                ('hw:3,0', None, {'sample_rate': '16000', 'channels': '1'}),  # Your CORSAIR card
+                ('hw:1,0', None, {'sample_rate': '16000', 'channels': '1'}),
+                ('hw:0,0', None, {'sample_rate': '16000', 'channels': '1'}),
+                ('default', None, {'sample_rate': '16000', 'channels': '1'}),
+            ]
+            
+            for device, fmt, options in audio_configs:
+                try:
+                    print(f"  Trying ALSA device: {device}")
+                    player = MediaPlayer(device, format='alsa', options=options)
+                    if player.audio:
+                        tracks.append(player.audio)
+                        print(f"✅ Audio working: {device}")
+                        break
+                except Exception as e:
+                    print(f"  Failed {device}: {e}")
+                    continue
+            
+            if not any(hasattr(t, 'kind') and getattr(t, 'kind', None) == 'audio' for t in tracks):
+                print("⚠️  No audio capture working - continuing without audio")
+    
+    print(f"📊 Total tracks created: {len(tracks)}")
+    for i, track in enumerate(tracks):
+        if hasattr(track, 'kind'):
+            print(f"  Track {i+1}: {track.kind}")
+        else:
+            print(f"  Track {i+1}: {type(track).__name__}")
+    
+    return tracks
+
+
+def get_server_url(provided_url=None):
+    """Auto-discover server URL with multiple fallback methods"""
+    
+    if provided_url:
+        print(f"🎯 Using provided server: {provided_url}")
+        return provided_url
+    
+    print("🔍 Auto-discovering F.R.E.D. server...")
+    
+    # Method 1: Check for tunnel info file (for remote access)
+    tunnel_files = [
+        os.path.expanduser("~/tunnel_info.json"),      # Home directory
+        "tunnel_info.json",                            # Current directory
+        "../tunnel_info.json"                         # Parent directory
+    ]
+    
+    for tunnel_file in tunnel_files:
+        if os.path.exists(tunnel_file):
+            print(f"📡 Found tunnel file: {tunnel_file}")
+            break
+    else:
+        tunnel_file = None
+    
+    if tunnel_file:
+        try:
+            with open(tunnel_file, 'r') as f:
+                tunnel_data = json.load(f)
+                if tunnel_data.get('webrtc_server'):
+                    url = tunnel_data['webrtc_server']
+                    print(f"📡 Found remote tunnel: {url}")
+                    return url
+        except Exception as e:
+            print(f"⚠️  Could not read tunnel file: {e}")
+    
+    # Method 2: Try common local network addresses
+    local_candidates = [
+        "http://192.168.50.65:8080",  # Your current setup
+        "http://192.168.1.100:8080",  # Common router range  
+        "http://192.168.0.100:8080",  # Alternative range
+        "http://192.168.1.65:8080",   # Alternative for your setup
+        "http://localhost:8080",       # Local development
+    ]
+    
+    print("🔍 Trying local network candidates...")
+    for candidate in local_candidates:
+        try:
+            print(f"  Testing: {candidate}")
+            response = requests.get(candidate, timeout=5)
+            if response.status_code == 200 and "FRED" in response.text:
+                print(f"✅ Found local server: {candidate}")
+                return candidate
+            else:
+                print(f"  Response: {response.status_code} - Not F.R.E.D. server")
+        except requests.exceptions.ConnectionError:
+            print(f"  Connection refused")
+        except requests.exceptions.Timeout:
+            print(f"  Timeout")
+        except Exception as e:
+            print(f"  Error: {e}")
+            continue
+    
+    # Method 3: Basic network scan for F.R.E.D. servers
+    print("🌐 Scanning local network for F.R.E.D. servers...")
+    try:
+        # Get local network range
+        import socket
+        hostname = socket.gethostname()
+        local_ip = socket.gethostbyname(hostname)
+        print(f"  Pi IP: {local_ip}")
+        
+        # Extract network base (assumes /24 subnet)
+        network_base = '.'.join(local_ip.split('.')[:-1])
+        print(f"  Scanning network: {network_base}.x")
+        
+        # Common server IPs to try in your network range
+        for host_ip in [65, 100, 1, 10, 50]:
+            candidate = f"http://{network_base}.{host_ip}:8080"
+            try:
+                print(f"  Testing: {candidate}")
+                response = requests.get(candidate, timeout=2)
+                if response.status_code == 200 and "FRED" in response.text:
+                    print(f"✅ Found F.R.E.D. server: {candidate}")
+                    return candidate
+            except:
+                continue
+                
+    except Exception as e:
+        print(f"  Network scan failed: {e}")
+    
+    print("\n❌ Auto-discovery failed. Please:")
+    print("1. Make sure F.R.E.D. server is running on your home computer")
+    print("2. Check that both devices are on the same network")
+    print("3. Try: python client.py --server http://YOUR_COMPUTER_IP:8080")
+    print("4. Or use ngrok URL if connecting remotely")
+    
+    raise Exception("❌ No F.R.E.D. server found. Please specify --server URL")
+
+
+async def run_with_reconnection(server_url, max_retries=5):
+    """Run client with automatic reconnection logic"""
+    
+    for attempt in range(max_retries):
+        try:
+            print(f"🔄 Connection attempt {attempt + 1}/{max_retries}")
+            await run(server_url)
+            
+        except Exception as e:
+            print(f"❌ Connection failed: {e}")
+            
+            # Clean up any lingering resources
+            print("🧹 Cleaning up resources...")
+            try:
+                # Give time for resources to be released.
+                # The camera track's __del__ method will handle its own cleanup.
+                await asyncio.sleep(1)
+                    
+            except Exception as cleanup_error:
+                print(f"Warning: Cleanup error: {cleanup_error}")
+            
+            if attempt < max_retries - 1:
+                wait_time = min(2 ** attempt, 30)  # Exponential backoff, max 30s
+                print(f"⏳ Retrying in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+            else:
+                print("💀 Max retries exceeded. Please check your connection.")
+                raise
+
+
+async def run(server_url):
+    # Configure ICE servers for better NAT traversal
+    from aiortc import RTCConfiguration, RTCIceServer
+    
+    try:
+        # Try newer aiortc API
+        ice_servers = [
+            RTCIceServer("stun:stun.l.google.com:19302"),
+            RTCIceServer("stun:stun1.l.google.com:19302")
+        ]
+        config = RTCConfiguration(iceServers=ice_servers)
+        pc = RTCPeerConnection(configuration=config)
+    except Exception:
+        # Fallback for older aiortc versions
+        print("🔧 Using legacy aiortc configuration")
+        pc = RTCPeerConnection()
+    
+    # Set up data channel for communication
+    channel = pc.createDataChannel('chat')
+    
+    @channel.on('open')
+    def on_open():
+        print('[VAULT-NET] Secure connection established with F.R.E.D. mainframe!')
+        print('[PIP-BOY] Audio/visual sensors ONLINE - ready for wasteland operations...')
+    
+    @channel.on('message')
+    def on_message(message):
+        if message.startswith('[HEARTBEAT_ACK]'):
+            # Silent acknowledgment - no logging needed for routine heartbeats
+            pass
+        elif message.startswith('[ACK]'):
+            ack_text = message.replace('[ACK] ', '')
+            print(f"[F.R.E.D.] {ack_text}")
+        elif message.startswith('[AUDIO_BASE64:'):
+            # Handle incoming audio from F.R.E.D.
+            try:
+                # Extract format and audio data
+                header_end = message.find(']')
+                format_info = message[14:header_end]  # Skip '[AUDIO_BASE64:'
+                audio_b64 = message[header_end + 1:]
+                
+                print(f"[TRANSMISSION] Incoming voice data from F.R.E.D. ({format_info})")
+                
+                # Decode and play audio
+                play_audio_from_base64(audio_b64, format_info)
+                
+            except Exception as e:
+                print(f"[ERROR] Audio processing failure: {e}")
+        else:
+            print(f'\n[F.R.E.D.] {message}')
+        
+        # Only show listening status occasionally to reduce clutter
+        if not message.startswith('[HEARTBEAT_ACK]'):
+            print('[PIP-BOY] Standing by for commands...')
+    
+    @channel.on('close')
+    def on_close():
+        print('[CRITICAL] Connection to F.R.E.D. mainframe terminated')
+        # This will cause the connection to fail and trigger reconnection
+        raise Exception("Data channel closed")
+    
+    # Add tracks (video and audio)
+    tracks = create_local_tracks(video=True, audio=True)
+    
+    if not tracks:
+        print("⚠️  No media tracks available - connecting with data channel only")
+    
+    for track in tracks:
+        pc.addTrack(track)
+        track_kind = getattr(track, 'kind', 'unknown')
+        track_type = type(track).__name__
+        print(f"📡 Added {track_kind} track ({track_type})")
+        
+        # Add extra logging for video tracks
+        if hasattr(track, 'kind') and track.kind == 'video':
+            print(f"  📹 Video track details: {track_type}")
+            if hasattr(track, 'picam2'):
+                print(f"     Picamera2 initialized: {track.picam2 is not None}")
+    
+    # Create offer and connect
+    offer = await pc.createOffer()
+    await pc.setLocalDescription(offer)
+    
+    try:
+        print(f"🔗 Connecting to {server_url}/offer...")
+        
+        # Add authentication header
+        headers = {
+            'Authorization': 'Bearer fred_pi_glasses_2024',
+            'Content-Type': 'application/json'
+        }
+        
+        response = requests.post(f'{server_url}/offer', json={
+            'sdp': pc.localDescription.sdp,
+            'type': pc.localDescription.type
+        }, headers=headers, timeout=15)  # Increased timeout for remote connections
+        
+        if response.status_code == 200:
+            answer = RTCSessionDescription(**response.json())
+            await pc.setRemoteDescription(answer)
+            print("🚀 F.R.E.D. Pi Glasses connected and ready!")
+        else:
+            print(f"❌ Server error: {response.status_code}")
+            raise Exception(f"Server returned {response.status_code}")
+            
+    except requests.exceptions.Timeout:
+        raise Exception("Connection timeout - server may be unreachable")
+    except requests.exceptions.ConnectionError:
+        raise Exception("Connection refused - server may be down")
+    except Exception as e:
+        raise Exception(f"Connection failed: {e}")
+    
+    # Keep connection alive with heartbeat
+    start_time = time.time()
+    heartbeat_interval = 30  # seconds
+    last_heartbeat = start_time
+    
+    while True:
+        try:
+            await asyncio.sleep(1)
+            
+            # Send heartbeat periodically (silent unless there's an issue)
+            current_time = time.time()
+            if current_time - last_heartbeat > heartbeat_interval:
+                if channel.readyState == 'open':
+                    channel.send('[HEARTBEAT]')
+                    last_heartbeat = current_time
+                    # Only log heartbeat occasionally for conciseness
+                    if int(current_time) % 120 == 0:  # Every 2 minutes
+                        print("[VITAL-MONITOR] Pip-Boy status confirmed")
+                else:
+                    raise Exception("Data channel not open")
+                    
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"[CRITICAL] Connection to mainframe lost: {e}")
+            raise
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--server', help='F.R.E.D. server URL (auto-discovery if not provided)')
+    parser.add_argument('--max-retries', type=int, default=5, help='Maximum connection retry attempts')
+    args = parser.parse_args()
+    
     print("═══════════════════════════════════════════════════")
     print("     F.R.E.D. Pip-Boy Interface v2.0")
     print("     Field Operations Communication System")
     print("═══════════════════════════════════════════════════")
-
-try:
-    # Suppress Picamera2 initialization messages
-    sys.stdout = contextlib.redirect_stdout(io.StringIO())
-    sys.stderr = contextlib.redirect_stderr(io.StringIO())
     
-    from picamera2 import Picamera2
-    from picamera2.encoders import H264Encoder
-    from picamera2.outputs import CircularOutput
-    import sounddevice as sd
-    
-    # Restore stdout/stderr
-    sys.stdout = old_stdout  
-    sys.stderr = old_stderr
-    
-except ImportError as e:
-    # Restore stdout/stderr
-    sys.stdout = old_stdout
-    sys.stderr = old_stderr
-    print(f"[ERROR] Required dependencies not found: {e}")
-    print("[INFO] Please run: pip install picamera2 sounddevice")
-    exit(1)
-
-class PiCamera2Track(VideoStreamTrack):
-    """
-    Pip-Boy Visual Reconnaissance System
-    Advanced camera interface for wasteland surveillance
-    """
-    kind = "video"
-
-    def __init__(self):
-        super().__init__()
-        self.picam2 = None
-        self.camera_ready = False
-        self.frame_count = 0
-        self.start_time = time.time()
+    try:
+        # Auto-discover or use provided server URL
+        server_url = get_server_url(args.server)
         
-    def initialize_camera(self):
-        """Initialize Pip-Boy visual sensors"""
-        try:
-            # Suppress Picamera2 verbose output during initialization
-            with contextlib.redirect_stdout(io.StringIO()), \
-                 contextlib.redirect_stderr(io.StringIO()):
-                
-                self.picam2 = Picamera2()
-                
-                # Configure for optimal Qwen 2.5-VL performance (native 3280x2464)
-                config = self.picam2.create_video_configuration(
-                    main={"size": (3280, 2464), "format": "RGB888"},
-                    raw={"size": (3280, 2464)},
-                    lores={"size": (640, 480), "format": "YUV420"}
-                )
-                self.picam2.configure(config)
-                
-                print("🎯 Pip-Boy visual sensors: OPTIMAL resolution (8.1 MP)")
-                
-                self.picam2.start()
-                self.camera_ready = True
-                
-                print("✅ Visual reconnaissance systems ONLINE")
-                return True
-                
-        except Exception as e:
-            print(f"[CRITICAL] Pip-Boy visual systems OFFLINE: {e}")
-            return False
-    
-    async def recv(self):
-        """Capture frame from Pip-Boy visual sensors"""
-        if not self.camera_ready:
-            if not self.initialize_camera():
-                # Return a black frame if camera fails
-                pts, time_base = await self.next_timestamp()
-                frame = VideoFrame.from_ndarray(
-                    np.zeros((480, 640, 3), dtype=np.uint8), format="rgb24"
-                )
-                frame.pts = pts
-                frame.time_base = time_base
-                return frame
+        # Run with automatic reconnection
+        asyncio.run(run_with_reconnection(server_url, args.max_retries))
         
-        try:
-            array = self.picam2.capture_array()
-            
-            self.frame_count += 1
-            
-            # Status update every 150 frames (much less frequent)
-            if self.frame_count % 150 == 0:
-                elapsed = time.time() - self.start_time
-                fps = self.frame_count / elapsed
-                print(f"📊 Pip-Boy recon data: {self.frame_count} frames @ {fps:.1f} FPS")
-            
-            # Convert to VideoFrame
-            from av import VideoFrame
-            pts, time_base = await self.next_timestamp()
-            frame = VideoFrame.from_ndarray(array, format="rgb24")
-            frame.pts = pts
-            frame.time_base = time_base
-            
-            if self.frame_count == 1:
-                print("🚀 FIRST VISUAL TRANSMISSION sent to mainframe!")
-                h, w = array.shape[:2]
-                print(f"📐 Visual data specs: {w}x{h} = {(w*h)/1e6:.1f} MP")
-            
-            return frame
-            
-        except Exception as e:
-            print(f"[WARNING] Visual sensor glitch: {e}")
-            # Return black frame on error
-            pts, time_base = await self.next_timestamp()
-            frame = VideoFrame.from_ndarray(
-                np.zeros((480, 640, 3), dtype=np.uint8), format="rgb24"
-            )
-            frame.pts = pts
-            frame.time_base = time_base
-            return frame
-
-class SoundDeviceAudioTrack(AudioStreamTrack):
-    """
-    Pip-Boy Audio Communication Array
-    Military-grade voice transmission system for field operations
-    """
-    kind = "audio"
-    
-    def __init__(self, device_id=None):
-        super().__init__()
-        self.device_id = device_id
-        self.sample_rate = 16000  # Optimized for mainframe compatibility
-        self.channels = 1
-        self.frame_size = 480  # 30ms frames
-        self.audio_buffer = asyncio.Queue()
-        self.stream = None
-        self.audio_started = False
-        self.overflow_count = 0
-        self.last_overflow_warning = 0
-        
-    def find_corsair_device(self):
-        """Locate CORSAIR communication array"""
-        devices = sd.query_devices()
-        print("🔍 Scanning for communication devices:")
-        
-        corsair_device = None
-        for i, device in enumerate(devices):
-            if device['max_input_channels'] > 0:
-                device_name = device['name']
-                print(f"  {i+1}: {device_name}")
-                
-                # Prefer CORSAIR devices for field operations
-                if 'CORSAIR' in device_name.upper():
-                    corsair_device = i
-                    print(f"       👉 CORSAIR ARRAY DETECTED!")
-        
-        if corsair_device is not None:
-            print(f"🎯 Primary comms: {devices[corsair_device]['name']} (device {corsair_device+1})")
-            return corsair_device
-        else:
-            print("🎯 Using default communication array")
-            return None
-    
-    def audio_callback(self, indata, frames, time, status):
-        """Process incoming audio from field operative"""
-        if status:
-            # Only warn about overflows occasionally to avoid spam
-            if status.input_overflow:
-                self.overflow_count += 1
-                current_time = time.time()
-                if current_time - self.last_overflow_warning > 10:  # Only every 10 seconds
-                    print("⚠️ Pip-Boy audio buffer overflow - optimizing...")
-                    self.last_overflow_warning = current_time
-        
-        # Queue audio data for transmission
-        audio_data = indata.copy()
-        try:
-            self.audio_buffer.put_nowait(audio_data)
-        except asyncio.QueueFull:
-            pass  # Drop frames if queue is full (silent handling)
-    
-    async def recv(self):
-        """Receive audio from Pip-Boy communication array"""
-        if not self.audio_started:
-            device = self.find_corsair_device()
-            
-            try:
-                self.stream = sd.InputStream(
-                    device=device,
-                    channels=self.channels,
-                    samplerate=self.sample_rate,
-                    callback=self.audio_callback,
-                    blocksize=self.frame_size,
-                    dtype='float32'
-                )
-                self.stream.start()
-                self.audio_started = True
-                print("🎤 Pip-Boy audio array ONLINE")
-                print("✅ Voice transmission ready!")
-                print("🚀 FIRST AUDIO TRANSMISSION sent to mainframe!")
-                
-            except Exception as e:
-                print(f"[CRITICAL] Audio array malfunction: {e}")
-                return None
-        
-        # Wait for audio data
-        try:
-            audio_data = await asyncio.wait_for(self.audio_buffer.get(), timeout=1.0)
-            
-            # Convert to AudioFrame
-            from av import AudioFrame
-            frame = AudioFrame.from_ndarray(
-                audio_data.T,  # Transpose for av format
-                layout='mono',
-                format='flt'
-            )
-            frame.sample_rate = self.sample_rate
-            frame.pts = self.next_timestamp()
-            
-            return frame
-            
-        except asyncio.TimeoutError:
-            return None
-        except Exception as e:
-            print(f"[ERROR] Audio transmission error: {e}")
-            return None
-
-class PiClient:
-    def __init__(self, server_url):
-        self.server_url = server_url.rstrip('/')
-        self.pc = None
-        self.connection_attempts = 0
-        self.max_attempts = 5
-        
-    async def connect_to_mainframe(self):
-        """Establish secure connection to F.R.E.D. mainframe"""
-        print(f"🎯 Target mainframe: {self.server_url}")
-        
-        for attempt in range(1, self.max_attempts + 1):
-            print(f"🔄 Connection attempt {attempt}/{self.max_attempts}")
-            
-            try:
-                # Initialize Pip-Boy systems
-                print("🎥 Initializing Pip-Boy visual systems...")
-                
-                # Suppress Picamera2 verbose initialization
-                with contextlib.redirect_stdout(io.StringIO()), \
-                     contextlib.redirect_stderr(io.StringIO()):
-                    video_track = PiCamera2Track()
-                
-                print("🎤 Initializing Pip-Boy audio systems...")
-                audio_track = SoundDeviceAudioTrack()
-                
-                # Create secure peer connection
-                self.pc = RTCPeerConnection()
-                
-                # Add tracks for mainframe transmission
-                self.pc.addTrack(video_track)
-                self.pc.addTrack(audio_track)
-                
-                print(f"📊 Pip-Boy systems: 2 transmission channels ready")
-                print(f"  📹 Visual reconnaissance: {video_track.__class__.__name__}")
-                print(f"  📡 Audio communication: {audio_track.__class__.__name__}")
-                
-                # Create WebRTC offer
-                offer = await self.pc.createOffer()
-                await self.pc.setLocalDescription(offer)
-                
-                # Send offer to mainframe
-                print(f"🔗 Establishing quantum entanglement with mainframe...")
-                
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(
-                        f"{self.server_url}/offer",
-                        json={"sdp": offer.sdp, "type": offer.type},
-                        headers={"Content-Type": "application/json"}
-                    ) as response:
-                        if response.status == 200:
-                            data = await response.json()
-                            answer = RTCSessionDescription(
-                                sdp=data["sdp"], 
-                                type=data["type"]
-                            )
-                            await self.pc.setRemoteDescription(answer)
-                            
-                            print("🚀 F.R.E.D. Pip-Boy connected and OPERATIONAL!")
-                            print("[VAULT-NET] Secure connection established with F.R.E.D. mainframe!")
-                            print("[PIP-BOY] Audio/visual sensors ONLINE - ready for wasteland operations...")
-                            return True
-                        else:
-                            print(f"[ERROR] Mainframe rejected connection: {response.status}")
-                            
-            except Exception as e:
-                print(f"[ERROR] Connection attempt {attempt} failed: {e}")
-                if attempt < self.max_attempts:
-                    await asyncio.sleep(2)
-        
-        print("[CRITICAL] Unable to establish mainframe connection")
-        return False
-    
-    async def run(self):
-        """Main Pip-Boy operational loop"""
-        if await self.connect_to_mainframe():
-            try:
-                print("\n🎯 Pip-Boy field operations ACTIVE")
-                print("⚡ Press Ctrl+C to terminate field mission")
-                
-                # Keep connection alive
-                while True:
-                    await asyncio.sleep(1)
-                    
-            except KeyboardInterrupt:
-                print("\n[SHUTDOWN] Field mission terminated by operator")
-            except Exception as e:
-                print(f"[CRITICAL] Pip-Boy system error: {e}")
-            finally:
-                if self.pc:
-                    await self.pc.close()
-                    print("[SHUTDOWN] Pip-Boy systems powered down")
-
-async def main():
-    print_vault_header()
-    
-    parser = argparse.ArgumentParser(description='F.R.E.D. Pip-Boy Interface')
-    parser.add_argument('--server', required=True, help='F.R.E.D. mainframe URL')
-    args = parser.parse_args()
-    
-    client = PiClient(args.server)
-    await client.run()
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    except KeyboardInterrupt:
+        print("\n[SHUTDOWN] Field operative terminating connection")
+    except Exception as e:
+        print(f"\n[CRITICAL] System failure: {e}")
+        print("\n[VAULT-TEC] Troubleshooting protocols:")
+        print("1. Verify F.R.E.D. mainframe is operational")
+        print("2. Check wasteland communication network")
+        print("3. Try manual server specification with --server")
+        sys.exit(1)
