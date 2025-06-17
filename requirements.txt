@@ -1,7 +1,6 @@
 Flask>=3.0.0
 ollama>=0.2.0
 python-dotenv
-colorama>=0.4.6
 # Add embedding library (e.g., sentence-transformers)
 # sentence-transformers
 # Add DB drivers if needed

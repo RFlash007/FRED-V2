@@ -1,53 +1,28 @@
 # fred_theme.py
 """
-F.R.E.D. Terminal Theming Utility
-Provides a lightweight way to style and declutter console output for both the
-Raspberry Pi client (Pip-Boy) and the main F.R.E.D. server.
+Light-weight terminal theming without external packages.
 
-Usage (MUST be invoked as early as possible in the top-level script):
-
-    from fred_theme import apply_theme
-    apply_theme("pi")      # For the Pi glasses client
-    # OR
-    apply_theme("main")    # For the main server
-
-This call monkey-patches the built-in print() so that:
-  • Repetitive / noisy messages are filtered.
-  • Each line gets a Vault-Tec/Stark-Industries styled prefix & colour.
-  • ANSI colours are automatically reset (thanks to colorama).
-
-The approach keeps the existing code-base almost unchanged – no massive refactor
-of hundreds of print() calls – yet the user sees a MUCH more concise and themed
-output.
+Adds concise Vault-Tec / Stark-Industries prefixes & ANSI colours while
+filtering noisy log lines.  Works on most modern terminals; on Windows 10+
+we enable VT-100 escape sequence support via ctypes.
 """
 
 from __future__ import annotations
 
 import builtins
-import re
+import os
 from typing import List
-from colorama import init, Fore, Style
-
-# Initialise colour support (Windows included)
-init(autoreset=True)
 
 # ---------------------------------------------------------------------------
-#  INTERNAL HELPERS
+#  ANSI COLOURS & WINDOWS SUPPORT
 # ---------------------------------------------------------------------------
 
-# Skip very verbose / repetitive lines coming from lower-level libs that we
-# cannot easily silence otherwise.  You can extend this list at runtime by
-# calling `extend_skip_terms([...])`.
-_SKIP_TERMS: List[str] = [
-    "PortAudio status: input overflow",  # sounddevice buffer overflows
-    "[DEBUG]",                            # generic debug noise
-    "[VITAL-MONITOR]",                   # frequent heart-beats
-    "Audio level:",                       # continuous VAD level prints
-]
+ANSI_RESET = "\033[0m"
+ANSI_BRIGHT = "\033[1m"
 
 _THEME_COLOURS = {
-    "pi": Fore.CYAN + Style.BRIGHT,    # Pip-Boy / field unit
-    "main": Fore.GREEN + Style.BRIGHT, # Mainframe in the vault
+    "pi": ANSI_BRIGHT + "\033[36m",   # Bright Cyan
+    "main": ANSI_BRIGHT + "\033[32m", # Bright Green
 }
 
 _PREFIXES = {
@@ -55,11 +30,42 @@ _PREFIXES = {
     "main": "⟦F.R.E.D.⟧",
 }
 
-_original_print = builtins.print  # Backup original
+
+def _enable_windows_ansi():
+    """Attempt to enable ANSI escape sequence processing on Windows."""
+    if os.name != "nt":
+        return
+
+    try:
+        import ctypes
+
+        kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
+        handle = kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE = -11
+        mode = ctypes.c_uint32()
+        if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            kernel32.SetConsoleMode(handle, mode.value | 0x0004)  # ENABLE_VIRTUAL_TERMINAL_PROCESSING
+    except Exception:
+        # Fallback: no colour but still functionally works
+        _THEME_COLOURS["pi"] = ""
+        _THEME_COLOURS["main"] = ""
+
+
+_enable_windows_ansi()
+
+# ---------------------------------------------------------------------------
+#  SPAM FILTER
+# ---------------------------------------------------------------------------
+
+_SKIP_TERMS: List[str] = [
+    "PortAudio status: input overflow",
+    "[DEBUG]",
+    "[VITAL-MONITOR]",
+    "Audio level:",
+]
 
 
 def extend_skip_terms(terms: List[str]):
-    """Allow other modules to add extra noisy fragments to be filtered."""
+    """Public helper to silence extra noisy fragments during runtime."""
     _SKIP_TERMS.extend(terms)
 
 
@@ -67,29 +73,28 @@ def _should_skip(text: str) -> bool:
     return any(term in text for term in _SKIP_TERMS)
 
 
-def apply_theme(mode: str = "pi"):  # mode should be 'pi' or 'main'
-    """Patch built-in print so that logs are themed and spam reduced."""
+# Backup original print so we can still call it inside our wrapper
+_original_print = builtins.print  # type: ignore[assignment]
 
-    colour = _THEME_COLOURS.get(mode, Fore.WHITE + Style.BRIGHT)
+
+def apply_theme(mode: str = "pi") -> None:
+    """Activate themed, concise printing (mode = 'pi' or 'main')."""
+
+    colour = _THEME_COLOURS.get(mode, ANSI_BRIGHT + "\033[37m")  # Bright White default
     prefix = _PREFIXES.get(mode, "⟦SYS⟧")
 
     def themed_print(*args, **kwargs):  # type: ignore[override]
         if not args:
             return _original_print(*args, **kwargs)
 
-        # Convert first positional arg to string for filtering
-        first_arg_str = str(args[0])
-        if _should_skip(first_arg_str):
-            return  # Silenced
+        first_arg = str(args[0])
+        if _should_skip(first_arg):
+            return  # Suppressed
 
-        # Assemble message – we keep the rest of *args untouched to avoid side-effects
         message = " ".join(str(a) for a in args)
-        themed_message = f"{colour}{prefix} {message}{Style.RESET_ALL}"
-        _original_print(themed_message, **kwargs)
+        _original_print(f"{colour}{prefix} {message}{ANSI_RESET}", **kwargs)
 
-    # Monkey-patch the global print for this interpreter process
-    builtins.print = themed_print
+    builtins.print = themed_print  # Monkey-patch global print
 
-    # Optional welcome banner (concise)
-    banner = f"{colour}{prefix} Terminal styling engaged – ready for wasteland operations{Style.RESET_ALL}"
-    _original_print(banner) 
+    # Greeting banner (concise)
+    builtins.print(f"{colour}{prefix} Terminal styling engaged – ready for wasteland operations{ANSI_RESET}") 
