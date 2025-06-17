@@ -13,9 +13,13 @@ import requests
 import time
 import aiohttp
 from config import config
+from fred_theme import apply_theme
 
 # Global variable to store tunnel info
 tunnel_info = {"webrtc_server": None, "main_url": None}
+
+# Apply Vault/Stark themed logging ASAP so subsequent imports inherit it
+apply_theme("main")
 
 # It's better to import the functions directly
 from app import run_app as run_fred_server

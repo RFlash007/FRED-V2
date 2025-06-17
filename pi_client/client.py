@@ -10,6 +10,9 @@ import tempfile
 import subprocess
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer
+from fred_theme import apply_theme
+
+apply_theme("pi")
 
 def play_audio_from_base64(audio_b64, format_type='wav'):
     """Decode base64 audio and play it on the Pi."""

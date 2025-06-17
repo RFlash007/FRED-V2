@@ -304,11 +304,11 @@ class STTService:
                             condition_on_previous_text=False,  # Prevent context contamination
                             word_timestamps=True,
                             vad_filter=True,  # Use Whisper's built-in VAD
-                            vad_parameters={"min_silence_duration_ms": 500},  # 0.5s minimum silence
+                            vad_parameters={"min_silence_duration_ms": 800},  # Require 0.8s silence
                             initial_prompt="This is a voice command to F.R.E.D., an AI assistant.",  # Context prompt
                             compression_ratio_threshold=2.4,
                             log_prob_threshold=-1.0,
-                            no_speech_threshold=0.5  # Lower threshold for better detection
+                            no_speech_threshold=0.8  # More strict to ignore noise
                         )
 
                         # Convert generator to list for safe multiple passes

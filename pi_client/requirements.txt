@@ -4,3 +4,4 @@ numpy
 sounddevice
 av
 requests
+colorama>=0.4.6

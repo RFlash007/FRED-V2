@@ -65,8 +65,8 @@ class SoundDeviceAudioTrack(MediaStreamTrack):
             def audio_callback(indata, frames, time, status):
                 try:
                     if status and ('overflow' in str(status).lower()):
-                        # Throttle spam – print every 20th overflow warning
-                        if (self.samples_sent // (self.sample_rate * 0.02)) % 20 == 0:
+                        # Throttle spam – print every 100th overflow warning
+                        if (self.samples_sent // (self.sample_rate * 0.02)) % 100 == 0:
                             print(f"🎧 PortAudio status: {status}")
 
                     # Flatten to mono float32 regardless of channel count
