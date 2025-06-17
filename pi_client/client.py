@@ -10,9 +10,6 @@ import tempfile
 import subprocess
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer
-from fred_theme import apply_theme
-
-apply_theme("pi")
 
 def play_audio_from_base64(audio_b64, format_type='wav'):
     """Decode base64 audio and play it on the Pi."""
@@ -476,10 +473,10 @@ if __name__ == '__main__':
     parser.add_argument('--max-retries', type=int, default=5, help='Maximum connection retry attempts')
     args = parser.parse_args()
     
-    print("═══════════════════════════════════════════════════")
-    print("     F.R.E.D. Pip-Boy Interface v2.0")
-    print("     Field Operations Communication System")
-    print("═══════════════════════════════════════════════════")
+    print("\033[92m" + "═"*55 + "\033[0m")
+    print("\033[96m     STARK-TEC™ Pip-Boy Interface v2.0\033[0m")
+    print("\033[96m     Field Operations Communication System\033[0m")
+    print("\033[92m" + "═"*55 + "\033[0m")
     
     try:
         # Auto-discover or use provided server URL
