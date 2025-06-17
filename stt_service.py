@@ -69,7 +69,13 @@ class STTService:
         self._pi_chunk_counter = 0
         
         # Phrases to ignore due to Whisper hallucinations on silence
-        self._ignore_phrases = {"thanks for watching!", "thanks for watching", " thanks for watching!", " thanks for watching"}
+        self._ignore_phrases = {
+            "thanks for watching!", "thanks for watching", " thanks for watching!", " thanks for watching",
+            "thank you for watching", "thank you for watching!", " thank you for watching",
+            "please subscribe", "like and subscribe", "don't forget to subscribe",
+            "see you next time", "see you later", "goodbye", " goodbye",
+            "music", " music", "♪", "[music]", "[Music]", "(music)", "(Music)"
+        }
         
         # Separate threshold for Pi audio
         self.pi_silence_threshold = config.STT_PI_SILENCE_THRESHOLD
@@ -77,6 +83,7 @@ class STTService:
         
         # Throttle frequency of continuous audio-level debug prints
         self._last_level_log = 0.0
+        self._debug_counter = 0  # For concise debug output
         
     def initialize(self):
         """Initialize the Whisper model with maximum performance optimization"""
@@ -88,29 +95,34 @@ class STTService:
             cpu_cores = os.cpu_count()
             available_memory = psutil.virtual_memory().available / (1024**3)  # GB
             
-            # Try GPU first, fallback to CPU
+            # Try GPU first, fallback to CPU with quantization
             device = "cuda" if torch.cuda.is_available() else "cpu"
-            compute_type = "float16" if device == "cuda" else "float32"
             
-            logger.info(f"System specs: {cpu_cores} CPU cores, {available_memory:.1f}GB available RAM")
-            logger.info(f"Initializing Whisper model on {device} with {compute_type}")
+            # Use quantized model for speed while maintaining accuracy
+            if device == "cuda":
+                compute_type = config.STT_COMPUTE_TYPE if hasattr(config, 'STT_COMPUTE_TYPE') else "int8"
+            else:
+                compute_type = "int8"  # Always use quantized on CPU
             
-            # Optimize CPU threads - use all available cores
-            cpu_threads = cpu_cores
+            logger.info(f"[VAULT-NET] Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM")
+            logger.info(f"[NEURAL-NET] Initializing Whisper large-v3 (quantized) on {device.upper()}")
             
-            # FIX 4: Use medium model like old system for better accuracy
-            model_size = config.STT_MODEL_SIZE  # Changed from "base" to "medium"
-            logger.info(f"Using {model_size} model for better accuracy like old system")
+            # Optimize CPU threads - use most but not all cores to avoid blocking
+            cpu_threads = max(1, cpu_cores - 1)
             
-            logger.info(f"Configuring Whisper with {cpu_threads} CPU threads")
+            # Use large-v3 model with quantization for best accuracy/speed balance
+            model_size = config.STT_MODEL_SIZE
+            logger.info(f"[JARVIS-MODE] Loading {model_size} model with {compute_type} quantization")
             
-            # Initialize with maximum performance settings
+            # Initialize with optimized settings for real-time accuracy
             self.model = WhisperModel(
                 model_size,
                 device=device,
                 compute_type=compute_type,
-                cpu_threads=cpu_threads,  # Use all available cores
+                cpu_threads=cpu_threads,
                 num_workers=1,  # Single worker for real-time processing
+                download_root=None,  # Use default cache
+                local_files_only=False  # Allow downloads if needed
             )
             
             # Set process priority for better real-time performance
@@ -120,16 +132,16 @@ class STTService:
                     current_process.nice(psutil.HIGH_PRIORITY_CLASS)
                 else:  # Linux/Mac
                     current_process.nice(-10)  # Higher priority
-                logger.info("Set high process priority for better real-time performance")
+                logger.info("[SYSTEM] High priority mode enabled for real-time processing")
             except Exception as e:
-                logger.warning(f"Could not set process priority: {e}")
+                logger.warning(f"[WARNING] Could not set process priority: {e}")
             
             self.is_initialized = True
-            logger.info(f"STT Service initialized successfully with {model_size} model using {cpu_threads} threads")
+            logger.info(f"[SUCCESS] Speech recognition online - {model_size} quantized model ready")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to initialize STT service: {e}")
+            logger.error(f"[CRITICAL] Speech recognition initialization failed: {e}")
             return False
     
     # ADD: Direct audio callback like old system
@@ -277,129 +289,115 @@ class STTService:
                 
                 # Only process audio if level is above threshold
                 if audio_level > self.silence_threshold:
-                    print(f"\nDetected text processing... Level: {audio_level:.6f} > {self.silence_threshold:.6f}")
+                    # Concise processing indicator
+                    self._debug_counter += 1
+                    if self._debug_counter % 5 == 0:  # Every 5th detection
+                        print(f"[PROCESSING] Audio level: {audio_level:.6f}")
+                        
                     try:
-                        # FIX 6: Use EXACT transcription settings as old system
-                        segments_gen, _ = self.model.transcribe(
-                            audio_data,  # Use flattened audio like old system
+                        # Optimized transcription settings for accuracy
+                        segments_gen, info = self.model.transcribe(
+                            audio_data,
                             language="en",
-                            beam_size=5,  # Same as old system
-                            condition_on_previous_text=False,
-                            word_timestamps=True  # Same as old system
+                            beam_size=config.STT_BEAM_SIZE if hasattr(config, 'STT_BEAM_SIZE') else 5,
+                            temperature=config.STT_TEMPERATURE if hasattr(config, 'STT_TEMPERATURE') else 0.0,
+                            condition_on_previous_text=False,  # Prevent context contamination
+                            word_timestamps=True,
+                            vad_filter=True,  # Use Whisper's built-in VAD
+                            vad_parameters={"min_silence_duration_ms": 500},  # 0.5s minimum silence
+                            initial_prompt="This is a voice command to F.R.E.D., an AI assistant.",  # Context prompt
+                            compression_ratio_threshold=2.4,
+                            log_prob_threshold=-1.0,
+                            no_speech_threshold=0.5  # Lower threshold for better detection
                         )
 
                         # Convert generator to list for safe multiple passes
                         segments = list(segments_gen)
-                        if from_pi and segments:
-                            print(f"[DEBUG] Whisper produced {len(segments)} segments for Pi chunk")
+                        if from_pi and segments and self._debug_counter % 10 == 0:  # Concise Pi logging
+                            print(f"[PIP-BOY] Processed {len(segments)} speech segments")
 
                         for segment in segments:
-                            if from_pi:
-                                print(f"[DEBUG] Pi raw segment: '{segment.text}'")
                             text = segment.text.strip().lower()
                             
-                            # Filter out known hallucination phrases
-                            if text in self._ignore_phrases:
-                                print(f"[DEBUG] Ignored hallucinated phrase: '{text}'")
+                            # Enhanced hallucination filtering
+                            if any(phrase in text for phrase in self._ignore_phrases):
+                                if self._debug_counter % 20 == 0:  # Occasional hallucination logging
+                                    print(f"[FILTER] Blocked hallucination: '{text[:30]}...'")
                                 continue
                             
-                            if text and text != "thanks for watching!":
+                            # Filter very short or repetitive text
+                            if len(text) < 2 or text.count(text[0]) > len(text) * 0.8:
+                                continue
+                            
+                            if text and len(text.split()) > 0:
                                 source_type = "Pi Glasses" if from_pi else "Local Computer"
-                                print(f"\nDetected text from {source_type}: {text}")  # EXACT same debug as old system
+                                print(f"[RECOGNITION] {source_type}: {text}")
                                 
                                 # === TERMINAL LOGGING FOR TRANSCRIPTION ===
                                 print_transcription_to_terminal(f"[{source_type}] {text}", "SPEECH-TO-TEXT")
                                 
-                                # Check for wake words when not listening - EXACT same logic
+                                # Check for wake words when not listening
                                 if not self.is_listening:
                                     wake_word_found = any(wake_word in text for wake_word in self.wake_words)
-                                    print(f"[DEBUG] Checking wake words in '{text}'. Found: {wake_word_found} (from {source_type})")
                                     if wake_word_found:
-                                        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Wake word detected! Listening...")
-                                        # REMOVED: Acknowledgment response - F.R.E.D. now listens silently
-                                        # response = np.random.choice(self.acknowledgments)
-                                        # print(f"[DEBUG] Sending acknowledgment: '{response}'")
-                                        
-                                        # === TERMINAL LOGGING FOR WAKE WORD ===
-                                        print_transcription_to_terminal("WAKE WORD DETECTED -> Activating F.R.E.D. (Silent Mode)", "WAKE WORD")
-                                        
-                                        # REMOVED: Acknowledgment callback
-                                        # if self.transcription_callback:
-                                        #     # Send acknowledgment
-                                        #     self.transcription_callback(f"_acknowledge_{response}")
+                                        print(f"[WAKE] F.R.E.D. activated - listening mode engaged")
+                                        print_transcription_to_terminal("F.R.E.D. ACTIVATED - Ready for commands", "WAKE WORD")
                                         
                                         self.is_listening = True
                                         self.speech_buffer = []
                                         self.last_speech_time = time.time()
-                                        print("[DEBUG] Now listening for commands silently. Buffer cleared.")
                                         continue
 
-                                # Process speech while listening - EXACT same logic as old system
+                                # Process speech while listening
                                 if self.is_listening:
-                                    # Check for stop words - EXACT same logic
+                                    # Check for stop words
                                     stop_word_found = any(stop_word in text for stop_word in self.stop_words)
                                     if stop_word_found:
-                                        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Stop word detected. Going to sleep.")
-                                        
-                                        # === TERMINAL LOGGING FOR STOP WORD ===
-                                        print_transcription_to_terminal("STOP WORD DETECTED -> Deactivating F.R.E.D.", "STOP WORD")
+                                        print(f"[SLEEP] F.R.E.D. deactivated")
+                                        print_transcription_to_terminal("F.R.E.D. DEACTIVATED", "STOP WORD")
                                         
                                         if self.transcription_callback:
                                             self.transcription_callback("goodbye", from_pi)
                                         self.is_listening = False
                                         self.speech_buffer = []
-                                        print("[DEBUG] Stopped listening. Buffer cleared.")
                                         continue
                                     
-                                    # Add speech to buffer if it's not too short - EXACT same logic
-                                    if len(text.split()) > 1:  # Only add if more than one word
-                                        print(f"\nAdding to speech buffer: {text}")  # EXACT same debug as old system
+                                    # Add speech to buffer if it's substantial
+                                    words = text.split()
+                                    if len(words) > 1:  # More than one word
                                         self.last_speech_time = time.time()
                                         self.speech_buffer.append(text)
-                                        print(f"[DEBUG] Added to speech buffer ({len(text.split())} words): '{text}'")
-                                        print(f"[DEBUG] Buffer now contains {len(self.speech_buffer)} segments: {self.speech_buffer}")
-                                        
-                                        # === TERMINAL LOGGING FOR BUFFERED SPEECH ===
-                                        print_transcription_to_terminal(f"[BUFFERING] {text} (Total segments: {len(self.speech_buffer)})", "VOICE COMMAND")
-                                    else:
-                                        print(f"[DEBUG] Ignoring short text ({len(text.split())} word): '{text}'")
+                                        print(f"[BUFFER] Added: '{text}' ({len(self.speech_buffer)} segments)")
+                                        print_transcription_to_terminal(f"[COMMAND] {text} (Buffer: {len(self.speech_buffer)})", "VOICE COMMAND")
 
                     except Exception as e:
-                        print(f"\nError during transcription: {str(e)}")  # EXACT same error message
+                        print(f"[ERROR] Transcription failed: {str(e)}")
                         logger.error(f"Error during transcription: {str(e)}")
                 else:
-                    # Check for complete utterance - EXACT same logic as old system
+                    # Check for complete utterance with improved logic
                     if (self.is_listening and self.speech_buffer and 
                         time.time() - self.last_speech_time > self.silence_duration):
                         
-                        timestamp = datetime.now().strftime("%H:%M:%S")
                         complete_utterance = " ".join(self.speech_buffer)
-                        print(f"\n[{timestamp}] Processing complete utterance: {complete_utterance}")  # EXACT same as old system
-                        
-                        # === TERMINAL LOGGING FOR COMPLETE UTTERANCE ===
-                        print_transcription_to_terminal(f"COMPLETE COMMAND: '{complete_utterance}'", "FINAL TRANSCRIPTION")
+                        print(f"[COMMAND] Processing: '{complete_utterance}'")
+                        print_transcription_to_terminal(f"FINAL COMMAND: '{complete_utterance}'", "FINAL TRANSCRIPTION")
                         
                         self.speech_buffer = []
-                        
-                        # Temporarily stop listening while processing - EXACT same as old system
                         self.is_listening = False
-                        print("[DEBUG] Temporarily stopped listening for processing")
                         
                         try:
                             if self.transcription_callback:
                                 source_type = "Pi Glasses" if from_pi else "Local Computer"
-                                print(f"\nProcessing message from {source_type} through callback...")  # EXACT same as old system
-                                print(f"[DEBUG] Sending complete utterance to callback: '{complete_utterance}' (from_pi={from_pi})")
+                                print(f"[RELAY] Sending to F.R.E.D. from {source_type}")
                                 self.transcription_callback(complete_utterance, from_pi)
                             
-                            # Resume listening after response - EXACT same as old system
+                            # Resume listening
                             self.is_listening = True
-                            print("\nListening for next input...")  # EXACT same as old system
-                            print("[DEBUG] Resumed listening after processing")
+                            print("[READY] Listening for next command")
                         except Exception as e:
-                            print(f"\nError in callback processing: {str(e)}")  # EXACT same error message
+                            print(f"[ERROR] Command processing failed: {str(e)}")
                             logger.error(f"Error in callback processing: {str(e)}")
-                            self.is_listening = True  # Ensure we resume listening
+                            self.is_listening = True
 
             except Exception as e:
                 logger.error(f"Error in audio processing loop: {e}")

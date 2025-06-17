@@ -15,52 +15,40 @@ def play_audio_from_base64(audio_b64, format_type='wav'):
     """Decode base64 audio and play it on the Pi."""
     try:
         # Decode base64 audio
-        print(f"   🔄 Decoding {len(audio_b64)} chars of base64 audio...")
         audio_data = base64.b64decode(audio_b64)
-        print(f"   ✅ Decoded to {len(audio_data)} bytes of {format_type} audio")
+        print(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
         
         # Create temporary file
         with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
             temp_file.write(audio_data)
             temp_file_path = temp_file.name
         
-        print(f"   💾 Saved audio to: {temp_file_path}")
-        print(f"   🎵 Playing F.R.E.D.'s voice ({len(audio_data)} bytes)")
-        
         # Play using aplay (ALSA) - most reliable on Pi
         try:
-            print("   🔊 Trying aplay (ALSA)...")
-            result = subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
-            print("   ✅ Audio played successfully with aplay")
+            subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
+            print("[SUCCESS] F.R.E.D. voice transmission complete")
         except subprocess.CalledProcessError as e:
             # Fallback to paplay (PulseAudio)
             try:
-                print("   🔊 aplay failed, trying paplay (PulseAudio)...")
                 subprocess.run(['paplay', temp_file_path], check=True, capture_output=True)
-                print("   ✅ Audio played successfully with paplay")
+                print("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)")
             except subprocess.CalledProcessError as e2:
                 # Last resort: mpv
                 try:
-                    print("   🔊 paplay failed, trying mpv...")
                     subprocess.run(['mpv', '--no-video', temp_file_path], check=True, capture_output=True)
-                    print("   ✅ Audio played successfully with mpv")
+                    print("[SUCCESS] F.R.E.D. voice transmission complete (mpv)")
                 except subprocess.CalledProcessError as e3:
-                    print(f"   ❌ All audio playback methods failed:")
-                    print(f"     aplay error: {e}")
-                    print(f"     paplay error: {e2}")  
-                    print(f"     mpv error: {e3}")
+                    print(f"[CRITICAL] All audio protocols failed - check Pip-Boy speakers")
         
         # Clean up temporary file
         try:
             os.unlink(temp_file_path)
-            print(f"   🧹 Cleaned up temp file: {temp_file_path}")
         except Exception as cleanup_err:
-            print(f"   ⚠️ Failed to cleanup temp file: {cleanup_err}")
+            print(f"[WARNING] Failed to purge audio cache: {cleanup_err}")
             
     except Exception as e:
-        print(f"   ❌ Audio playback error: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"[CRITICAL] Audio playback system failure: {e}")
+
 import numpy as np
 
 
@@ -361,16 +349,17 @@ async def run(server_url):
     
     @channel.on('open')
     def on_open():
-        print('✅ Connected to F.R.E.D. server!')
-        print('🎤 You can now speak - F.R.E.D. is listening...')
+        print('[VAULT-NET] Secure connection established with F.R.E.D. mainframe!')
+        print('[PIP-BOY] Audio/visual sensors ONLINE - ready for wasteland operations...')
     
     @channel.on('message')
     def on_message(message):
         if message.startswith('[HEARTBEAT_ACK]'):
-            print(f"🤖 F.R.E.D.: {message}")
+            # Silent acknowledgment - no logging needed for routine heartbeats
+            pass
         elif message.startswith('[ACK]'):
             ack_text = message.replace('[ACK] ', '')
-            print(f"🤖 F.R.E.D.: {ack_text}")
+            print(f"[F.R.E.D.] {ack_text}")
         elif message.startswith('[AUDIO_BASE64:'):
             # Handle incoming audio from F.R.E.D.
             try:
@@ -379,25 +368,23 @@ async def run(server_url):
                 format_info = message[14:header_end]  # Skip '[AUDIO_BASE64:'
                 audio_b64 = message[header_end + 1:]
                 
-                print(f"🎵 Received audio from F.R.E.D.:")
-                print(f"   📊 Audio data: {len(audio_b64)} chars base64")
-                print(f"   📄 Format: {format_info}")
-                print(f"   🔊 Starting playback...")
+                print(f"[TRANSMISSION] Incoming voice data from F.R.E.D. ({format_info})")
                 
                 # Decode and play audio
                 play_audio_from_base64(audio_b64, format_info)
                 
             except Exception as e:
-                print(f"❌ Error processing audio: {e}")
-                import traceback
-                traceback.print_exc()
+                print(f"[ERROR] Audio processing failure: {e}")
         else:
-            print(f'\n🤖 F.R.E.D.: {message}')
-        print('🎤 Listening...')
+            print(f'\n[F.R.E.D.] {message}')
+        
+        # Only show listening status occasionally to reduce clutter
+        if not message.startswith('[HEARTBEAT_ACK]'):
+            print('[PIP-BOY] Standing by for commands...')
     
     @channel.on('close')
     def on_close():
-        print('❌ Disconnected from F.R.E.D. server')
+        print('[CRITICAL] Connection to F.R.E.D. mainframe terminated')
         # This will cause the connection to fail and trigger reconnection
         raise Exception("Data channel closed")
     
@@ -461,20 +448,22 @@ async def run(server_url):
         try:
             await asyncio.sleep(1)
             
-            # Send heartbeat periodically
+            # Send heartbeat periodically (silent unless there's an issue)
             current_time = time.time()
             if current_time - last_heartbeat > heartbeat_interval:
                 if channel.readyState == 'open':
                     channel.send('[HEARTBEAT]')
                     last_heartbeat = current_time
-                    print("💓 Heartbeat sent")
+                    # Only log heartbeat occasionally for conciseness
+                    if int(current_time) % 120 == 0:  # Every 2 minutes
+                        print("[VITAL-MONITOR] Pip-Boy status confirmed")
                 else:
                     raise Exception("Data channel not open")
                     
         except asyncio.CancelledError:
             break
         except Exception as e:
-            print(f"❌ Connection lost: {e}")
+            print(f"[CRITICAL] Connection to mainframe lost: {e}")
             raise
 
 
@@ -484,7 +473,10 @@ if __name__ == '__main__':
     parser.add_argument('--max-retries', type=int, default=5, help='Maximum connection retry attempts')
     args = parser.parse_args()
     
-    print("🍇 F.R.E.D. Pi Glasses - Connecting...")
+    print("═══════════════════════════════════════════════════")
+    print("     F.R.E.D. Pip-Boy Interface v2.0")
+    print("     Field Operations Communication System")
+    print("═══════════════════════════════════════════════════")
     
     try:
         # Auto-discover or use provided server URL
@@ -494,11 +486,11 @@ if __name__ == '__main__':
         asyncio.run(run_with_reconnection(server_url, args.max_retries))
         
     except KeyboardInterrupt:
-        print("\n🛑 Stopped by user")
+        print("\n[SHUTDOWN] Field operative terminating connection")
     except Exception as e:
-        print(f"\n💀 Fatal error: {e}")
-        print("\nTroubleshooting tips:")
-        print("1. Check if F.R.E.D. server is running")
-        print("2. Verify network connectivity")
-        print("3. Try specifying --server URL manually")
+        print(f"\n[CRITICAL] System failure: {e}")
+        print("\n[VAULT-TEC] Troubleshooting protocols:")
+        print("1. Verify F.R.E.D. mainframe is operational")
+        print("2. Check wasteland communication network")
+        print("3. Try manual server specification with --server")
         sys.exit(1)

@@ -130,9 +130,9 @@ def initialize_tts():
             device = "cuda" if torch.cuda.is_available() else "cpu"
             tts_engine = TTS(config.XTTS_MODEL_NAME).to(device)
             fred_state.set_tts_engine(tts_engine)
-            logging.info(f"TTS engine initialized on {device}")
+            logging.info(f"[JARVIS-MODE] Voice synthesis matrix loaded on {device.upper()}")
         except Exception as e:
-            logging.error(f"Failed to initialize TTS: {e}")
+            logging.error(f"[CRITICAL] Voice synthesis initialization failed: {e}")
             fred_state.set_tts_engine(None)
 
 # Load System Prompt
@@ -299,18 +299,18 @@ def fred_speak(text, mute_fred=False, target_device='local'):
         target_device: 'local' for main computer, 'pi' for Pi glasses, 'all' for both
     """
     if mute_fred:
-        print(f"🔇 TTS muted - not speaking: '{text[:50]}...'")
+        print(f"[VAULT-TEC] Audio protocols disabled - transmission suppressed: '{text[:50]}...'")
         return
         
     if not text.strip():
-        print("⚠️ Empty text provided to TTS - skipping")
+        print("[VAULT-TEC] Warning: Empty transmission detected - aborting voice synthesis")
         return
         
     if not os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-        print(f"❌ Speaker reference file not found: {config.FRED_SPEAKER_WAV_PATH}")
+        print(f"[CRITICAL] Voice matrix file missing: {config.FRED_SPEAKER_WAV_PATH}")
         return
 
-    print(f"🎤 TTS Request - Target: {target_device} | Text: '{text[:50]}...'")
+    print(f"[F.R.E.D.] Initializing voice synthesis - Target: {target_device.upper()} | '{text[:50]}...'")
 
     # Cleanup previous file
     if fred_state.last_played_wav and os.path.exists(fred_state.last_played_wav):
@@ -329,28 +329,28 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             logging.warning("TTS engine not initialized, skipping speech generation")
             return
 
-        print(f"🔊 Generating TTS audio to: {output_path}")
+        print(f"[JARVIS-MODE] Synthesizing neural voice patterns → {output_path}")
         tts_engine.tts_to_file(
             text=text,
             speaker_wav=config.FRED_SPEAKER_WAV_PATH,
             language=config.FRED_LANGUAGE,
             file_path=output_path
         )
-        print(f"✅ TTS audio generated successfully")
+        print(f"[SUCCESS] Voice synthesis complete - audio matrix ready")
 
         # Route audio based on target device
         if target_device in ['local', 'all']:
             # Play locally on main computer
-            print(f"🔊 Playing locally: {text[:50]}...")
+            print(f"[LOCAL-COMM] Broadcasting to main terminal: '{text[:50]}...'")
             playsound.playsound(output_path, block=False)
 
         if target_device in ['pi', 'all']:
             # Send audio to Pi glasses
-            print(f"📡 Sending audio to Pi glasses...")
+            print(f"[TRANSMISSION] Routing audio to Pip-Boy interface...")
             send_audio_to_pi(output_path, text)
 
         if target_device not in ['local', 'pi', 'all']:
-            print(f"⚠️ Unknown target device '{target_device}', defaulting to local")
+            print(f"[ERROR] Unknown device '{target_device}' - defaulting to local broadcast")
             playsound.playsound(output_path, block=False)
 
         # Schedule cleanup after a delay
@@ -359,7 +359,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             try:
                 if os.path.exists(output_path):
                     os.remove(output_path)
-                    print(f"🧹 Cleaned up TTS file: {output_path}")
+                    print(f"[CLEANUP] Voice file purged from memory banks")
             except Exception:
                 pass
 
@@ -368,30 +368,30 @@ def fred_speak(text, mute_fred=False, target_device='local'):
 
     except Exception as e:
         logging.error(f"TTS error: {e}")
-        print(f"❌ TTS generation failed: {e}")
+        print(f"[CRITICAL] Voice synthesis failure: {e}")
 
 def send_audio_to_pi(audio_file_path, text):
     """Send audio file to connected Pi clients."""
     try:
         import base64
         
-        print(f"📡 Processing audio for Pi clients...")
-        print(f"   📄 Audio file: {audio_file_path}")
-        print(f"   💬 Text: '{text[:50]}...'")
+        print(f"[PIP-BOY] Initiating wasteland communication protocol...")
+        print(f"   → Audio matrix: {audio_file_path}")
+        print(f"   → Message: '{text[:50]}...'")
         
         # Check if file exists
         if not os.path.exists(audio_file_path):
-            print(f"❌ Audio file not found: {audio_file_path}")
+            print(f"[ERROR] Audio matrix not found in data banks: {audio_file_path}")
             return
         
         # Read audio file and encode as base64
         with open(audio_file_path, 'rb') as f:
             audio_data = f.read()
         
-        print(f"   📊 Audio file size: {len(audio_data)} bytes")
+        print(f"   → Data size: {len(audio_data)} bytes")
         
         audio_b64 = base64.b64encode(audio_data).decode('utf-8')
-        print(f"   🔄 Encoded to base64: {len(audio_b64)} chars")
+        print(f"   → Encoded for transmission: {len(audio_b64)} chars")
         
         # Send via SocketIO to WebRTC server
         payload = {
@@ -400,15 +400,16 @@ def send_audio_to_pi(audio_file_path, text):
             'format': 'wav'
         }
         
-        print(f"   📤 Emitting fred_audio event via SocketIO...")
+        print(f"   → Broadcasting via secure channel...")
         socketio.emit('fred_audio', payload)
         
-        print(f"✅ Audio successfully sent to WebRTC server for Pi forwarding")
-        print(f"   🎤 {len(audio_data)} bytes → '{text[:30]}...'")
+        print(f"[SUCCESS] Transmission complete - audio routed to field operative")
+        print(f"   → Payload: {len(audio_data)} bytes → '{text[:30]}...'")
         
     except Exception as e:
         logging.error(f"Error sending audio to Pi: {e}")
-        print(f"❌ Failed to send audio to Pi: {e}")
+        print(f"[CRITICAL] Pip-Boy transmission failure: {e}")
+        import traceback
         traceback.print_exc()
 
 def cleanup_wav_files():
@@ -780,8 +781,8 @@ def handle_disconnect():
 
 @socketio.on('webrtc_server_connected')
 def handle_webrtc_server_connect():
-    print("🌉 WebRTC server connected to main F.R.E.D. server")
-    emit('status', {'message': 'WebRTC bridge established'})
+    print("[BRIDGE] WebRTC communication bridge established")
+    emit('status', {'message': 'WebRTC bridge online'})
 
 @socketio.on('start_stt')
 def handle_start_stt():
@@ -821,11 +822,11 @@ def handle_voice_message(data):
 # --- Main Execution ---
 def run_app():
     """Starts the F.R.E.D. main server using Flask-SocketIO."""
-    print(f"[INFO] Starting F.R.E.D. server on http://{config.HOST}:{config.PORT}")
+    print(f"[MAINFRAME] F.R.E.D. intelligence core initializing on http://{config.HOST}:{config.PORT}")
     try:
         socketio.run(app, host=config.HOST, port=config.PORT, debug=False, use_reloader=False)
     except Exception as e:
-        print(f"Error starting F.R.E.D. server: {e}")
+        print(f"[CRITICAL] Mainframe startup failure: {e}")
 
 if __name__ == '__main__':
     cleanup_wav_files()
@@ -833,9 +834,9 @@ if __name__ == '__main__':
     # Check Ollama connection
     try:
         requests.get(config.OLLAMA_BASE_URL, timeout=2)
-        print(f"[INFO] Ollama connected at {config.OLLAMA_BASE_URL}")
+        print(f"[NEURAL-NET] AI model interface connected")
     except:
-        logging.warning("Could not connect to Ollama")
+        logging.warning("[WARNING] AI model interface not responding")
     
     # Initialize TTS
     initialize_tts()

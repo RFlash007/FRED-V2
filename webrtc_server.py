@@ -97,7 +97,7 @@ async def offer(request):
         pc = RTCPeerConnection()
         pcs.add(pc)
         
-        logging.info(f"New Pi glasses connection from {client_ip}")
+        logging.info(f"[VAULT-NET] New Pip-Boy connection from {client_ip}")
 
         # Initialize media recorder (blackhole – we don't save media)
         recorder = MediaBlackhole()
@@ -119,13 +119,13 @@ async def offer(request):
                 if not text or not text.strip():
                     return
 
-                logging.info(f"[PI TRANSCRIPTION] -> '{text}'")
+                logging.info(f"[PIP-BOY COMM] Field operative transmission → '{text}'")
 
                 # Prepare chat request for main server
                 payload = {
                     "message": text,
                     "model": config.DEFAULT_MODEL,
-                    "mute_fred": True,  # Disable TTS on main server for Pi-originated queries
+                    "mute_fred": False,  # Enable TTS for Pi glasses - F.R.E.D. speaks through the glasses
                     "from_pi_glasses": True,
                 }
 
@@ -172,50 +172,43 @@ async def offer(request):
         def on_datachannel(channel):
             data_channels.add(channel)
             pi_clients.add(channel)  # Track Pi clients
-            print(f"Data channel '{channel.label}' opened from {client_ip}")
+            print(f"[PIP-BOY] Data channel '{channel.label}' established with field operative at {client_ip}")
             
             # Notify vision service that Pi is connected
             vision_service.set_pi_connection_status(True)
-            print(f"Pi glasses connected - starting vision processing")
+            print(f"[OPTICS] Pip-Boy visual sensors ONLINE - initiating reconnaissance protocols")
             
             @channel.on('message')
             def on_message(message):
                 # Handle heartbeat messages
                 if message == '[HEARTBEAT]':
-                    print(f"💓 Heartbeat received from {client_ip}")
+                    print(f"[VITAL-MONITOR] Pip-Boy heartbeat confirmed from {client_ip}")
                     channel.send('[HEARTBEAT_ACK]')
                 else:
-                    print(f"Message from Pi glasses: {message}")
+                    print(f"[PIP-BOY COMM] Field operative message: {message}")
             
             @channel.on('close')
             def on_close():
                 data_channels.discard(channel)
                 pi_clients.discard(channel)
-                print(f"Data channel '{channel.label}' closed from {client_ip}")
+                print(f"[PIP-BOY] Data channel '{channel.label}' closed from {client_ip}")
                 
                 # If no more Pi clients, stop vision processing
                 if not pi_clients:
                     vision_service.set_pi_connection_status(False)
-                    print(f"Pi glasses disconnected - stopping vision processing")
+                    print(f"[OPTICS] All Pip-Boys disconnected - reconnaissance protocols OFFLINE")
 
         @pc.on('track')
         async def on_track(track):
-            print(f"📡 Received {track.kind} track from Pi client {client_ip}")
-            print(f"📡 Track ID: {getattr(track, 'id', 'unknown')}")
-            print(f"📡 Track kind: {track.kind}")
-            print(f"📡 Track readyState: {getattr(track, 'readyState', 'unknown')}")
-            print(f"📡 Track enabled: {getattr(track, 'enabled', 'unknown')}")
-            print(f"📡 Track muted: {getattr(track, 'muted', 'unknown')}")
+            print(f"[SIGNAL] {track.kind.upper()} link established with field operative {client_ip}")
+            
             if track.kind == 'audio':
-                print("🎤 Setting up audio frame processing...")
-                print(f"🎤 Audio track details: {track}")
-                print(f"🎤 Track readyState: {getattr(track, 'readyState', 'unknown')}")
+                print("[AUDIO] Voice communication protocols active")
                 frame_count = 0
                 
                 # Create a task to consume audio frames from the track
                 async def consume_audio_frames():
                     nonlocal frame_count
-                    print(f"🎤 Starting audio frame consumption loop for {client_ip}")
                     
                     try:
                         buffer = []
@@ -228,9 +221,10 @@ async def offer(request):
                             frame_count += 1
 
                             if frame_count == 1:
-                                print(f"🎤 FIRST AUDIO FRAME RECEIVED from {client_ip}")
-                            elif frame_count % 500 == 0:
-                                print(f"🎵 Audio frame #{frame_count} received from {client_ip}")
+                                print(f"[AUDIO] First transmission received from {client_ip}")
+                            # Reduced frequency of frame logging for conciseness
+                            elif frame_count % 2000 == 0:  # Every ~40 seconds instead of every 10
+                                print(f"[AUDIO] {frame_count} frames processed")
 
                             pcm = frame.to_ndarray()
 
@@ -247,8 +241,7 @@ async def offer(request):
                                     pcm_resampled = resample_poly(pcm_f32, target_sr, input_sr)
                                     pcm = np.clip(pcm_resampled, -32768, 32767).astype(np.int16)
                                 except Exception as rs_err:
-                                    print(f"⚠️ Resample error ({input_sr}->{target_sr}): {rs_err}")
-                                    # fallback: use original pcm (may reduce accuracy)
+                                    print(f"[WARNING] Audio resampling error ({input_sr}->{target_sr}): {rs_err}")
 
                             buffer.append(pcm)
                             total_samples += pcm.shape[0]
@@ -258,68 +251,51 @@ async def offer(request):
                                 stt_service.audio_queue.put((chunk, True))
                                 buffer = []
                                 total_samples = 0
-                                # Occasional debug
-                                if frame_count % 1000 == 0:
-                                    print(f"🎤 Sent {len(chunk)} samples to STT from {client_ip}")
+                                # Reduced frequency of chunk processing logs
+                                if frame_count % 3000 == 0:  # Much less frequent
+                                    print(f"[PROCESSING] Speech data sent to recognition system")
 
                     except Exception as e:
-                        print(f"❌ Audio frame consumption ended for {client_ip}: {e}")
-                        import traceback
-                        traceback.print_exc()
+                        print(f"[ERROR] Audio transmission ended: {e}")
                 
-                print(f"🎤 Starting audio frame consumption task for {client_ip}")
                 asyncio.create_task(consume_audio_frames())
+                
             elif track.kind == 'video':
-                print("📹 Setting up video frame processing...")
-                print(f"📹 Video track details: {track}")
-                print(f"📹 Track readyState: {getattr(track, 'readyState', 'unknown')}")
+                print("[OPTICS] Visual reconnaissance feed active")
                 frame_count = 0
                 
                 # Store track for on-demand frame requests
                 client_video_tracks[client_ip] = track
-                print(f"📹 Video track registered for on-demand processing from {client_ip}")
-                print(f"📹 Track stored for future frame requests")
                 
                 # Test: Request first frame immediately
                 try:
-                    print(f"🎬 Testing: Requesting first frame from {client_ip}")
                     frame = await track.recv()
                     frame_count += 1
-                    print(f"🎬 FIRST FRAME RECEIVED from {client_ip} (size: {frame.width}x{frame.height})")
+                    print(f"[OPTICS] Visual feed confirmed ({frame.width}x{frame.height})")
                     
                     # Store frame for vision processing
                     vision_service.store_latest_frame(frame)
-                    print(f"✅ First video frame successfully stored for vision processing")
                     
                 except Exception as e:
-                    print(f"❌ Error receiving first frame from {client_ip}: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    print(f"[ERROR] Visual feed initialization failed: {e}")
             
             # Add track to recorder safely
             if recorder:
                 try:
                     recorder.addTrack(track)
                 except Exception as rec_err:
-                    logging.error(f"Recorder addTrack failed: {rec_err}")
-            else:
-                logging.warning("Recorder not initialized, skipping track recording")
+                    logging.error(f"[WARNING] Track recording failed: {rec_err}")
 
         @pc.on('connectionstatechange')
         async def on_connectionstatechange():
-            print(f"🔗 Connection state changed to {pc.connectionState} for {client_ip}")
-            print(f"🔗 ICE connection state: {getattr(pc, 'iceConnectionState', 'unknown')}")
-            print(f"🔗 ICE gathering state: {getattr(pc, 'iceGatheringState', 'unknown')}")
-            print(f"🔗 Signaling state: {getattr(pc, 'signalingState', 'unknown')}")
             
             if pc.connectionState == 'connected':
-                print(f"✅ WebRTC fully connected for {client_ip}")
+                print(f"[SUCCESS] Pip-Boy fully operational at {client_ip}")
             elif pc.connectionState in ('failed', 'closed'):
-                print(f"❌ WebRTC connection terminated for {client_ip}")
+                print(f"[DISCONNECT] Pip-Boy {client_ip} offline")
                 # Clean up video track reference
                 if client_ip in client_video_tracks:
                     del client_video_tracks[client_ip]
-                    print(f"🧹 Cleaned up video track for {client_ip}")
                 await pc.close()
                 pcs.discard(pc)  # free slot for new connections
 
@@ -337,10 +313,10 @@ async def offer(request):
 # SocketIO event handlers for receiving responses from main F.R.E.D. server
 @sio_client.event
 async def connect():
-    print("Connected to F.R.E.D. main server")
+    print("[VAULT-NET] Established secure link to F.R.E.D. mainframe")
     # Emit connection confirmation
     await sio_client.emit('webrtc_server_connected')
-    print("🌉 WebRTC bridge established with main F.R.E.D. server")
+    print("[BRIDGE] Wasteland communication network ONLINE - standing by for field operations")
 
 @sio_client.event
 async def voice_response(data):
@@ -376,8 +352,8 @@ async def fred_audio(data):
     audio_format = data.get('format', 'wav')
     
     if audio_b64:
-        print(f"🎤 Received audio from F.R.E.D. ({len(audio_b64)} chars base64) for text: '{text[:50]}...'")
-        print(f"📊 Currently {len(data_channels)} Pi client(s) connected")
+        print(f"[TRANSMISSION] Audio matrix received from F.R.E.D. ({len(audio_b64)} chars) → '{text[:50]}...'")
+        print(f"[NETWORK] {len(data_channels)} Pip-Boy device(s) in communication range")
         
         # Send audio to all connected Pi clients
         sent_count = 0
@@ -386,17 +362,17 @@ async def fred_audio(data):
                 message = f"[AUDIO_BASE64:{audio_format}]{audio_b64}"
                 channel.send(message)
                 sent_count += 1
-                print(f"🎵 Audio sent to Pi client #{sent_count}: {text[:50]}...")
+                print(f"[RELAY] Voice data transmitted to Pip-Boy #{sent_count} → '{text[:50]}...'")
             except Exception as e:
-                print(f"❌ Failed to send audio to Pi client: {e}")
+                print(f"[ERROR] Pip-Boy #{sent_count+1} transmission failure: {e}")
                 data_channels.discard(channel)
         
         if sent_count == 0:
-            print("⚠️ No Pi clients available to receive audio")
+            print("[WARNING] No Pip-Boy devices available - audio transmission failed")
         else:
-            print(f"✅ Audio successfully sent to {sent_count} Pi client(s)")
+            print(f"[SUCCESS] Voice transmission complete → {sent_count} field operative(s) reached")
     else:
-        print("⚠️ No audio data received from F.R.E.D.")
+        print("[ERROR] No audio data in transmission from F.R.E.D. mainframe")
 
 async def cleanup(app):
     # This is still valuable for graceful shutdown

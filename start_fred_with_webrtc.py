@@ -24,7 +24,7 @@ from webrtc_server import main as run_webrtc_server_async
 async def start_ngrok_tunnel():
     """Start ngrok tunnel asynchronously."""
     try:
-        print("🌐 Starting ngrok tunnel for remote access...")
+        print("[VAULT-NET] Establishing external communication tunnel...")
         ngrok_process = await asyncio.create_subprocess_exec(
             "ngrok", "http", str(config.WEBRTC_PORT),
             "--log", "stdout",
@@ -43,17 +43,17 @@ async def start_ngrok_tunnel():
                         if tunnel['config']['addr'].endswith(str(config.WEBRTC_PORT)):
                             public_url = tunnel['public_url']
                             tunnel_info["webrtc_server"] = public_url
-                            print(f"✅ ngrok tunnel active: {public_url}")
+                            print(f"[SUCCESS] External tunnel established: {public_url}")
                             # Save tunnel info for Pi client
                             with open('tunnel_info.json', 'w') as f:
                                 json.dump({"webrtc_server": public_url}, f)
                             return ngrok_process
             except Exception as e:
-                print(f"⚠️  Could not get ngrok tunnel URL via API: {e}")
+                print(f"[WARNING] Tunnel status unavailable via API: {e}")
         
         return ngrok_process
     except Exception as e:
-        print(f"❌ Failed to start ngrok tunnel: {e}")
+        print(f"[ERROR] External tunnel establishment failed: {e}")
         return None
 
 async def run_server(name, command):
@@ -72,20 +72,20 @@ async def run_with_ngrok():
     ngrok_process = None
     
     if config.NGROK_ENABLED:
-        print("🌐 ngrok is enabled - starting tunnel...")
+        print("[VAULT-NET] External tunnel protocols enabled...")
         ngrok_process = await start_ngrok_tunnel()
         if ngrok_process:
-            print("✅ ngrok tunnel started successfully")
+            print("[SUCCESS] External communications link established")
         else:
-            print("⚠️ ngrok tunnel failed to start, continuing with local access only")
+            print("[WARNING] External tunnel failed - operating in local mode only")
     else:
-        print("🏠 ngrok disabled - local network access only")
+        print("[LOCAL] External tunnel disabled - vault network access only")
     
     try:
         await run_webrtc_server_async()
     finally:
         if ngrok_process:
-            print("🌐 Shutting down ngrok tunnel...")
+            print("[VAULT-NET] Terminating external communication tunnel...")
             ngrok_process.terminate()
             await ngrok_process.wait()
 
@@ -95,14 +95,16 @@ def main():
     - F.R.E.D. Flask server runs in a separate thread.
     - WebRTC aiohttp server runs in the main thread's asyncio loop.
     """
-    print("🚀 Starting F.R.E.D. with Pi Glasses Support")
-    print("=" * 50)
+    print("═══════════════════════════════════════════════════")
+    print("      F.R.E.D. MAINFRAME INITIALIZATION")
+    print("    Vault-Tec Advanced AI Assistant Platform")
+    print("═══════════════════════════════════════════════════")
 
     # 1. Run the Flask/SocketIO server in its own thread
     # This is necessary because it uses its own blocking eventlet server.
     fred_thread = threading.Thread(target=run_fred_server, daemon=True)
     fred_thread.start()
-    print("🤖 F.R.E.D. main server thread started.")
+    print("[MAINFRAME] F.R.E.D. core intelligence systems ONLINE")
     
     # Give the main server a moment to start before the WebRTC server,
     # as the WebRTC server may try to connect to it.
@@ -110,13 +112,13 @@ def main():
 
     # 2. Run the aiohttp WebRTC server with ngrok tunnel in the main thread using asyncio
     try:
-        print("📡 Starting WebRTC server with tunnel support...")
+        print("[NETWORK] Initializing wasteland communication protocols...")
         asyncio.run(run_with_ngrok())
     except KeyboardInterrupt:
-        print("\n🛑 Shutting down F.R.E.D. servers...")
+        print("\n[SHUTDOWN] F.R.E.D. mainframe shutting down...")
     finally:
         # The servers are daemonized or will shut down on loop completion
-        print("✅ Shutdown sequence initiated.")
+        print("[VAULT-TEC] All systems offline. Stay safe out there, vault dweller.")
         # Note: Proper cleanup of the WebRTC runner is handled within webrtc_server.py
         # on loop cancellation. The fred_thread is a daemon and will exit with the main thread.
 
