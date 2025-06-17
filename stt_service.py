@@ -263,10 +263,14 @@ class STTService:
                         segments, _ = self.model.transcribe(
                             audio_data,  # Use flattened audio like old system
                             language="en",
+                            sample_rate=self.sample_rate,
                             beam_size=5,  # Same as old system
                             word_timestamps=True  # Same as old system
                             # REMOVED all the extra parameters that old system doesn't use
                         )
+
+                        if from_pi:
+                            print(f"[DEBUG] Whisper returned {len(segments)} segments for Pi chunk")
 
                         for segment in segments:
                             text = segment.text.strip().lower()
