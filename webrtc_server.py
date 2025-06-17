@@ -338,6 +338,9 @@ async def offer(request):
 @sio_client.event
 async def connect():
     print("Connected to F.R.E.D. main server")
+    # Emit connection confirmation
+    await sio_client.emit('webrtc_server_connected')
+    print("🌉 WebRTC bridge established with main F.R.E.D. server")
 
 @sio_client.event
 async def voice_response(data):
@@ -373,16 +376,25 @@ async def fred_audio(data):
     audio_format = data.get('format', 'wav')
     
     if audio_b64:
-        print(f"🎤 Received audio from F.R.E.D. ({len(audio_b64)} chars base64)")
+        print(f"🎤 Received audio from F.R.E.D. ({len(audio_b64)} chars base64) for text: '{text[:50]}...'")
+        print(f"📊 Currently {len(data_channels)} Pi client(s) connected")
         
         # Send audio to all connected Pi clients
+        sent_count = 0
         for channel in data_channels.copy():
             try:
-                channel.send(f"[AUDIO_BASE64:{audio_format}]{audio_b64}")
-                print(f"🎵 Audio sent to Pi glasses: {text[:50]}...")
+                message = f"[AUDIO_BASE64:{audio_format}]{audio_b64}"
+                channel.send(message)
+                sent_count += 1
+                print(f"🎵 Audio sent to Pi client #{sent_count}: {text[:50]}...")
             except Exception as e:
-                print(f"❌ Failed to send audio to Pi: {e}")
+                print(f"❌ Failed to send audio to Pi client: {e}")
                 data_channels.discard(channel)
+        
+        if sent_count == 0:
+            print("⚠️ No Pi clients available to receive audio")
+        else:
+            print(f"✅ Audio successfully sent to {sent_count} Pi client(s)")
     else:
         print("⚠️ No audio data received from F.R.E.D.")
 

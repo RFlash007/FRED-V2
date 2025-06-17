@@ -116,6 +116,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Configuration
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL), format=config.LOG_FORMAT)
+# Reduce verbosity of Flask's built-in request logs
+logging.getLogger('werkzeug').setLevel(logging.WARNING)
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = config.get_db_path(APP_ROOT)
 lib.DB_FILE = DB_PATH
@@ -296,85 +298,118 @@ def fred_speak(text, mute_fred=False, target_device='local'):
         mute_fred: Whether to mute output
         target_device: 'local' for main computer, 'pi' for Pi glasses, 'all' for both
     """
-    if mute_fred or not text.strip() or not os.path.exists(config.FRED_SPEAKER_WAV_PATH):
+    if mute_fred:
+        print(f"🔇 TTS muted - not speaking: '{text[:50]}...'")
         return
-    
+        
+    if not text.strip():
+        print("⚠️ Empty text provided to TTS - skipping")
+        return
+        
+    if not os.path.exists(config.FRED_SPEAKER_WAV_PATH):
+        print(f"❌ Speaker reference file not found: {config.FRED_SPEAKER_WAV_PATH}")
+        return
+
+    print(f"🎤 TTS Request - Target: {target_device} | Text: '{text[:50]}...'")
+
     # Cleanup previous file
     if fred_state.last_played_wav and os.path.exists(fred_state.last_played_wav):
         try:
             os.remove(fred_state.last_played_wav)
         except Exception:
             pass
-    
+
     # Generate speech
     unique_id = uuid.uuid4()
     output_path = os.path.join(APP_ROOT, f"fred_speech_output_{unique_id}.wav")
-    
+
     try:
         tts_engine = fred_state.get_tts_engine()
         if tts_engine is None:
             logging.warning("TTS engine not initialized, skipping speech generation")
             return
-        
+
+        print(f"🔊 Generating TTS audio to: {output_path}")
         tts_engine.tts_to_file(
             text=text,
             speaker_wav=config.FRED_SPEAKER_WAV_PATH,
             language=config.FRED_LANGUAGE,
             file_path=output_path
         )
-        
+        print(f"✅ TTS audio generated successfully")
+
         # Route audio based on target device
         if target_device in ['local', 'all']:
             # Play locally on main computer
-            playsound.playsound(output_path, block=False)
             print(f"🔊 Playing locally: {text[:50]}...")
-        
+            playsound.playsound(output_path, block=False)
+
         if target_device in ['pi', 'all']:
             # Send audio to Pi glasses
+            print(f"📡 Sending audio to Pi glasses...")
             send_audio_to_pi(output_path, text)
-        
+
         if target_device not in ['local', 'pi', 'all']:
             print(f"⚠️ Unknown target device '{target_device}', defaulting to local")
             playsound.playsound(output_path, block=False)
-        
+
         # Schedule cleanup after a delay
         def delayed_cleanup():
             time.sleep(config.TTS_CLEANUP_DELAY)  # Wait for playback to complete
             try:
                 if os.path.exists(output_path):
                     os.remove(output_path)
+                    print(f"🧹 Cleaned up TTS file: {output_path}")
             except Exception:
                 pass
-        
+
         threading.Thread(target=delayed_cleanup, daemon=True).start()
         fred_state.last_played_wav = output_path
-        
+
     except Exception as e:
         logging.error(f"TTS error: {e}")
+        print(f"❌ TTS generation failed: {e}")
 
 def send_audio_to_pi(audio_file_path, text):
     """Send audio file to connected Pi clients."""
     try:
         import base64
         
+        print(f"📡 Processing audio for Pi clients...")
+        print(f"   📄 Audio file: {audio_file_path}")
+        print(f"   💬 Text: '{text[:50]}...'")
+        
+        # Check if file exists
+        if not os.path.exists(audio_file_path):
+            print(f"❌ Audio file not found: {audio_file_path}")
+            return
+        
         # Read audio file and encode as base64
         with open(audio_file_path, 'rb') as f:
             audio_data = f.read()
         
+        print(f"   📊 Audio file size: {len(audio_data)} bytes")
+        
         audio_b64 = base64.b64encode(audio_data).decode('utf-8')
+        print(f"   🔄 Encoded to base64: {len(audio_b64)} chars")
         
         # Send via SocketIO to WebRTC server
-        socketio.emit('fred_audio', {
+        payload = {
             'audio_data': audio_b64,
             'text': text,
             'format': 'wav'
-        })
+        }
         
-        print(f"🎤 Audio sent to Pi glasses: {len(audio_data)} bytes - '{text[:30]}...'")
+        print(f"   📤 Emitting fred_audio event via SocketIO...")
+        socketio.emit('fred_audio', payload)
+        
+        print(f"✅ Audio successfully sent to WebRTC server for Pi forwarding")
+        print(f"   🎤 {len(audio_data)} bytes → '{text[:30]}...'")
         
     except Exception as e:
         logging.error(f"Error sending audio to Pi: {e}")
         print(f"❌ Failed to send audio to Pi: {e}")
+        traceback.print_exc()
 
 def cleanup_wav_files():
     """Clean up old WAV files."""
@@ -742,6 +777,11 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     stt_service.stop_processing()
+
+@socketio.on('webrtc_server_connected')
+def handle_webrtc_server_connect():
+    print("🌉 WebRTC server connected to main F.R.E.D. server")
+    emit('status', {'message': 'WebRTC bridge established'})
 
 @socketio.on('start_stt')
 def handle_start_stt():

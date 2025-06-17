@@ -50,7 +50,7 @@ class STTService:
         self.blocksize = config.get_stt_blocksize()
         
         # FIX 3: Match old system VAD settings exactly
-        self.silence_threshold = 0.007  # Default threshold for Pi glasses audio (user adjustment)
+        self.silence_threshold = config.STT_SILENCE_THRESHOLD  # Default for local mic (will be recalibrated)
         self.calibration_samples = []
         self.calibration_duration = config.STT_CALIBRATION_DURATION  # seconds
         self.silence_duration = config.STT_SILENCE_DURATION  # Exact same as old system (not 0.8)
@@ -70,6 +70,13 @@ class STTService:
         
         # Phrases to ignore due to Whisper hallucinations on silence
         self._ignore_phrases = {"thanks for watching!", "thanks for watching", " thanks for watching!", " thanks for watching"}
+        
+        # Separate threshold for Pi audio
+        self.pi_silence_threshold = config.STT_PI_SILENCE_THRESHOLD
+        self._pi_threshold_set = False
+        
+        # Throttle frequency of continuous audio-level debug prints
+        self._last_level_log = 0.0
         
     def initialize(self):
         """Initialize the Whisper model with maximum performance optimization"""
@@ -191,7 +198,7 @@ class STTService:
         """Calibrate the silence threshold based on ambient noise - EXACTLY like old system"""
         if self.stream is None:
             print("🍇 Pi glasses mode - skipping microphone calibration (will use Pi audio)")
-            self.silence_threshold = 0.012  # Default threshold for Pi glasses audio
+            self.silence_threshold = self.pi_silence_threshold  # Use Pi default threshold
             print(f"Using default Pi glasses threshold: {self.silence_threshold:.6f}")
             print()
             return
@@ -231,6 +238,13 @@ class STTService:
                 # Handle both old and new queue formats
                 if isinstance(queue_item, tuple):
                     audio_chunk, from_pi = queue_item
+
+                    # Switch threshold on first Pi audio
+                    if from_pi and not self._pi_threshold_set:
+                        self.silence_threshold = self.pi_silence_threshold
+                        self._pi_threshold_set = True
+                        print(f"[DEBUG] Pi silence threshold set to {self.silence_threshold:.6f}")
+
                     if from_pi:
                         # Throttle verbose logging to avoid console spam – print every 20th chunk (~10 s)
                         self._pi_chunk_counter += 1
@@ -256,7 +270,10 @@ class STTService:
                 
                 # Debug audio levels periodically - like old system
                 if self.is_listening:
-                    print(f"\rAudio level: {audio_level:.6f} (Threshold: {self.silence_threshold:.6f})", end="")
+                    now = time.time()
+                    if now - self._last_level_log > 0.5:  # print at most twice per second
+                        print(f"\rAudio level: {audio_level:.6f} (Threshold: {self.silence_threshold:.6f})", end="")
+                        self._last_level_log = now
                 
                 # Only process audio if level is above threshold
                 if audio_level > self.silence_threshold:
@@ -273,7 +290,7 @@ class STTService:
 
                         # Convert generator to list for safe multiple passes
                         segments = list(segments_gen)
-                        if from_pi:
+                        if from_pi and segments:
                             print(f"[DEBUG] Whisper produced {len(segments)} segments for Pi chunk")
 
                         for segment in segments:

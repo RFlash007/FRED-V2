@@ -58,6 +58,8 @@ class Config:
     STT_CHANNELS = 1
     STT_BLOCK_DURATION = 5  # seconds
     STT_SILENCE_THRESHOLD = 0.0015
+    # Separate default VAD threshold for Raspberry Pi glasses audio (mono, 16 kHz)
+    STT_PI_SILENCE_THRESHOLD = 0.001
     STT_CALIBRATION_DURATION = 2  # seconds
     STT_SILENCE_DURATION = 0.7  # seconds
     STT_MODEL_SIZE = "medium"

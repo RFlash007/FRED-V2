@@ -15,40 +15,52 @@ def play_audio_from_base64(audio_b64, format_type='wav'):
     """Decode base64 audio and play it on the Pi."""
     try:
         # Decode base64 audio
+        print(f"   🔄 Decoding {len(audio_b64)} chars of base64 audio...")
         audio_data = base64.b64decode(audio_b64)
+        print(f"   ✅ Decoded to {len(audio_data)} bytes of {format_type} audio")
         
         # Create temporary file
         with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
             temp_file.write(audio_data)
             temp_file_path = temp_file.name
         
-        print(f"🎵 Playing F.R.E.D.'s voice ({len(audio_data)} bytes)")
+        print(f"   💾 Saved audio to: {temp_file_path}")
+        print(f"   🎵 Playing F.R.E.D.'s voice ({len(audio_data)} bytes)")
         
         # Play using aplay (ALSA) - most reliable on Pi
         try:
-            subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
-            print("✅ Audio played successfully")
-        except subprocess.CalledProcessError:
+            print("   🔊 Trying aplay (ALSA)...")
+            result = subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
+            print("   ✅ Audio played successfully with aplay")
+        except subprocess.CalledProcessError as e:
             # Fallback to paplay (PulseAudio)
             try:
+                print("   🔊 aplay failed, trying paplay (PulseAudio)...")
                 subprocess.run(['paplay', temp_file_path], check=True, capture_output=True)
-                print("✅ Audio played successfully (PulseAudio)")
-            except subprocess.CalledProcessError:
+                print("   ✅ Audio played successfully with paplay")
+            except subprocess.CalledProcessError as e2:
                 # Last resort: mpv
                 try:
+                    print("   🔊 paplay failed, trying mpv...")
                     subprocess.run(['mpv', '--no-video', temp_file_path], check=True, capture_output=True)
-                    print("✅ Audio played successfully (mpv)")
-                except subprocess.CalledProcessError as e:
-                    print(f"❌ All audio playback methods failed: {e}")
+                    print("   ✅ Audio played successfully with mpv")
+                except subprocess.CalledProcessError as e3:
+                    print(f"   ❌ All audio playback methods failed:")
+                    print(f"     aplay error: {e}")
+                    print(f"     paplay error: {e2}")  
+                    print(f"     mpv error: {e3}")
         
         # Clean up temporary file
         try:
             os.unlink(temp_file_path)
-        except Exception:
-            pass
+            print(f"   🧹 Cleaned up temp file: {temp_file_path}")
+        except Exception as cleanup_err:
+            print(f"   ⚠️ Failed to cleanup temp file: {cleanup_err}")
             
     except Exception as e:
-        print(f"❌ Audio playback error: {e}")
+        print(f"   ❌ Audio playback error: {e}")
+        import traceback
+        traceback.print_exc()
 import numpy as np
 
 
@@ -367,13 +379,18 @@ async def run(server_url):
                 format_info = message[14:header_end]  # Skip '[AUDIO_BASE64:'
                 audio_b64 = message[header_end + 1:]
                 
-                print(f"🎵 Received audio from F.R.E.D. ({len(audio_b64)} chars, format: {format_info})")
+                print(f"🎵 Received audio from F.R.E.D.:")
+                print(f"   📊 Audio data: {len(audio_b64)} chars base64")
+                print(f"   📄 Format: {format_info}")
+                print(f"   🔊 Starting playback...")
                 
                 # Decode and play audio
                 play_audio_from_base64(audio_b64, format_info)
                 
             except Exception as e:
                 print(f"❌ Error processing audio: {e}")
+                import traceback
+                traceback.print_exc()
         else:
             print(f'\n🤖 F.R.E.D.: {message}')
         print('🎤 Listening...')
