@@ -30,42 +30,50 @@ from pi_stt_service import pi_stt_service
 apply_theme()
 
 def play_audio_from_base64(audio_b64, format_type='wav'):
-    """Decode base64 audio and play it on the Pi."""
-    try:
-        # Decode base64 audio
-        audio_data = base64.b64decode(audio_b64)
-        print(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
-        
-        # Create temporary file
-        with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
-            temp_file.write(audio_data)
-            temp_file_path = temp_file.name
-        
-        # Play using aplay (ALSA) - most reliable on Pi
+    """Decode base64 audio and play it on the Pi in a non-blocking thread."""
+    
+    def _playback_thread():
+        temp_file_path = None
         try:
-            subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
-            print("[SUCCESS] F.R.E.D. voice transmission complete")
-        except subprocess.CalledProcessError as e:
-            # Fallback to paplay (PulseAudio)
-            try:
-                subprocess.run(['paplay', temp_file_path], check=True, capture_output=True)
-                print("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)")
-            except subprocess.CalledProcessError as e2:
-                # Last resort: mpv
-                try:
-                    subprocess.run(['mpv', '--no-video', temp_file_path], check=True, capture_output=True)
-                    print("[SUCCESS] F.R.E.D. voice transmission complete (mpv)")
-                except subprocess.CalledProcessError as e3:
-                    print(f"[CRITICAL] All audio protocols failed - check Pip-Boy speakers")
-        
-        # Clean up temporary file
-        try:
-            os.unlink(temp_file_path)
-        except Exception as cleanup_err:
-            print(f"[WARNING] Failed to purge audio cache: {cleanup_err}")
+            # Decode base64 audio
+            audio_data = base64.b64decode(audio_b64)
+            print(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
             
-    except Exception as e:
-        print(f"[CRITICAL] Audio playback system failure: {e}")
+            # Create temporary file
+            with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
+                temp_file.write(audio_data)
+                temp_file_path = temp_file.name
+            
+            # Play using aplay (ALSA) - most reliable on Pi
+            try:
+                subprocess.run(['aplay', temp_file_path], check=True, capture_output=True, timeout=30)
+                print("[SUCCESS] F.R.E.D. voice transmission complete")
+            except subprocess.CalledProcessError:
+                # Fallback to paplay (PulseAudio)
+                try:
+                    subprocess.run(['paplay', temp_file_path], check=True, capture_output=True, timeout=30)
+                    print("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)")
+                except subprocess.CalledProcessError:
+                    # Last resort: mpv
+                    try:
+                        subprocess.run(['mpv', '--no-video', temp_file_path], check=True, capture_output=True, timeout=30)
+                        print("[SUCCESS] F.R.E.D. voice transmission complete (mpv)")
+                    except subprocess.CalledProcessError:
+                        print("[CRITICAL] All audio protocols failed - check Pip-Boy speakers")
+            
+        except Exception as e:
+            print(f"[CRITICAL] Audio playback system failure: {e}")
+        finally:
+            # Clean up temporary file
+            if temp_file_path:
+                try:
+                    os.unlink(temp_file_path)
+                except Exception as cleanup_err:
+                    print(f"[WARNING] Failed to purge audio cache: {cleanup_err}")
+
+    # Run playback in a separate daemon thread to avoid blocking the main asyncio loop
+    playback_thread = threading.Thread(target=_playback_thread, daemon=True)
+    playback_thread.start()
 
 class LocalAudioProcessor:
     """Handles local audio capture and processing for STT"""
