@@ -414,7 +414,7 @@ async def run(server_url):
 
 def main():
     """Main entry point"""
-    banner()
+    print(banner("PIP-BOY LOCAL STT"))
     
     parser = argparse.ArgumentParser(description='F.R.E.D. Pi Client with Local STT')
     parser.add_argument('--server', type=str, help='Server URL (e.g., https://example.ngrok.io)')
