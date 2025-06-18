@@ -221,13 +221,13 @@ def create_video_track():
 
                 return frame
 
-            async def stop(self):
-                """Release camera resources cleanly when the track is stopped."""
-                await super().stop()
-                if hasattr(self, 'picam2'):
+            def stop(self):
+                """Release camera resources cleanly and synchronously when the track is stopped."""
+                super().stop()
+                if hasattr(self, 'picam2') and self.picam2.is_open:
                     print("🎥 Releasing camera resources...")
                     self.picam2.close()
-                    print("🛑 Picamera2 resources released.")
+                    print("🛑 Picamera2 camera closed.")
 
         return PiCamera2Track()
         
