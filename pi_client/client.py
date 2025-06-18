@@ -118,11 +118,8 @@ class LocalAudioProcessor:
                 if status:
                     print(f"[WARNING] Audio status: {status}")
                 
-                # Convert to the format expected by STT
+                # The STT service expects a 1D float32 numpy array.
                 audio_data = indata[:, 0] if indata.ndim > 1 else indata
-                audio_data = (audio_data * 32767).astype(np.int16)
-                
-                # Feed to STT service
                 pi_stt_service.add_audio_chunk(audio_data)
             
             # Start recording with sounddevice
