@@ -318,6 +318,7 @@ class FREDPiClient:
         # WebRTC setup
         self.pc = None
         self.data_channel = None
+        self.loop = None  # Store the event loop for thread-safe operations
         
         # Camera setup  
         self.camera = None
@@ -326,6 +327,9 @@ class FREDPiClient:
         """Start the F.R.E.D. Pi client"""
         print(banner("F.R.E.D. Pi Glasses v2.0"))
         print("[VAULT-TEC] Initializing post-apocalyptic AI interface...")
+        
+        # Store the event loop for thread-safe operations
+        self.loop = asyncio.get_running_loop()
         
         # Initialize camera
         await self._init_camera()
@@ -635,20 +639,29 @@ class FREDPiClient:
         """Handle transcribed speech from STT service"""
         print(f"🎤 [COMMAND] '{text}'")
         
-        # Send transcription via WebRTC data channel
-        if self.data_channel and self.data_channel.readyState == 'open':
+        # Send transcription via WebRTC data channel using thread-safe approach
+        if self.data_channel and self.data_channel.readyState == 'open' and self.loop:
             try:
-                # Send as JSON for local STT client
-                message = json.dumps({
-                    'type': 'transcription',
-                    'text': text
-                })
-                self.data_channel.send(message)
+                # Schedule the async operation in the main event loop
+                future = asyncio.run_coroutine_threadsafe(
+                    self._send_transcription_async(text), 
+                    self.loop
+                )
+                # Wait for completion with timeout
+                future.result(timeout=5.0)
                 print(f"📡 [TRANSMITTED] '{text}' sent to F.R.E.D. mainframe")
             except Exception as e:
                 print(f"❌ [COMM] Transmission failed: {e}")
         else:
             print("❌ [COMM] No data channel available")
+    
+    async def _send_transcription_async(self, text: str):
+        """Async helper to send transcription via data channel"""
+        message = json.dumps({
+            'type': 'transcription',
+            'text': text
+        })
+        self.data_channel.send(message)
     
     def _play_audio_from_base64(self, audio_b64, format_type='wav'):
         """Play audio from base64 data"""
