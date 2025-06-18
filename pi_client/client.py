@@ -295,6 +295,49 @@ def get_server_url(provided_url=None):
 # Global variables for managing connection state
 data_channel = None
 audio_processor = None
+http_fallback_mode = False
+http_fallback_url = None
+
+async def send_via_http(text, server_url):
+    """Send transcription via HTTP fallback when WebRTC fails"""
+    try:
+        headers = {
+            'Authorization': 'Bearer fred_pi_glasses_2024',
+            'Content-Type': 'application/json'
+        }
+        
+        payload = {
+            'type': 'transcription',
+            'text': text,
+            'timestamp': time.time()
+        }
+        
+        print(f"📡 [HTTP] Sending via fallback: '{text}'")
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.post(http_fallback_url, json=payload, headers=headers, timeout=10) as response:
+                
+                if response.status == 200:
+                    data = await response.json()
+                    print(f"✅ [HTTP] Response received: {data.get('status')}")
+                    
+                    # Handle audio response
+                    if data.get('audio'):
+                        print("🔊 [HTTP] Audio response received")
+                        play_audio_from_base64(data['audio'])
+                    
+                    # Handle text response
+                    if data.get('response'):
+                        print(f"💬 [HTTP] F.R.E.D. says: {data['response']}")
+                        
+                    return True
+                else:
+                    print(f"❌ [HTTP] Failed: {response.status}")
+                    return False
+            
+    except Exception as e:
+        print(f"❌ [HTTP] Error: {e}")
+        return False
 
 async def run_with_reconnection(server_url, max_retries=5):
     """Run the client with automatic reconnection"""
@@ -356,16 +399,33 @@ async def run(server_url):
             print(f"🗣️ [TRANSCRIBED] '{text}'")
             
             async def send_to_server():
-                """Coroutine to send text over the data channel."""
-                if data_channel and data_channel.readyState == 'open':
-                    # Send transcribed text to server
-                    message = {
-                        'type': 'transcription',
-                        'text': text,
-                        'timestamp': time.time()
-                    }
-                    data_channel.send(json.dumps(message))
-                    print(f"📤 [SENT] Text to F.R.E.D.: '{text}'")
+                """Coroutine to send text over the data channel or HTTP fallback."""
+                global http_fallback_mode
+                
+                # Try WebRTC data channel first
+                if not http_fallback_mode and data_channel and data_channel.readyState == 'open':
+                    try:
+                        # Send transcribed text to server via WebRTC
+                        message = {
+                            'type': 'transcription',
+                            'text': text,
+                            'timestamp': time.time()
+                        }
+                        data_channel.send(json.dumps(message))
+                        print(f"📤 [WebRTC] Text to F.R.E.D.: '{text}'")
+                        return
+                    except Exception as e:
+                        print(f"❌ [WebRTC] Failed to send: {e}")
+                        print("🔄 [SWITCH] Falling back to HTTP...")
+                        http_fallback_mode = True
+                
+                # Use HTTP fallback
+                if http_fallback_mode and http_fallback_url:
+                    success = await send_via_http(text, http_fallback_url)
+                    if not success:
+                        print("💔 [CRITICAL] Both WebRTC and HTTP communication failed!")
+                else:
+                    print("⚠️ [WARNING] No communication method available")
 
             # Schedule the coroutine to be executed on the main event loop
             if loop.is_running():
@@ -452,6 +512,33 @@ async def run(server_url):
             # Try to force data channel open if it's still connecting
             if data_channel.readyState == "connecting":
                 print("🔄 [DEBUG] Data channel still connecting after ICE connected")
+                
+                # FORCE SEND A TEST MESSAGE TO TRIGGER SERVER-SIDE DETECTION
+                print("📡 [FORCE] Attempting to force data channel activation by sending test message...")
+                await asyncio.sleep(2)  # Wait a bit more
+                
+                try:
+                    # Try to send a test message even if state is "connecting"
+                    test_message = json.dumps({
+                        'type': 'ping',
+                        'message': 'Force activation test',
+                        'timestamp': time.time()
+                    })
+                    data_channel.send(test_message)
+                    print("📤 [FORCE] Test message sent successfully!")
+                    
+                    # Wait and check if state changes
+                    await asyncio.sleep(1)
+                    print(f"📊 [STATUS] Data channel state after force: {data_channel.readyState}")
+                    
+                except Exception as e:
+                    print(f"❌ [FORCE] Failed to send test message: {e}")
+                    print(f"🔧 [DEBUG] This might indicate a deeper connection issue")
+            
+            elif data_channel.readyState == "open":
+                print("✅ [SUCCESS] Data channel is open! Connection should work normally.")
+            else:
+                print(f"⚠️ [WARNING] Unexpected data channel state: {data_channel.readyState}")
     
     @pc.on('icegatheringstatechange')
     async def on_icegatheringstatechange():
@@ -511,6 +598,15 @@ async def run(server_url):
                     print(f"⏰ [TIMEOUT] Data channel failed to open within {connection_timeout}s")
                     print("🔍 [DEBUG] Data channel state:", data_channel.readyState if data_channel else "None")
                     print("🔍 [DEBUG] Connection state:", pc.connectionState)
+                    print("🔄 [FALLBACK] Switching to HTTP-based communication...")
+                    
+                    # Enable HTTP fallback mode
+                    global http_fallback_mode, http_fallback_url
+                    http_fallback_mode = True
+                    base_url = server_url.replace('/offer', '') if '/offer' in server_url else server_url
+                    http_fallback_url = f"{base_url}/text_message"
+                    print(f"📡 [HTTP] Fallback URL: {http_fallback_url}")
+                    
                     # Try to send a test message anyway
                     if data_channel:
                         try:

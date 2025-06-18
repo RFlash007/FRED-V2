@@ -306,123 +306,46 @@ async def offer(request):
             if ice_state == "connected" or ice_state == "completed":
                 print(f"🎯 [ICE] Connection established! Data channel should be available now.")
                 
-                # MANUAL DATA CHANNEL DETECTION - WORKAROUND FOR AIORTC BUG
+                # DIFFERENT APPROACH - TRY VARIOUS AIORTC DATA CHANNEL ACCESS METHODS
                 await asyncio.sleep(1)  # Give it a moment to settle
                 
-                # Try to access internal data channels directly
-                if hasattr(pc, '_RTCPeerConnection__dataChannels'):
-                    channels = pc._RTCPeerConnection__dataChannels
-                    print(f"🔧 [DEBUG] Found {len(channels)} internal data channels")
-                    
-                    for channel_id, channel in channels.items():
-                        print(f"🔧 [DEBUG] Manual channel detection: {channel.label}, state: {channel.readyState}")
-                        
-                        if channel.label == 'text' and channel not in data_channels:
-                            print(f"🎯 [MANUAL] Found text data channel! Registering manually...")
-                            
-                            # Manually trigger what the datachannel event should have done
-                            data_channels.add(channel)
-                            pi_clients.add(channel)
-                            print(f"[PIP-BOY] Data channel '{channel.label}' established with field operative at {client_ip} (manual)")
-                            
-                            # Notify vision service that Pi is connected
-                            vision_service.set_pi_connection_status(True)
-                            print(f"[OPTICS] Pip-Boy visual sensors ONLINE - initiating reconnaissance protocols")
-                            
-                            if is_local_stt:
-                                print(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
-                            
-                            # Register message handler manually
-                            @channel.on('message')
-                            def on_message(message):
-                                if message == '[HEARTBEAT]':
-                                    print(f"[VITAL-MONITOR] Pip-Boy heartbeat confirmed from {client_ip}")
-                                    channel.send('[HEARTBEAT_ACK]')
-                                    return
-
-                                try:
-                                    data = json.loads(message)
-                                    if data.get('type') == 'transcription':
-                                        text = data.get('text', '').strip()
-                                        if not text:
-                                            return
-                                        
-                                        print(f"🗣️  [PI TRANSCRIPTION] '{text}' from {client_ip}")
-                                        
-                                        # --- Simplified and Robust Response Handling ---
-                                        try:
-                                            # 1. Prepare payload for F.R.E.D.
-                                            payload = {
-                                                "message": text,
-                                                "model": config.DEFAULT_MODEL,
-                                                "mute_fred": False, # Ensure TTS for Pi glasses
-                                                "from_pi_glasses": True,
-                                            }
-                                            
-                                            # 2. Call F.R.E.D. server directly
-                                            import requests
-                                            resp = requests.post("http://localhost:5000/chat", json=payload, timeout=60)
-                                            resp.raise_for_status() # Raise an exception for bad status codes
-                                            
-                                            response_data = resp.json()
-                                            
-                                            # 3. Relay complete response back to Pi
-                                            fred_text = response_data.get("response", "No text response.")
-                                            fred_audio_b64 = response_data.get("audio")
-
-                                            if fred_audio_b64:
-                                                print(f"🔊 Relaying audio response to {client_ip}")
-                                                channel.send(json.dumps({
-                                                    "type": "audio",
-                                                    "audio": fred_audio_b64
-                                                }))
-                                            else:
-                                                print(f"💬 Relaying text-only response to {client_ip}")
-                                                channel.send(json.dumps({
-                                                    "type": "text",
-                                                    "text": fred_text
-                                                }))
-
-                                        except requests.exceptions.RequestException as e:
-                                            logging.error(f"Failed to get response from F.R.E.D.: {e}")
-                                            channel.send(json.dumps({"type": "status", "status": f"Error: {e}"}))
-                                        except Exception as e:
-                                            logging.error(f"Error processing transcription on server: {e}")
-                                            channel.send(json.dumps({"type": "status", "status": f"Server Error: {e}"}))
-
-                                except json.JSONDecodeError:
-                                    logging.warning(f"Received non-JSON message from {client_ip}: {message}")
-                            
-                            @channel.on('close')
-                            def on_close():
-                                data_channels.discard(channel)
-                                pi_clients.discard(channel)
-                                print(f"[PIP-BOY] Data channel '{channel.label}' closed from {client_ip}")
-                                
-                                # If no more Pi clients, stop vision processing
-                                if not pi_clients:
-                                    vision_service.set_pi_connection_status(False)
-                                    print(f"[OPTICS] All Pip-Boys disconnected - reconnaissance protocols OFFLINE")
-                            
-                            # Test the connection immediately
-                            if channel.readyState == "open":
-                                print(f"✅ [MANUAL] Channel is open! Sending test message...")
-                                try:
-                                    test_message = json.dumps({
-                                        "type": "status", 
-                                        "status": "Data channel manually connected - F.R.E.D. online",
-                                        "timestamp": time.time()
-                                    })
-                                    channel.send(test_message)
-                                    print(f"📤 [TEST] Sent initialization message to Pi")
-                                except Exception as e:
-                                    print(f"❌ [TEST] Failed to send test message: {e}")
-                            
-                            break  # Only handle the first text channel
+                # Method 1: Check for _dataChannels
+                if hasattr(pc, '_dataChannels'):
+                    channels = pc._dataChannels
+                    print(f"🔧 [DEBUG] Found _dataChannels: {len(channels)}")
+                    for ch in channels.values():
+                        print(f"🔧 [DEBUG] Channel: {ch.label}, state: {ch.readyState}")
                 
+                # Method 2: Check for dataChannels
+                elif hasattr(pc, 'dataChannels'):
+                    channels = pc.dataChannels
+                    print(f"🔧 [DEBUG] Found dataChannels: {len(channels)}")
+                    
+                # Method 3: Check different internal attributes
                 else:
-                    print(f"❌ [DEBUG] No internal data channels attribute found")
-                    print(f"🔧 [DEBUG] Available attributes: {[attr for attr in dir(pc) if 'data' in attr.lower()]}")
+                    print(f"❌ [DEBUG] No data channels found via standard methods")
+                    print(f"🔧 [DEBUG] Available attributes: {[attr for attr in dir(pc) if 'data' in attr.lower() or 'channel' in attr.lower()]}")
+                    
+                    # Try to inspect the SDP to see if data channel is negotiated
+                    if hasattr(pc, 'localDescription') and pc.localDescription:
+                        sdp = pc.localDescription.sdp
+                        if 'application' in sdp and 'DTLS/SCTP' in sdp:
+                            print(f"🔧 [DEBUG] Data channel negotiated in SDP!")
+                            # Force client to send a message to establish the connection
+                            print(f"📡 [FORCE] Attempting to force data channel activation...")
+                
+                # TRY TO FORCE DATA CHANNEL BY WAITING LONGER
+                print(f"⏰ [WAIT] Waiting additional time for data channel negotiation...")
+                await asyncio.sleep(3)
+                
+                # Check again after longer wait
+                if hasattr(pc, '_dataChannels') and pc._dataChannels:
+                    print(f"🎯 [DELAYED] Data channels appeared after delay!")
+                elif hasattr(pc, 'dataChannels') and pc.dataChannels:
+                    print(f"🎯 [DELAYED] Data channels appeared after delay!")
+                else:
+                    print(f"💔 [TIMEOUT] Data channel never appeared - this might be an aiortc version issue")
+                    print(f"🔧 [INFO] Client will need to send a message to trigger connection")
         
         @pc.on('icegatheringstatechange')
         async def on_icegatheringstatechange():
@@ -559,6 +482,56 @@ async def init_app(app):
     except Exception as e:
         print(f"Failed to connect to F.R.E.D. main server: {e}")
 
+async def text_message(request):
+    """HTTP fallback for text messages when WebRTC data channel fails"""
+    
+    # Authenticate request
+    if not authenticate_request(request):
+        logging.warning(f"Unauthorized text message attempt from {request.remote}")
+        return web.json_response({'error': 'Unauthorized'}, status=401)
+    
+    try:
+        data = await request.json()
+        client_ip = request.remote
+        
+        print(f"📨 [HTTP FALLBACK] Text message from {client_ip}: {data}")
+        
+        if data.get('type') == 'transcription':
+            text = data.get('text', '').strip()
+            if text:
+                print(f"🗣️  [HTTP TRANSCRIPTION] '{text}' from {client_ip}")
+                
+                # Process the transcription same as WebRTC
+                try:
+                    payload = {
+                        "message": text,
+                        "model": config.DEFAULT_MODEL,
+                        "mute_fred": False,
+                        "from_pi_glasses": True,
+                    }
+                    
+                    import requests
+                    resp = requests.post("http://localhost:5000/chat", json=payload, timeout=60)
+                    resp.raise_for_status()
+                    
+                    response_data = resp.json()
+                    
+                    return web.json_response({
+                        'status': 'success',
+                        'response': response_data.get("response", "No response"),
+                        'audio': response_data.get("audio")
+                    })
+                    
+                except Exception as e:
+                    logging.error(f"Failed to process HTTP transcription: {e}")
+                    return web.json_response({'error': str(e)}, status=500)
+        
+        return web.json_response({'status': 'received'})
+        
+    except Exception as e:
+        logging.error(f"HTTP text message error: {e}")
+        return web.json_response({'error': str(e)}, status=500)
+
 async def main():
     global runner
     parser = argparse.ArgumentParser(description="F.R.E.D. WebRTC server")
@@ -587,6 +560,7 @@ async def main():
     app.on_shutdown.append(cleanup)
     app.router.add_get("/", index)
     app.router.add_post("/offer", offer)
+    app.router.add_post("/text_message", text_message)
 
     runner = web.AppRunner(app)
     await runner.setup()
