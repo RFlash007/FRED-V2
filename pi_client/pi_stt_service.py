@@ -36,8 +36,7 @@ class PiSTTService:
         self.speech_buffer = []
         self.last_speech_time = 0
         self.silence_duration_s = 0.8  # Seconds of silence to trigger end-of-speech
-        self.silence_threshold = 0.01  # Initial threshold, will be calibrated
-        self.calibration_duration_s = 2 # How long to listen for ambient noise
+        self.silence_threshold = 0.0015  # Fixed silence threshold
         
         # Processing control
         self.audio_queue = queue.Queue(maxsize=10)
@@ -81,35 +80,8 @@ class PiSTTService:
             print(f"❌ [PIP-BOY STT] Voice recognition FAILED: {e}")
             return False
     
-    def calibrate(self):
-        """Calibrate the silence threshold based on ambient noise."""
-        print("🎤 Calibrating microphone... Please be quiet for a moment.")
-        
-        calibration_samples = []
-        calibration_end_time = time.time() + self.calibration_duration_s
-        
-        while time.time() < calibration_end_time:
-            try:
-                audio_chunk = self.audio_queue.get(timeout=0.5)
-                audio_level = np.abs(audio_chunk).mean()
-                calibration_samples.append(audio_level)
-            except queue.Empty:
-                continue
-        
-        if calibration_samples:
-            # Set threshold to 150% of the average ambient noise
-            ambient_noise = np.mean(calibration_samples)
-            self.silence_threshold = ambient_noise * 1.5
-            print(f"✅ Calibration complete. Noise threshold set to: {self.silence_threshold:.6f}")
-        else:
-            print("⚠️ Calibration failed. Could not get audio. Using default threshold.")
-        
-        # Clear the queue of any calibration audio
-        while not self.audio_queue.empty():
-            self.audio_queue.get_nowait()
-            
     def start_processing(self, callback: Callable[[str], None]):
-        """Start the audio processing loop and calibrate."""
+        """Start the audio processing loop."""
         if not self.is_initialized:
             if not self.initialize():
                 return False
@@ -137,8 +109,6 @@ class PiSTTService:
     
     def _process_audio_loop(self):
         """Main audio processing loop."""
-        # Run calibration at the start of the loop
-        self.calibrate()
         print("👂 Listening for wake word...")
         
         audio_buffer = np.array([], dtype=np.float32)
