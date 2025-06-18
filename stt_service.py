@@ -42,6 +42,7 @@ class STTService:
         self.is_listening = False  # Binary listening state like v1
         self.last_speech_time = 0  # Track when we last detected speech
         self.processing_audio = False  # Prevent double processing
+        self.is_speaking = False  # Indicates F.R.E.D. TTS is playing to avoid feedback loop
         
         # FIX 2: Match old system audio settings exactly
         self.sample_rate = config.STT_SAMPLE_RATE
@@ -288,6 +289,10 @@ class STTService:
                         print(f"\rAudio level: {audio_level:.6f} (Threshold: {self.silence_threshold:.6f})", end="")
                         self._last_level_log = now
                 
+                # Skip processing if F.R.E.D. is speaking to avoid feedback
+                if self.is_speaking:
+                    continue
+                
                 # Only process audio if level is above threshold
                 if audio_level > self.silence_threshold:
                     # Concise processing indicator
@@ -462,6 +467,10 @@ class STTService:
         except Exception as e:
             logger.error(f"Error transcribing file: {e}")
             return ""
+
+    def set_speaking_state(self, speaking: bool):
+        """Externally notify STT service that F.R.E.D. is currently speaking (True) or silent (False)."""
+        self.is_speaking = speaking
 
 # Global STT service instance
 stt_service = STTService() 

@@ -257,6 +257,9 @@ async def offer(request):
 
                     except Exception as e:
                         print(f"[ERROR] Audio transmission ended: {e}")
+                    finally:
+                        # graceful exit when track ends
+                        return
                 
                 asyncio.create_task(consume_audio_frames())
                 
@@ -371,6 +374,14 @@ async def fred_audio(data):
             print("[WARNING] No Pip-Boy devices available - audio transmission failed")
         else:
             print(f"[SUCCESS] Voice transmission complete → {sent_count} field operative(s) reached")
+        
+        # Inform STT to pause listening during playback
+        estimated_bytes = int(len(audio_b64) * 3 / 4)  # rough base64 decode
+        playback_seconds = max(1, estimated_bytes // 32000 + 1)  # 32kB ≈ 1s at 16-kHz s16 mono
+        stt_service.set_speaking_state(True)
+        # Schedule automatic resume after playback finishes
+        loop = asyncio.get_event_loop()
+        loop.call_later(playback_seconds, lambda: stt_service.set_speaking_state(False))
     else:
         print("[ERROR] No audio data in transmission from F.R.E.D. mainframe")
 
