@@ -84,5 +84,5 @@ typing-inspection==0.4.1
     # via pydantic
 urllib3==2.5.0
     # via requests
-vosk==0.3.45
-    # via -r pi_client/requirements.in
+vosk>=0.3.45
+    # replacing faster-whisper for local STT
