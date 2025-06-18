@@ -190,28 +190,63 @@ async def offer(request):
             
             @channel.on('message')
             def on_message(message):
-                # Handle heartbeat messages
                 if message == '[HEARTBEAT]':
                     print(f"[VITAL-MONITOR] Pip-Boy heartbeat confirmed from {client_ip}")
                     channel.send('[HEARTBEAT_ACK]')
-                elif is_local_stt:
-                    # Handle transcribed text from Pi
-                    try:
-                        import json
-                        data = json.loads(message)
-                        if data.get('type') == 'transcription':
-                            text = data.get('text', '').strip()
-                            if text:
-                                print(f"🗣️ [PI TRANSCRIPTION] '{text}' from {client_ip}")
-                                # Process the transcribed text (same as old audio processing)
-                                process_pi_transcription(text, from_pi=True)
-                    except json.JSONDecodeError:
-                        # Handle plain text messages
-                        if message.strip():
-                            print(f"🗣️ [PI TRANSCRIPTION] '{message.strip()}' from {client_ip}")
-                            process_pi_transcription(message.strip(), from_pi=True)
-                else:
-                    print(f"[PIP-BOY COMM] Field operative message: {message}")
+                    return
+
+                try:
+                    data = json.loads(message)
+                    if data.get('type') == 'transcription':
+                        text = data.get('text', '').strip()
+                        if not text:
+                            return
+                        
+                        print(f"🗣️  [PI TRANSCRIPTION] '{text}' from {client_ip}")
+                        
+                        # --- Simplified and Robust Response Handling ---
+                        try:
+                            # 1. Prepare payload for F.R.E.D.
+                            payload = {
+                                "message": text,
+                                "model": config.DEFAULT_MODEL,
+                                "mute_fred": False, # Ensure TTS for Pi glasses
+                                "from_pi_glasses": True,
+                            }
+                            
+                            # 2. Call F.R.E.D. server directly
+                            import requests
+                            resp = requests.post("http://localhost:5000/chat", json=payload, timeout=60)
+                            resp.raise_for_status() # Raise an exception for bad status codes
+                            
+                            response_data = resp.json()
+                            
+                            # 3. Relay complete response back to Pi
+                            fred_text = response_data.get("response", "No text response.")
+                            fred_audio_b64 = response_data.get("audio")
+
+                            if fred_audio_b64:
+                                print(f"🔊 Relaying audio response to {client_ip}")
+                                channel.send(json.dumps({
+                                    "type": "audio",
+                                    "audio": fred_audio_b64
+                                }))
+                            else:
+                                print(f"💬 Relaying text-only response to {client_ip}")
+                                channel.send(json.dumps({
+                                    "type": "text",
+                                    "text": fred_text
+                                }))
+
+                        except requests.exceptions.RequestException as e:
+                            logging.error(f"Failed to get response from F.R.E.D.: {e}")
+                            channel.send(json.dumps({"type": "status", "status": f"Error: {e}"}))
+                        except Exception as e:
+                            logging.error(f"Error processing transcription on server: {e}")
+                            channel.send(json.dumps({"type": "status", "status": f"Server Error: {e}"}))
+
+                except json.JSONDecodeError:
+                    logging.warning(f"Received non-JSON message from {client_ip}: {message}")
             
             @channel.on('close')
             def on_close():
@@ -229,165 +264,51 @@ async def offer(request):
             print(f"[SIGNAL] {track.kind.upper()} link established with field operative {client_ip}")
             
             if track.kind == 'audio':
-                # Check if this is a local STT client
-                client_type = params.get('client_type', 'unknown')
-                is_local_stt = 'local_stt' in client_type
-                
-                if is_local_stt:
-                    print("[AUDIO] Client uses local STT - skipping server audio processing")
-                    # Just consume frames without processing to prevent buffer buildup
-                    async def consume_audio_frames_minimal():
-                        try:
-                            frame_count = 0
-                            while True:
-                                frame = await track.recv()
-                                frame_count += 1
-                                if frame_count == 1:
-                                    print(f"[AUDIO] Receiving audio frames from {client_ip} (not processing - local STT active)")
-                                elif frame_count % 5000 == 0:  # Very minimal logging
-                                    print(f"[AUDIO] {frame_count} frames received (local STT mode)")
-                        except Exception as e:
-                            print(f"[AUDIO] Audio stream ended: {e}")
-                    
-                    asyncio.create_task(consume_audio_frames_minimal())
-                else:
-                    print("[AUDIO] Voice communication protocols active (server STT)")
-                    frame_count = 0
-                    
-                    # Create a task to consume audio frames from the track
-                    async def consume_audio_frames():
-                        nonlocal frame_count
-                        
-                        try:
-                            buffer = []
-                            total_samples = 0
-                            # Pi-audio: use ~5-second chunk (80,000 samples @16 kHz) like old system
-                            CHUNK_TARGET = config.STT_SAMPLE_RATE * 5  # 48 000 samples
-
-                            while True:
-                                frame = await track.recv()
-                                frame_count += 1
-
-                                if frame_count == 1:
-                                    print(f"[AUDIO] First transmission received from {client_ip}")
-                                # Reduced frequency of frame logging for conciseness
-                                elif frame_count % 2000 == 0:  # Every ~40 seconds instead of every 10
-                                    print(f"[AUDIO] {frame_count} frames processed")
-
-                                pcm = frame.to_ndarray()
-
-                                # Shape (1, samples) -> flatten to samples
-                                if pcm.ndim == 2:
-                                    pcm = pcm.flatten()
-
-                                # HIGH QUALITY AUDIO: Preserve original 48kHz and let Whisper handle resampling
-                                input_sr = getattr(frame, 'sample_rate', 48000)
-                                target_sr = config.STT_SAMPLE_RATE
-                                
-                                # CRITICAL FIX: Use high-quality resampling and preserve float32 precision
-                                if input_sr != target_sr:
-                                    try:
-                                        # Convert to float32 normalized [-1, 1] for high-quality processing
-                                        if pcm.dtype == np.int16:
-                                            pcm_f32 = pcm.astype(np.float32) / 32768.0
-                                        elif pcm.dtype == np.float32:
-                                            pcm_f32 = pcm
-                                        else:
-                                            pcm_f32 = pcm.astype(np.float32)
-                                        
-                                        # High-quality Kaiser window resampling (like your old system)
-                                        from scipy.signal import resample_poly
-                                        pcm_resampled = resample_poly(pcm_f32, target_sr, input_sr)
-                                        
-                                        # Keep as float32 to preserve quality (don't quantize to int16!)
-                                        pcm = pcm_resampled.astype(np.float32)
-                                        
-                                    except Exception as rs_err:
-                                        print(f"[WARNING] Audio resampling error ({input_sr}->{target_sr}): {rs_err}")
-                                        # Fallback: simple decimation
-                                        if input_sr == 48000 and target_sr == 16000:
-                                            pcm = pcm[::3].astype(np.float32) / 32768.0 if pcm.dtype == np.int16 else pcm[::3]
-                                else:
-                                    # Normalize to float32 even if no resampling needed
-                                    if pcm.dtype == np.int16:
-                                        pcm = pcm.astype(np.float32) / 32768.0
-                                    elif pcm.dtype != np.float32:
-                                        pcm = pcm.astype(np.float32)
-
-                                buffer.append(pcm)
-                                total_samples += pcm.shape[0]
-
-                                if total_samples >= CHUNK_TARGET:
-                                    chunk = np.concatenate(buffer)
-                                    stt_service.audio_queue.put((chunk, True))
-                                    buffer = []
-                                    total_samples = 0
-                                    # Reduced frequency of chunk processing logs
-                                    if frame_count % 3000 == 0:  # Much less frequent
-                                        print(f"[PROCESSING] Speech data sent to recognition system")
-
-                        except Exception as e:
-                            print(f"[ERROR] Audio transmission ended: {e}")
-                        finally:
-                            # graceful exit when track ends
-                            return
-                    
-                    asyncio.create_task(consume_audio_frames())
-                
-            elif track.kind == 'video':
-                print("[OPTICS] Visual reconnaissance feed active")
-                frame_count = 0
-                
-                # Store track for on-demand frame requests
-                client_video_tracks[client_ip] = track
-                
-                # Test: Request first frame immediately
-                try:
-                    frame = await track.recv()
-                    frame_count += 1
-                    print(f"[OPTICS] Visual feed confirmed ({frame.width}x{frame.height})")
-                    
-                    # Store frame for vision processing
-                    vision_service.store_latest_frame(frame)
-                    
-                except Exception as e:
-                    print(f"[ERROR] Visual feed initialization failed: {e}")
+                # Local STT clients don't send processable audio
+                print("[AUDIO] Client uses local STT - audio stream will be ignored.")
+                # We still need to consume the track to prevent buffer issues
+                recorder.addTrack(track)
             
-            # Add track to recorder safely
-            if recorder:
-                try:
-                    recorder.addTrack(track)
-                except Exception as rec_err:
-                    logging.error(f"[WARNING] Track recording failed: {rec_err}")
+            if track.kind == 'video':
+                print(f"[OPTICS] Video feed from {client_ip} is now available for on-demand analysis.")
+                client_video_tracks[client_ip] = track
+                # Don't record video unless explicitly requested
+                # recorder.addTrack(track)
 
         @pc.on('connectionstatechange')
         async def on_connectionstatechange():
             
-            if pc.connectionState == 'connected':
-                print(f"[SUCCESS] Pip-Boy fully operational at {client_ip}")
-            elif pc.connectionState in ('failed', 'closed'):
-                print(f"[DISCONNECT] Pip-Boy {client_ip} offline")
-                # Clean up video track reference
+            state = pc.connectionState
+            logging.info(f"Connection state is {state}")
+            
+            if state == "failed" or state == "closed":
+                await pc.close()
+                pcs.discard(pc)
                 if client_ip in client_video_tracks:
                     del client_video_tracks[client_ip]
-                await pc.close()
-                pcs.discard(pc)  # free slot for new connections
+                logging.info(f"Connection from {client_ip} closed.")
 
         await pc.setRemoteDescription(offer)
+        await recorder.start() # Start recording (or blackholing) media
+        
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
-        return web.json_response({'sdp': pc.localDescription.sdp,
-                                  'type': pc.localDescription.type})
+        return web.json_response({
+            'sdp': pc.localDescription.sdp,
+            'type': pc.localDescription.type
+        })
     
     except Exception as e:
-        logging.error(f"Error handling offer from {client_ip}: {e}")
-        return web.json_response({'error': 'Internal server error'}, status=500)
+        logging.error(f"Failed to establish WebRTC connection with {client_ip}: {e}")
+        await pc.close()
+        pcs.discard(pc)
+        return web.json_response({'error': str(e)}, status=500)
 
 # SocketIO event handlers for receiving responses from main F.R.E.D. server
 @sio_client.event
 async def connect():
-    print("[VAULT-NET] Established secure link to F.R.E.D. mainframe")
+    logging.info("[VAULT-NET] ✅ Connection to F.R.E.D. main server established.")
     # Emit connection confirmation
     await sio_client.emit('webrtc_server_connected')
     print("[BRIDGE] Wasteland communication network ONLINE - standing by for field operations")

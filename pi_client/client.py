@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 F.R.E.D. Pi Client with Local Speech-to-Text
+by OllieTec
 Processes voice locally using tiny.en model, sends transcribed text to server
 """
 
