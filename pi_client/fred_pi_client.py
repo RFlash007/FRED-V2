@@ -200,68 +200,110 @@ class FREDPiSTTService:
             print(f"❌ [AUDIO] Audio capture failed: {e}")
     
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
-        """
-        Process audio chunks, handle voice activity detection, and manage transcription state.
-        This is the core of the STT logic.
-        """
+        """Process individual audio chunk"""
         try:
-            # VAD: Check if there is speech in the chunk
-            is_speech = np.abs(audio_chunk).mean() > self.silence_threshold
-
-            # Convert audio chunk to bytes for Vosk
-            audio_bytes = (audio_chunk * 32767).astype(np.int16).tobytes()
-
-            # Always feed audio to the recognizer
-            self.recognizer.AcceptWaveform(audio_bytes)
-
-            if self.is_listening:
-                if is_speech:
-                    self.last_speech_time = time.time()
-                    # Mark that we have speech and should process the end of it
-                    if not self.speech_buffer:
-                        self.speech_buffer.append("placeholder")
-                elif self.speech_buffer:  # End of speech detected
+            # Calculate audio level for voice activity detection
+            audio_level = np.abs(audio_chunk).mean()
+            
+            # Skip if too quiet
+            if audio_level < self.silence_threshold:
+                if self.is_listening and self.speech_buffer:
                     if time.time() - self.last_speech_time > self.silence_duration:
-                        self._process_final_utterance()
-            else:  # Not listening, check for wake word
-                if is_speech:
-                    partial_text = json.loads(self.recognizer.PartialResult()).get('partial', '')
-                    if any(wake_word in partial_text.lower() for wake_word in self.wake_words):
-                        print(f"👋 [WAKE] Wake word detected! Listening...")
-                        self.is_listening = True
-                        self.speech_buffer.append("placeholder") # Mark that we should process the next utterance
-                        self.last_speech_time = time.time()
-                        # Reset to ignore wake word in command
-                        self.recognizer.FinalResult() 
+                        self._process_complete_utterance()
+                return
+            
+            # Transcribe audio
+            text = self._transcribe_audio(audio_chunk)
+            if text and len(text.strip()) > 0:
+                self._handle_transcribed_text(text.strip().lower())
+                
         except Exception as e:
             logger.error(f"Audio chunk processing error: {e}")
     
-    def _process_final_utterance(self):
-        """
-        Get the final transcription from Vosk, handle it, and reset for the next command.
-        """
-        final_result = json.loads(self.recognizer.FinalResult())
-        self.speech_buffer = [] # Clear buffer
-
-        complete_text = final_result.get('text', '').strip()
-
-        if complete_text:
-            print(f"🗣️  [COMPLETE] Processing: '{complete_text}'")
-
-            # Check for stop words
-            if any(stop_word in complete_text.lower() for stop_word in self.stop_words):
-                print(f"💤 [SLEEP] Stop word detected. Returning to wake word listening.")
-                self.is_listening = False
-                if self.transcription_callback:
-                    # Inform server that we are going to sleep
-                    self.transcription_callback("goodbye")
+    def _transcribe_audio(self, audio_chunk: np.ndarray) -> str:
+        """Transcribe audio using Vosk"""
+        try:
+            if len(audio_chunk) < 1600:  # Less than 0.1 seconds
+                return ""
+            
+            # Convert to int16 format that Vosk expects
+            if audio_chunk.dtype == np.float32:
+                # Convert float32 [-1, 1] to int16
+                audio_data = (audio_chunk * 32767).astype(np.int16)
+            else:
+                audio_data = audio_chunk.astype(np.int16)
+            
+            # Convert to bytes
+            audio_bytes = audio_data.tobytes()
+            
+            # Process with Vosk
+            if self.recognizer.AcceptWaveform(audio_bytes):
+                # Final result
+                result = json.loads(self.recognizer.Result())
+                text = result.get('text', '')
+            else:
+                # Partial result
+                result = json.loads(self.recognizer.PartialResult())
+                text = result.get('partial', '')
+            
+            self._transcription_count += 1
+            if self._transcription_count % 100 == 0:
+                elapsed = time.time() - self._start_time
+                avg_time = elapsed / self._transcription_count
+                print(f"📊 [PERFORMANCE] {self._transcription_count} transcriptions, avg: {avg_time:.3f}s")
+            
+            return text.strip()
+            
+        except Exception as e:
+            logger.error(f"Transcription error: {e}")
+            return ""
+    
+    def _handle_transcribed_text(self, text: str):
+        """Handle transcribed text with wake word detection"""
+        print(f"🎙️ [DETECTED] '{text}'")
+        
+        # Check for wake words when not listening
+        if not self.is_listening:
+            if any(wake_word in text for wake_word in self.wake_words):
+                print(f"👋 [WAKE] Wake word detected! Listening...")
+                self.is_listening = True
+                self.speech_buffer = []
+                self.last_speech_time = time.time()
                 return
-
-            # Send valid command to the main client
-            if self.transcription_callback:
-                self.transcription_callback(complete_text)
-
-        # Ready for next command
+        
+        # Process speech while listening
+        if self.is_listening:
+            # Check for stop words
+            if any(stop_word in text for stop_word in self.stop_words):
+                print(f"💤 [SLEEP] Stop word detected")
+                if self.transcription_callback:
+                    self.transcription_callback("goodbye")
+                self.is_listening = False
+                self.speech_buffer = []
+                return
+            
+            # Add to speech buffer if meaningful
+            if len(text.split()) > 1:  # More than one word
+                print(f"📝 [BUFFER] Adding: '{text}'")
+                self.last_speech_time = time.time()
+                self.speech_buffer.append(text)
+    
+    def _process_complete_utterance(self):
+        """Process complete buffered utterance"""
+        if not self.speech_buffer:
+            return
+            
+        complete_text = " ".join(self.speech_buffer)
+        print(f"🗣️ [COMPLETE] Processing: '{complete_text}'")
+        
+        # Clear buffer
+        self.speech_buffer = []
+        
+        # Send to callback
+        if self.transcription_callback:
+            self.transcription_callback(complete_text)
+        
+        # Resume listening
         print("👂 [READY] Listening for next command...")
 
 
@@ -393,9 +435,77 @@ class FREDPiClient:
                 print(f"❌ Video track creation failed: {e}")
         
         if audio:
-            # Audio streaming from the Pi is disabled when using local STT.
-            # The server will handle Text-to-Speech synthesis.
-            pass
+            print("🎤 Setting up audio...")
+            # Try sounddevice audio track
+            try:
+                import sounddevice as sd
+                from aiortc import MediaStreamTrack
+                from av import AudioFrame
+                import collections
+                from fractions import Fraction
+
+                class SoundDeviceAudioTrack(MediaStreamTrack):
+                    kind = "audio"
+                    
+                    def __init__(self, device=None, sample_rate=16000, channels=1):
+                        super().__init__()
+                        self.device = device
+                        self.sample_rate = sample_rate
+                        self.channels = channels
+                        
+                        self.buffer = collections.deque(maxlen=self.sample_rate * 2)
+                        self.samples_sent = 0
+                        self.time_base = Fraction(1, self.sample_rate)
+                        self.stream = None
+                        self._running = False
+                        
+                    def start(self):
+                        if self._running:
+                            return
+                            
+                        def audio_callback(indata, frames, time, status):
+                            mono = indata.mean(axis=1).astype(np.float32)
+                            self.buffer.extend(mono)
+                        
+                        self.stream = sd.InputStream(
+                            device=self.device,
+                            channels=self.channels,
+                            samplerate=self.sample_rate,
+                            callback=audio_callback,
+                            dtype=np.float32
+                        )
+                        
+                        self.stream.start()
+                        self._running = True
+                        print("✅ Audio capture started!")
+                        
+                    async def recv(self):
+                        if not self._running:
+                            self.start()
+                        
+                        frame_samples = int(self.sample_rate * 0.02)  # 20ms
+                        
+                        while len(self.buffer) < frame_samples:
+                            await asyncio.sleep(0.001)
+                        
+                        samples = [self.buffer.popleft() for _ in range(frame_samples)]
+                        pcm_i16 = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
+                        pcm_i16 = pcm_i16.reshape(1, -1)
+                        
+                        frame = AudioFrame.from_ndarray(pcm_i16, format='s16', layout='mono')
+                        frame.sample_rate = self.sample_rate
+                        frame.pts = self.samples_sent
+                        frame.time_base = self.time_base
+                        
+                        self.samples_sent += frame_samples
+                        return frame
+                
+                audio_track = SoundDeviceAudioTrack()
+                tracks.append(audio_track)
+                print("✅ Audio working with sounddevice")
+                
+            except Exception as e:
+                print(f"❌ Audio track creation failed: {e}")
         
         return tracks
 
