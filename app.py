@@ -133,7 +133,7 @@ def initialize_tts():
             device = "cuda" if torch.cuda.is_available() else "cpu"
             tts_engine = TTS(config.XTTS_MODEL_NAME).to(device)
             fred_state.set_tts_engine(tts_engine)
-            logging.info(f"[JARVIS-MODE] Voice synthesis matrix loaded on {device.upper()}")
+            logging.info(f"[ARC-MODE] Voice synthesis matrix loaded on {device.upper()}")
         except Exception as e:
             logging.error(f"[CRITICAL] Voice synthesis initialization failed: {e}")
             fred_state.set_tts_engine(None)
@@ -302,11 +302,11 @@ def fred_speak(text, mute_fred=False, target_device='local'):
         target_device: 'local' for main computer, 'pi' for Pi glasses, 'all' for both
     """
     if mute_fred:
-        print(f"[VAULT-TEC] Audio protocols disabled - transmission suppressed: '{text[:50]}...'")
+        print(f"[SHELTER-NET] Audio protocols disabled - transmission suppressed: '{text[:50]}...'")
         return
         
     if not text.strip():
-        print("[VAULT-TEC] Warning: Empty transmission detected - aborting voice synthesis")
+        print("[SHELTER-NET] Warning: Empty transmission detected - aborting voice synthesis")
         return
         
     if not os.path.exists(config.FRED_SPEAKER_WAV_PATH):
@@ -332,7 +332,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             logging.warning("TTS engine not initialized, skipping speech generation")
             return
 
-        print(f"[JARVIS-MODE] Synthesizing neural voice patterns → {output_path}")
+        print(f"[ARC-MODE] Synthesizing neural voice patterns → {output_path}")
         tts_engine.tts_to_file(
             text=text,
             speaker_wav=config.FRED_SPEAKER_WAV_PATH,
@@ -349,7 +349,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
 
         if target_device in ['pi', 'all']:
             # Send audio to Pi glasses
-            print(f"[TRANSMISSION] Routing audio to Pip-Boy interface...")
+            print(f"[TRANSMISSION] Routing audio to ArmLink interface...")
             send_audio_to_pi(output_path, text)
 
         if target_device not in ['local', 'pi', 'all']:
@@ -378,7 +378,7 @@ def send_audio_to_pi(audio_file_path, text):
     try:
         import base64
         
-        print(f"[PIP-BOY] Initiating wasteland communication protocol...")
+        print(f"[ARMLINK] Initiating field comm protocol...")
         print(f"   → Audio matrix: {audio_file_path}")
         print(f"   → Message: '{text[:50]}...'")
         
@@ -411,7 +411,7 @@ def send_audio_to_pi(audio_file_path, text):
         
     except Exception as e:
         logging.error(f"Error sending audio to Pi: {e}")
-        print(f"[CRITICAL] Pip-Boy transmission failure: {e}")
+        print(f"[CRITICAL] ArmLink transmission failure: {e}")
         import traceback
         traceback.print_exc()
 

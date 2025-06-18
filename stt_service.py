@@ -106,7 +106,7 @@ class STTService:
             else:
                 compute_type = "int8"  # Always use quantized on CPU
             
-            logger.info(f"[VAULT-NET] Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM")
+            logger.info(f"[SHELTER-NET] Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM")
             logger.info(f"[NEURAL-NET] Initializing Whisper large-v3 (quantized) on {device.upper()}")
             
             # Optimize CPU threads - use most but not all cores to avoid blocking
@@ -114,7 +114,7 @@ class STTService:
             
             # Use large-v3 model with quantization for best accuracy/speed balance
             model_size = config.STT_MODEL_SIZE
-            logger.info(f"[JARVIS-MODE] Loading {model_size} model with {compute_type} quantization")
+            logger.info(f"[ARC-MODE] Loading {model_size} model with {compute_type} quantization")
             
             # Initialize with optimized settings for real-time accuracy
             self.model = WhisperModel(
@@ -325,7 +325,7 @@ class STTService:
                         # Convert generator to list for safe multiple passes
                         segments = list(segments_gen)
                         if from_pi and segments and self._debug_counter % 10 == 0:  # Concise Pi logging
-                            print(f"[PIP-BOY] Processed {len(segments)} speech segments")
+                            print(f"[ARMLINK] Processed {len(segments)} speech segments")
 
                         for segment in segments:
                             text = segment.text.strip().lower()

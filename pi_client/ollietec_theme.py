@@ -10,11 +10,11 @@ _COLOR_MAP = {
     'AUDIO': '\033[95m',
     'NETWORK': '\033[96m',
     'OPTICS': '\033[96m',
-    'PIP-BOY': '\033[92m',
+    'ARMLINK': '\033[92m',
     'MAINFRAME': '\033[95m',
-    'VAULT': '\033[96m',
+    'SHELTER': '\033[96m',
     'OLLIE-TEC': '\033[95m',
-    'STARK': '\033[91m',
+    'ARCTEC': '\033[91m',
 }
 
 _orig_print = _b.print
@@ -43,7 +43,7 @@ def banner(component: str) -> str:
     lines = [
         '\033[92m' + '═' * 60 + '\033[0m',
         f'\033[95m  🛰️  OLLIE-TEC™ {component} ONLINE  🛰️\033[0m',
-        '\033[96m  Stark Industries x Vault-Tec Interface\033[0m',
+        '\033[96m  ArcTec Labs x ShelterNet Interface\033[0m',
         f'\033[93m  Boot: {time.strftime("%Y-%m-%d %H:%M:%S")}\033[0m',
         '\033[92m' + '═' * 60 + '\033[0m',
     ]

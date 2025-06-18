@@ -71,4 +71,4 @@ else
 fi
 
 echo "════════════════════════════════════════════════════════════"
-echo "🎯 [F.R.E.D.] Vault-Tec speech recognition protocols ONLINE" 
+echo "🎯 [F.R.E.D.] ShelterNet speech recognition protocols ONLINE"
