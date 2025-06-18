@@ -3,5 +3,4 @@ av
 requests
 sounddevice
 numpy
-ollama
-faster-whisper 
+ollama 

@@ -84,5 +84,3 @@ typing-inspection==0.4.1
     # via pydantic
 urllib3==2.5.0
     # via requests
-faster-whisper>=1.0.0
-    # via -r pi_client/requirements.in
