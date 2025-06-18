@@ -181,12 +181,35 @@ async def offer(request):
             vision_service.set_pi_connection_status(True)
             print(f"[OPTICS] Pip-Boy visual sensors ONLINE - initiating reconnaissance protocols")
             
+            # Check if this is a local STT client
+            client_type = params.get('client_type', 'unknown')
+            is_local_stt = 'local_stt' in client_type
+            
+            if is_local_stt:
+                print(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
+            
             @channel.on('message')
             def on_message(message):
                 # Handle heartbeat messages
                 if message == '[HEARTBEAT]':
                     print(f"[VITAL-MONITOR] Pip-Boy heartbeat confirmed from {client_ip}")
                     channel.send('[HEARTBEAT_ACK]')
+                elif is_local_stt:
+                    # Handle transcribed text from Pi
+                    try:
+                        import json
+                        data = json.loads(message)
+                        if data.get('type') == 'transcription':
+                            text = data.get('text', '').strip()
+                            if text:
+                                print(f"🗣️ [PI TRANSCRIPTION] '{text}' from {client_ip}")
+                                # Process the transcribed text (same as old audio processing)
+                                process_pi_transcription(text, from_pi=True)
+                    except json.JSONDecodeError:
+                        # Handle plain text messages
+                        if message.strip():
+                            print(f"🗣️ [PI TRANSCRIPTION] '{message.strip()}' from {client_ip}")
+                            process_pi_transcription(message.strip(), from_pi=True)
                 else:
                     print(f"[PIP-BOY COMM] Field operative message: {message}")
             
@@ -206,88 +229,110 @@ async def offer(request):
             print(f"[SIGNAL] {track.kind.upper()} link established with field operative {client_ip}")
             
             if track.kind == 'audio':
-                print("[AUDIO] Voice communication protocols active")
-                frame_count = 0
+                # Check if this is a local STT client
+                client_type = params.get('client_type', 'unknown')
+                is_local_stt = 'local_stt' in client_type
                 
-                # Create a task to consume audio frames from the track
-                async def consume_audio_frames():
-                    nonlocal frame_count
+                if is_local_stt:
+                    print("[AUDIO] Client uses local STT - skipping server audio processing")
+                    # Just consume frames without processing to prevent buffer buildup
+                    async def consume_audio_frames_minimal():
+                        try:
+                            frame_count = 0
+                            while True:
+                                frame = await track.recv()
+                                frame_count += 1
+                                if frame_count == 1:
+                                    print(f"[AUDIO] Receiving audio frames from {client_ip} (not processing - local STT active)")
+                                elif frame_count % 5000 == 0:  # Very minimal logging
+                                    print(f"[AUDIO] {frame_count} frames received (local STT mode)")
+                        except Exception as e:
+                            print(f"[AUDIO] Audio stream ended: {e}")
                     
-                    try:
-                        buffer = []
-                        total_samples = 0
-                        # Pi-audio: use ~5-second chunk (80,000 samples @16 kHz) like old system
-                        CHUNK_TARGET = config.STT_SAMPLE_RATE * 5  # 48 000 samples
+                    asyncio.create_task(consume_audio_frames_minimal())
+                else:
+                    print("[AUDIO] Voice communication protocols active (server STT)")
+                    frame_count = 0
+                    
+                    # Create a task to consume audio frames from the track
+                    async def consume_audio_frames():
+                        nonlocal frame_count
+                        
+                        try:
+                            buffer = []
+                            total_samples = 0
+                            # Pi-audio: use ~5-second chunk (80,000 samples @16 kHz) like old system
+                            CHUNK_TARGET = config.STT_SAMPLE_RATE * 5  # 48 000 samples
 
-                        while True:
-                            frame = await track.recv()
-                            frame_count += 1
+                            while True:
+                                frame = await track.recv()
+                                frame_count += 1
 
-                            if frame_count == 1:
-                                print(f"[AUDIO] First transmission received from {client_ip}")
-                            # Reduced frequency of frame logging for conciseness
-                            elif frame_count % 2000 == 0:  # Every ~40 seconds instead of every 10
-                                print(f"[AUDIO] {frame_count} frames processed")
+                                if frame_count == 1:
+                                    print(f"[AUDIO] First transmission received from {client_ip}")
+                                # Reduced frequency of frame logging for conciseness
+                                elif frame_count % 2000 == 0:  # Every ~40 seconds instead of every 10
+                                    print(f"[AUDIO] {frame_count} frames processed")
 
-                            pcm = frame.to_ndarray()
+                                pcm = frame.to_ndarray()
 
-                            # Shape (1, samples) -> flatten to samples
-                            if pcm.ndim == 2:
-                                pcm = pcm.flatten()
+                                # Shape (1, samples) -> flatten to samples
+                                if pcm.ndim == 2:
+                                    pcm = pcm.flatten()
 
-                            # HIGH QUALITY AUDIO: Preserve original 48kHz and let Whisper handle resampling
-                            input_sr = getattr(frame, 'sample_rate', 48000)
-                            target_sr = config.STT_SAMPLE_RATE
-                            
-                            # CRITICAL FIX: Use high-quality resampling and preserve float32 precision
-                            if input_sr != target_sr:
-                                try:
-                                    # Convert to float32 normalized [-1, 1] for high-quality processing
+                                # HIGH QUALITY AUDIO: Preserve original 48kHz and let Whisper handle resampling
+                                input_sr = getattr(frame, 'sample_rate', 48000)
+                                target_sr = config.STT_SAMPLE_RATE
+                                
+                                # CRITICAL FIX: Use high-quality resampling and preserve float32 precision
+                                if input_sr != target_sr:
+                                    try:
+                                        # Convert to float32 normalized [-1, 1] for high-quality processing
+                                        if pcm.dtype == np.int16:
+                                            pcm_f32 = pcm.astype(np.float32) / 32768.0
+                                        elif pcm.dtype == np.float32:
+                                            pcm_f32 = pcm
+                                        else:
+                                            pcm_f32 = pcm.astype(np.float32)
+                                        
+                                        # High-quality Kaiser window resampling (like your old system)
+                                        from scipy.signal import resample_poly
+                                        pcm_resampled = resample_poly(pcm_f32, target_sr, input_sr)
+                                        
+                                        # Keep as float32 to preserve quality (don't quantize to int16!)
+                                        pcm = pcm_resampled.astype(np.float32)
+                                        
+                                    except Exception as rs_err:
+                                        print(f"[WARNING] Audio resampling error ({input_sr}->{target_sr}): {rs_err}")
+                                        # Fallback: simple decimation
+                                        if input_sr == 48000 and target_sr == 16000:
+                                            pcm = pcm[::3].astype(np.float32) / 32768.0 if pcm.dtype == np.int16 else pcm[::3]
+                                else:
+                                    # Normalize to float32 even if no resampling needed
                                     if pcm.dtype == np.int16:
-                                        pcm_f32 = pcm.astype(np.float32) / 32768.0
-                                    elif pcm.dtype == np.float32:
-                                        pcm_f32 = pcm
-                                    else:
-                                        pcm_f32 = pcm.astype(np.float32)
-                                    
-                                    # High-quality Kaiser window resampling (like your old system)
-                                    from scipy.signal import resample_poly
-                                    pcm_resampled = resample_poly(pcm_f32, target_sr, input_sr)
-                                    
-                                    # Keep as float32 to preserve quality (don't quantize to int16!)
-                                    pcm = pcm_resampled.astype(np.float32)
-                                    
-                                except Exception as rs_err:
-                                    print(f"[WARNING] Audio resampling error ({input_sr}->{target_sr}): {rs_err}")
-                                    # Fallback: simple decimation
-                                    if input_sr == 48000 and target_sr == 16000:
-                                        pcm = pcm[::3].astype(np.float32) / 32768.0 if pcm.dtype == np.int16 else pcm[::3]
-                            else:
-                                # Normalize to float32 even if no resampling needed
-                                if pcm.dtype == np.int16:
-                                    pcm = pcm.astype(np.float32) / 32768.0
-                                elif pcm.dtype != np.float32:
-                                    pcm = pcm.astype(np.float32)
+                                        pcm = pcm.astype(np.float32) / 32768.0
+                                    elif pcm.dtype != np.float32:
+                                        pcm = pcm.astype(np.float32)
 
-                            buffer.append(pcm)
-                            total_samples += pcm.shape[0]
+                                buffer.append(pcm)
+                                total_samples += pcm.shape[0]
 
-                            if total_samples >= CHUNK_TARGET:
-                                chunk = np.concatenate(buffer)
-                                stt_service.audio_queue.put((chunk, True))
-                                buffer = []
-                                total_samples = 0
-                                # Reduced frequency of chunk processing logs
-                                if frame_count % 3000 == 0:  # Much less frequent
-                                    print(f"[PROCESSING] Speech data sent to recognition system")
+                                if total_samples >= CHUNK_TARGET:
+                                    chunk = np.concatenate(buffer)
+                                    stt_service.audio_queue.put((chunk, True))
+                                    buffer = []
+                                    total_samples = 0
+                                    # Reduced frequency of chunk processing logs
+                                    if frame_count % 3000 == 0:  # Much less frequent
+                                        print(f"[PROCESSING] Speech data sent to recognition system")
 
-                    except Exception as e:
-                        print(f"[ERROR] Audio transmission ended: {e}")
-                    finally:
-                        # graceful exit when track ends
-                        return
-                
-                asyncio.create_task(consume_audio_frames())
+                        except Exception as e:
+                            print(f"[ERROR] Audio transmission ended: {e}")
+                        finally:
+                            # graceful exit when track ends
+                            return
+                    
+                    asyncio.create_task(consume_audio_frames())
                 
             elif track.kind == 'video':
                 print("[OPTICS] Visual reconnaissance feed active")
