@@ -149,57 +149,66 @@ class LocalAudioProcessor:
         pass
 
 def create_video_track():
-    """Create video track with Picamera2"""
+    """Create video track with Picamera2 - EXACT COPY from working client.py"""
     try:
-        # Handle numpy compatibility issues
-        import warnings
-        warnings.filterwarnings("ignore", message=".*dtype size changed.*")
-        
         from picamera2 import Picamera2
         import libcamera
         from aiortc import VideoStreamTrack
         import av
 
         class PiCamera2Track(VideoStreamTrack):
-            """Video track using Picamera2"""
+            """
+            A video track that streams video from a Picamera2 camera.
+            This is the modern, recommended approach for Raspberry Pi.
+            """
             def __init__(self):
                 super().__init__()
                 print("📸 Initializing Picamera2...")
                 self.picam2 = Picamera2()
                 
-                # Configure for optimal quality
+                # Configure for Qwen 2.5-VL 7B - Maximum quality approach
+                # Capture at maximum available resolution for full field of view
                 sensor_modes = self.picam2.sensor_modes
                 max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
                 max_res = max_mode['size']
-                print(f"🎯 Using native resolution {max_res}")
+                print(f"🎯 Using native resolution {max_res} = {(max_res[0] * max_res[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL - no upscaling needed!)")
                 
                 config = self.picam2.create_video_configuration(
-                    main={"size": max_res, "format": "RGB888"},
+                    main={"size": max_res, "format": "RGB888"},  # Full sensor resolution for maximum FOV
                     controls={
-                        "FrameRate": 5,
-                        "Brightness": 0.1,
-                        "Contrast": 1.1,
-                        "Saturation": 1.0,
+                        "FrameRate": 5,  # Lower FPS for on-demand processing
+                        "Brightness": 0.1,  # Slightly brighter for better AI analysis
+                        "Contrast": 1.1,    # Enhanced contrast
+                        "Saturation": 1.0,  # Natural colors
+                        # "NoiseReductionMode": libcamera.controls.NoiseReductionModeEnum.Off, # Removed: Causes crash on newer libcamera
                     },
-                    buffer_count=2
+                    buffer_count=2  # Minimize buffer for low latency
                 )
                 self.picam2.configure(config)
                 self.picam2.start()
                 
                 self.frame_count = 0
                 self.start_time = time.time()
-                print("✅ Picamera2 initialized successfully")
+                print("✅ Picamera2 initialized successfully.")
 
             async def recv(self):
-                """Receive video frames"""
+                """Receive video frames from the camera."""
                 pts, time_base = await self.next_timestamp()
                 
+                # Get the frame from Picamera2
                 try:
                     array = self.picam2.capture_array("main")
                 except Exception as e:
-                    print(f"💥 Failed to capture frame: {e}")
+                    print(f"💥 Failed to capture frame from Picamera2: {e}")
+                    # As a fallback, create a black frame at native resolution
                     array = np.zeros((2464, 3280, 3), dtype=np.uint8)
                 
+                # Use native camera resolution - no resizing needed!
+                # Native 3280x2464 = 8.1 MP is within Qwen 2.5-VL's 12.8 MP budget
+                if self.frame_count == 1:
+                    print(f"📐 Native Resolution: {array.shape[1]}x{array.shape[0]} = {(array.shape[0] * array.shape[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL)")
+                
+                # Convert to video frame for aiortc
                 frame = av.VideoFrame.from_ndarray(array, format="rgb24")
                 frame.pts = pts
                 frame.time_base = time_base
@@ -207,29 +216,35 @@ def create_video_track():
                 self.frame_count += 1
                 if self.frame_count == 1:
                     print(f"🚀 First frame sent! Size: {array.shape}")
-                
+                elif self.frame_count % 150 == 0: # Log every ~10 seconds
+                    elapsed = time.time() - self.start_time
+                    if elapsed > 0:
+                        fps = self.frame_count / elapsed
+                        print(f"📊 Sent {self.frame_count} frames. Average FPS: {fps:.2f}")
+
                 return frame
 
             def __del__(self):
-                """Cleanup camera resources"""
+                """Cleanup camera resources."""
                 try:
-                    if hasattr(self, 'picam2') and self.picam2:
+                    if hasattr(self, 'picam2') and getattr(self, 'picam2', None):
                         if self.picam2.is_open:
                             self.picam2.stop()
-                            print('🛑 Picamera2 stopped')
-                except Exception:
+                            print('🛑 Picamera2 stopped (cleanup).')
+                except Exception as e:
+                    # Silently ignore cleanup exceptions to avoid noisy traces
                     pass
 
         return PiCamera2Track()
         
     except ImportError:
-        print("❌ Picamera2 library not found")
-        print("💡 Video will be disabled - audio-only mode")
+        print("❌ Picamera2 library not found. Please run: pip install picamera2")
         return None
     except Exception as e:
-        print(f"❌ Picamera2 setup failed: {e}")
-        print("💡 Continuing without video - STT will still work")
-        print("🔧 To fix: sudo apt update && sudo apt install python3-picamera2")
+        print(f"❌ Picamera2 video setup failed: {e}")
+        print("   Ensure libcamera is working. You can test with 'libcamera-hello'.")
+        import traceback
+        traceback.print_exc()
         return None
 
 def get_server_url(provided_url=None):
