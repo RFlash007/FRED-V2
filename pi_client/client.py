@@ -2,7 +2,7 @@
 """
 F.R.E.D. Pi Client with Local Speech-to-Text
 by OllieTec
-Processes voice locally using tiny.en model, sends transcribed text to server
+Processes voice locally using Vosk small English model, sends transcribed text to server
 """
 
 import os
@@ -480,7 +480,7 @@ def main():
     server_url = get_server_url(args.server)
     
     print("🤖 [F.R.E.D. GLASSES] Initializing Pip-Boy interface...")
-    print("🧠 [LOCAL STT] Using tiny.en model with int8 quantization")
+    print("🧠 [LOCAL STT] Using Vosk small English model for on-device speech recognition")
     print("📡 [NETWORK] Sending transcribed text instead of raw audio")
     
     global picam2

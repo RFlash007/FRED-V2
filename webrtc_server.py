@@ -30,6 +30,12 @@ pi_clients = set()  # Track Pi clients for vision processing
 client_video_tracks = {}  # Store video tracks for on-demand frame requests
 connection_timestamps = {}  # Track connection times for rate limiting
 
+# Make the AppRunner accessible to the module scope so that we can clean it up
+# reliably in the __main__ guard. This avoids a NameError raised when the file
+# is executed directly and the `runner` local variable only exists inside
+# `main()`.
+runner = None  # type: ignore
+
 async def request_frame_from_client(client_ip):
     """Request a fresh frame from a specific client"""
     if client_ip not in client_video_tracks:
@@ -398,6 +404,7 @@ async def init_app(app):
         print(f"Failed to connect to F.R.E.D. main server: {e}")
 
 async def main():
+    global runner
     parser = argparse.ArgumentParser(description="F.R.E.D. WebRTC server")
     parser.add_argument("--cert-file", help="SSL certificate file (for HTTPS)")
     parser.add_argument("--key-file", help="SSL key file (for HTTPS)")

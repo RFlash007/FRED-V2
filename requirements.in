@@ -8,7 +8,7 @@ python-dotenv
 duckdb
 psutil
 sounddevice
-faster-whisper
+vosk
 aiortc
 aiohttp
 duckduckgo-search

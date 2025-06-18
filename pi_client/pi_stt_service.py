@@ -10,7 +10,9 @@ import queue
 import numpy as np
 import logging
 from typing import Optional, Callable
-from faster_whisper import WhisperModel
+from vosk import Model, KaldiRecognizer
+import json
+import os
 from ollietec_theme import apply_theme
 
 apply_theme()
@@ -24,10 +26,12 @@ class PiSTTService:
     """
     
     def __init__(self):
-        self.model: Optional[WhisperModel] = None
+        # Vosk STT objects
+        self.model: Optional[Model] = None
+        self.recognizer: Optional[KaldiRecognizer] = None
         self.is_initialized = False
         
-        # Audio processing configuration
+        # Audio processing configuration compatible with Vosk small model
         self.sample_rate = 16000
         self.channels = 1
         self.block_duration_s = 2  # Process audio in 2-second chunks
@@ -54,22 +58,24 @@ class PiSTTService:
         ]
         
     def initialize(self):
-        """Initialize the Whisper model optimized for Pi."""
+        """Initialize the Vosk model optimized for Pi."""
         if self.is_initialized:
             return True
             
         try:
             print("[PIP-BOY STT] Initializing voice recognition systems...")
-            print("🔧 Loading tiny.en model with int8 quantization...")
-            
-            # Optimal settings for Raspberry Pi
-            self.model = WhisperModel(
-                "tiny.en",
-                device="cpu",
-                compute_type="int8",
-                cpu_threads=4,
-                num_workers=1
-            )
+            print("🔧 Loading Vosk small English model (~50 MB)...")
+            # Expecting the model to be downloaded and extracted at this path.
+            # Users can obtain it from: https://alphacephei.com/vosk/models
+            model_path = os.getenv("VOSK_MODEL_PATH", "models/vosk-model-small-en-us-0.15")
+
+            if not os.path.isdir(model_path):
+                raise FileNotFoundError(
+                    f"Vosk model not found at '{model_path}'. "
+                    "Download and unpack the small English model, then set VOSK_MODEL_PATH." )
+
+            self.model = Model(model_path)
+            self.recognizer = KaldiRecognizer(self.model, self.sample_rate)
             
             print("✅ [PIP-BOY STT] Voice recognition ONLINE")
             self.is_initialized = True
@@ -156,24 +162,24 @@ class PiSTTService:
                 time.sleep(0.1)
     
     def _transcribe_audio(self, audio_data: np.ndarray) -> str:
-        """Transcribe audio using optimized Whisper settings."""
-        if self.model is None: return ""
-        
+        """Transcribe audio using the Vosk streaming recognizer."""
+        if self.recognizer is None:
+            return ""
+
         try:
-            # Normalize audio to float32 [-1, 1] for Whisper
-            if audio_data.dtype == np.int16:
-                audio_data = audio_data.astype(np.float32) / 32768.0
-            
-            segments, _ = self.model.transcribe(
-                audio_data,
-                language="en",
-                beam_size=1,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500},
-            )
-            
-            return " ".join(segment.text for segment in segments).strip()
-            
+            # Convert to 16-bit little-endian required by Vosk
+            if audio_data.dtype != np.int16:
+                audio_int16 = (audio_data * 32767).astype(np.int16)
+            else:
+                audio_int16 = audio_data
+
+            if self.recognizer.AcceptWaveform(audio_int16.tobytes()):
+                result_json = json.loads(self.recognizer.Result())
+                return result_json.get("text", "").strip()
+            else:
+                # Partial result not returned to keep wake-word logic simple
+                return ""
+
         except Exception as e:
             logger.error(f"Error transcribing audio: {e}")
             return ""

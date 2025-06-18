@@ -4,4 +4,4 @@ requests
 sounddevice
 numpy
 ollama
-faster-whisper 
+vosk 
