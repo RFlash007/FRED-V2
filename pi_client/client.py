@@ -30,6 +30,43 @@ from pi_stt_service import pi_stt_service
 # Apply theming to all prints
 apply_theme()
 
+# --- Global Singleton for Camera Hardware ---
+picam2 = None
+
+def get_picamera_instance():
+    """
+    Initializes and returns a singleton Picamera2 instance to prevent
+    re-acquiring the hardware lock on every reconnection.
+    """
+    global picam2
+    if picam2 is None:
+        try:
+            from picamera2 import Picamera2
+            import libcamera
+            
+            print("📸 Initializing Picamera2 hardware for the first time...")
+            picam2 = Picamera2()
+            
+            sensor_modes = picam2.sensor_modes
+            max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
+            max_res = max_mode['size']
+            print(f"🎯 Using native resolution {max_res} = {(max_res[0] * max_res[1] / 1_000_000):.1f} MP")
+
+            config = picam2.create_video_configuration(
+                main={"size": max_res, "format": "RGB888"},
+                controls={
+                    "FrameRate": 5, "Brightness": 0.1, "Contrast": 1.1, "Saturation": 1.0,
+                },
+                buffer_count=2
+            )
+            picam2.configure(config)
+            print("✅ Picamera2 hardware initialized successfully.")
+
+        except Exception as e:
+            print(f"❌ Picamera2 hardware initialization failed: {e}")
+            picam2 = None
+    return picam2
+
 def play_audio_from_base64(audio_b64, format_type='wav'):
     """Decode base64 audio and play it on the Pi in a non-blocking thread."""
     
@@ -155,7 +192,7 @@ class LocalAudioProcessor:
         pass
 
 def create_video_track():
-    """Create video track with Picamera2 - EXACT COPY from working client.py"""
+    """Create video track using a shared Picamera2 instance."""
     try:
         from picamera2 import Picamera2
         import libcamera
@@ -164,57 +201,36 @@ def create_video_track():
 
         class PiCamera2Track(VideoStreamTrack):
             """
-            A video track that streams video from a Picamera2 camera.
-            This is the modern, recommended approach for Raspberry Pi.
+            A video track that streams video from the shared Picamera2 instance.
             """
             def __init__(self):
                 super().__init__()
-                print("📸 Initializing Picamera2...")
-                self.picam2 = Picamera2()
-                
-                # Configure for Qwen 2.5-VL 7B - Maximum quality approach
-                # Capture at maximum available resolution for full field of view
-                sensor_modes = self.picam2.sensor_modes
-                max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
-                max_res = max_mode['size']
-                print(f"🎯 Using native resolution {max_res} = {(max_res[0] * max_res[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL - no upscaling needed!)")
-                
-                config = self.picam2.create_video_configuration(
-                    main={"size": max_res, "format": "RGB888"},  # Full sensor resolution for maximum FOV
-                    controls={
-                        "FrameRate": 5,  # Lower FPS for on-demand processing
-                        "Brightness": 0.1,  # Slightly brighter for better AI analysis
-                        "Contrast": 1.1,    # Enhanced contrast
-                        "Saturation": 1.0,  # Natural colors
-                        # "NoiseReductionMode": libcamera.controls.NoiseReductionModeEnum.Off, # Removed: Causes crash on newer libcamera
-                    },
-                    buffer_count=2  # Minimize buffer for low latency
-                )
-                self.picam2.configure(config)
-                self.picam2.start()
-                
+                # Use the singleton instance
+                self.picam2 = get_picamera_instance()
+                if self.picam2 is None:
+                    raise RuntimeError("Failed to get Picamera2 instance.")
+
+                # Start the camera stream if it's not already running
+                if not self.picam2.is_open:
+                    self.picam2.start()
+                    print("📹 Camera stream started.")
+
                 self.frame_count = 0
                 self.start_time = time.time()
-                print("✅ Picamera2 initialized successfully.")
 
             async def recv(self):
                 """Receive video frames from the camera."""
                 pts, time_base = await self.next_timestamp()
                 
-                # Get the frame from Picamera2
                 try:
                     array = self.picam2.capture_array("main")
                 except Exception as e:
                     print(f"💥 Failed to capture frame from Picamera2: {e}")
-                    # As a fallback, create a black frame at native resolution
                     array = np.zeros((2464, 3280, 3), dtype=np.uint8)
                 
-                # Use native camera resolution - no resizing needed!
-                # Native 3280x2464 = 8.1 MP is within Qwen 2.5-VL's 12.8 MP budget
                 if self.frame_count == 1:
-                    print(f"📐 Native Resolution: {array.shape[1]}x{array.shape[0]} = {(array.shape[0] * array.shape[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL)")
+                    print(f"📐 Native Resolution: {array.shape[1]}x{array.shape[0]} = {(array.shape[0] * array.shape[1] / 1_000_000):.1f} MP")
                 
-                # Convert to video frame for aiortc
                 frame = av.VideoFrame.from_ndarray(array, format="rgb24")
                 frame.pts = pts
                 frame.time_base = time_base
@@ -222,7 +238,7 @@ def create_video_track():
                 self.frame_count += 1
                 if self.frame_count == 1:
                     print(f"🚀 First frame sent! Size: {array.shape}")
-                elif self.frame_count % 150 == 0: # Log every ~10 seconds
+                elif self.frame_count % 150 == 0:
                     elapsed = time.time() - self.start_time
                     if elapsed > 0:
                         fps = self.frame_count / elapsed
@@ -231,12 +247,12 @@ def create_video_track():
                 return frame
 
             def stop(self):
-                """Release camera resources cleanly and synchronously when the track is stopped."""
+                """Stops the camera stream but does NOT release the hardware."""
                 super().stop()
                 if hasattr(self, 'picam2') and self.picam2.is_open:
-                    print("🎥 Releasing camera resources...")
-                    self.picam2.close()
-                    print("🛑 Picamera2 camera closed.")
+                    print("🎥 Stopping camera stream (hardware remains active)...")
+                    self.picam2.stop()
+                    print("🛑 Picamera2 stream stopped.")
 
         return PiCamera2Track()
         
@@ -467,13 +483,20 @@ def main():
     print("🧠 [LOCAL STT] Using tiny.en model with int8 quantization")
     print("📡 [NETWORK] Sending transcribed text instead of raw audio")
     
+    global picam2
     try:
         asyncio.run(run_with_reconnection(server_url))
     except KeyboardInterrupt:
         print("\n👋 [SHUTDOWN] F.R.E.D. Pip-Boy interface offline")
     except Exception as e:
         print(f"❌ [CRITICAL ERROR] {e}")
-        sys.exit(1)
+    finally:
+        # Final hardware cleanup on application exit
+        if picam2 and picam2.is_open:
+            print("🧹 Releasing camera hardware...")
+            picam2.close()
+            print("✅ Camera hardware released.")
+        sys.exit(0)
 
 if __name__ == '__main__':
     main() 
