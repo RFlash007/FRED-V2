@@ -70,10 +70,18 @@ class PiSTTService:
             model_path = os.getenv("VOSK_MODEL_PATH", "models/vosk-model-small-en-us-0.15")
 
             if not os.path.isdir(model_path):
+                print(f"❌ [MODEL ERROR] Vosk model not found at '{model_path}'")
+                print("📋 [INSTALLATION HELP] To fix this:")
+                print("   1. Create models directory: mkdir -p models")
+                print("   2. Download model: wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip")
+                print("   3. Extract: unzip vosk-model-small-en-us-0.15.zip -d models/")
+                print("   4. Or set VOSK_MODEL_PATH environment variable")
+                print("💡 [ALTERNATIVE] Use server-side STT by running original client.py")
                 raise FileNotFoundError(
                     f"Vosk model not found at '{model_path}'. "
                     "Download and unpack the small English model, then set VOSK_MODEL_PATH." )
 
+            print(f"📁 [MODEL] Loading from: {model_path}")
             self.model = Model(model_path)
             self.recognizer = KaldiRecognizer(self.model, self.sample_rate)
             
@@ -84,6 +92,7 @@ class PiSTTService:
         except Exception as e:
             logger.error(f"[CRITICAL] STT initialization failed: {e}")
             print(f"❌ [PIP-BOY STT] Voice recognition FAILED: {e}")
+            print("🔄 [SUGGESTION] Try using server-side STT instead")
             return False
     
     def start_processing(self, callback: Callable[[str], None]):

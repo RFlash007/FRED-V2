@@ -369,10 +369,29 @@ async def run(server_url):
                 asyncio.run_coroutine_threadsafe(send_to_server(), loop)
         
         # Start audio processing with callback
-        if audio_processor.start_recording(on_transcription):
-            print("🎤 [SUCCESS] Local voice recognition active")
-        else:
-            print("❌ [CRITICAL] Failed to start voice recognition")
+        try:
+            print("🎤 [INITIALIZING] Local voice recognition...")
+            if audio_processor.start_recording(on_transcription):
+                print("🎤 [SUCCESS] Local voice recognition active")
+            else:
+                print("❌ [CRITICAL] Failed to start voice recognition")
+                print("💡 [FALLBACK] Data channel is open but STT failed")
+                # Send a test message to confirm data channel works
+                test_message = {
+                    'type': 'status',
+                    'text': 'STT initialization failed, but data channel is working',
+                    'timestamp': time.time()
+                }
+                data_channel.send(json.dumps(test_message))
+        except Exception as e:
+            print(f"❌ [CRITICAL] Audio processor initialization failed: {e}")
+            # Send error status to server
+            error_message = {
+                'type': 'error',
+                'text': f'Audio initialization failed: {str(e)}',
+                'timestamp': time.time()
+            }
+            data_channel.send(json.dumps(error_message))
     
     @data_channel.on('message')
     def on_data_channel_message(message):
@@ -454,11 +473,58 @@ async def run(server_url):
         
         # Keep connection alive
         try:
+            connection_timeout = 30  # seconds to wait for data channel
+            start_time = time.time()
+            
+            # Wait for data channel to open with timeout
             while pc.connectionState != 'closed':
                 await asyncio.sleep(1)
+                
+                # Check if data channel opened
+                if data_channel and data_channel.readyState == 'open':
+                    print("✅ [DATA CHANNEL] Successfully opened!")
+                    break
+                
+                # Timeout check
+                if time.time() - start_time > connection_timeout:
+                    print(f"⏰ [TIMEOUT] Data channel failed to open within {connection_timeout}s")
+                    print("🔍 [DEBUG] Data channel state:", data_channel.readyState if data_channel else "None")
+                    print("🔍 [DEBUG] Connection state:", pc.connectionState)
+                    # Try to send a test message anyway
+                    if data_channel:
+                        try:
+                            test_msg = json.dumps({'type': 'ping', 'timestamp': time.time()})
+                            data_channel.send(test_msg)
+                            print("📡 [TEST] Sent ping message")
+                        except Exception as e:
+                            print(f"❌ [TEST] Failed to send ping: {e}")
+                    break
+            
+            # Main keep-alive loop
+            last_ping = time.time()
+            while pc.connectionState != 'closed':
+                await asyncio.sleep(1)
+                
+                # Send periodic ping if data channel is open
+                if data_channel and data_channel.readyState == 'open':
+                    if time.time() - last_ping > 30:  # Ping every 30 seconds
+                        try:
+                            ping_msg = json.dumps({
+                                'type': 'ping', 
+                                'timestamp': time.time(),
+                                'status': 'alive'
+                            })
+                            data_channel.send(ping_msg)
+                            last_ping = time.time()
+                            print("💓 [PING] Keep-alive sent")
+                        except Exception as e:
+                            print(f"❌ [PING] Failed: {e}")
+                
         except KeyboardInterrupt:
             print("\n🛑 Shutdown requested")
-        
+        except Exception as e:
+            print(f"❌ [KEEP-ALIVE ERROR] {e}")
+            
     except Exception as e:
         print(f"❌ [CONNECTION ERROR] {e}")
         raise
