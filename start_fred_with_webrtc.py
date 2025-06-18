@@ -48,6 +48,11 @@ async def start_ngrok_tunnel():
                             public_url = tunnel['public_url']
                             tunnel_info["webrtc_server"] = public_url
                             print(f"[SUCCESS] External tunnel established: {public_url}")
+                            print("╔" + "═" * 78 + "╗")
+                            print("║" + f"{'🌐 NGROK TUNNEL URL FOR PI GLASSES:':^78}" + "║")
+                            print("║" + f"{public_url:^78}" + "║")
+                            print("║" + f"{'Use this URL on your Pi: python client.py --server {url}':^78}".format(url=public_url) + "║")
+                            print("╚" + "═" * 78 + "╝")
                             # Save tunnel info for Pi client
                             with open('tunnel_info.json', 'w') as f:
                                 json.dump({"webrtc_server": public_url}, f)
@@ -80,6 +85,13 @@ async def run_with_ngrok():
         ngrok_process = await start_ngrok_tunnel()
         if ngrok_process:
             print("[SUCCESS] External communications link established")
+            # Display current tunnel info prominently
+            if tunnel_info.get("webrtc_server"):
+                print("\n" + "="*80)
+                print(f"🌐 CURRENT NGROK TUNNEL: {tunnel_info['webrtc_server']}")
+                print("="*80)
+                print(f"📱 Pi Command: python client.py --server {tunnel_info['webrtc_server']}")
+                print("="*80 + "\n")
         else:
             print("[WARNING] External tunnel failed - operating in local mode only")
     else:
