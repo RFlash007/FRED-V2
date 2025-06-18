@@ -427,9 +427,11 @@ async def run(server_url):
     
     @data_channel.on('close')
     def on_data_channel_close():
-        print("📡 [DATA CHANNEL] Disconnected from F.R.E.D.")
-        if audio_processor:
-            audio_processor.stop_recording()
+        print("📡 [DATA CHANNEL] Closed")
+    
+    @data_channel.on('error')
+    def on_data_channel_error(error):
+        print(f"📡 [DATA CHANNEL] Error: {error}")
     
     @pc.on('connectionstatechange')
     async def on_connectionstatechange():
@@ -438,6 +440,22 @@ async def run(server_url):
             await pc.close()
             if audio_processor:
                 audio_processor.stop_recording()
+    
+    @pc.on('iceconnectionstatechange')
+    async def on_iceconnectionstatechange():
+        ice_state = pc.iceConnectionState
+        print(f"🧊 [ICE] Connection state: {ice_state}")
+        
+        if ice_state == "connected" or ice_state == "completed":
+            print(f"🎯 [ICE] Connection established! Data channel state: {data_channel.readyState}")
+            
+            # Try to force data channel open if it's still connecting
+            if data_channel.readyState == "connecting":
+                print("🔄 [DEBUG] Data channel still connecting after ICE connected")
+    
+    @pc.on('icegatheringstatechange')
+    async def on_icegatheringstatechange():
+        print(f"🧊 [ICE] Gathering state: {pc.iceGatheringState}")
     
     # Create offer and get answer from server
     try:

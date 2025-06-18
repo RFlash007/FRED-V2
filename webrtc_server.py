@@ -116,67 +116,12 @@ async def offer(request):
         except Exception as e:
             logging.warning(f"Recorder failed to start: {e}")
         
-        # -------------------------------------------------------------
-        #  STT SET-UP (run only once – on first connection)
-        # -------------------------------------------------------------
-        if not getattr(stt_service, "is_processing", False):
-            # Define a synchronous callback that will forward the final
-            # transcription to the main F.R.E.D. server and relay the
-            # response back to all connected Pi clients.
-            def process_pi_transcription(text, from_pi=False):
-                """Handle text recognised from Pi audio."""
-                if not text or not text.strip():
-                    return
-
-                logging.info(f"[PIP-BOY COMM] Field operative transmission → '{text}'")
-
-                # Prepare chat request for main server
-                payload = {
-                    "message": text,
-                    "model": config.DEFAULT_MODEL,
-                    "mute_fred": False,  # Enable TTS for Pi glasses - F.R.E.D. speaks through the glasses
-                    "from_pi_glasses": True,
-                }
-
-                def _call_fred():
-                    try:
-                        import requests, json as _json
-                        resp = requests.post("http://localhost:5000/chat", json=payload, stream=True, timeout=60)
-                        if resp.status_code == 200:
-                            buffer = ""
-                            for line in resp.iter_lines():
-                                if not line:
-                                    continue
-                                try:
-                                    data = _json.loads(line.decode("utf-8"))
-                                except Exception:
-                                    continue
-
-                                if "response" in data:
-                                    # incremental content from server – buffer and forward
-                                    fragment = data["response"]
-                                    buffer += fragment
-                                    for ch in data_channels.copy():
-                                        try:
-                                            ch.send(fragment)
-                                        except Exception:
-                                            data_channels.discard(ch)
-                        else:
-                            logging.error(f"Chat request failed: {resp.status_code}")
-                    except Exception as exc:
-                        logging.error(f"Error relaying message to F.R.E.D.: {exc}")
-
-                import threading as _threading
-                _threading.Thread(target=_call_fred, daemon=True).start()
-
-            # Start STT processing – this will spin up the processing thread
-            try:
-                stt_service.start_processing(process_pi_transcription)
-                logging.info("STT processing thread started for Pi audio")
-            except Exception as stt_err:
-                logging.error(f"Unable to start STT processing: {stt_err}")
+        # CHECK IF THIS IS A LOCAL STT CLIENT FIRST
+        client_type = params.get('client_type', 'unknown')
+        is_local_stt = 'local_stt' in client_type
+        print(f"🔧 [DEBUG] Client type: {client_type}, is_local_stt: {is_local_stt}")
         
-        # Store data channel when created
+        # REGISTER DATA CHANNEL HANDLER BEFORE PROCESSING OFFER
         @pc.on('datachannel')
         def on_datachannel(channel):
             print(f"🔧 [DEBUG] Data channel event triggered for {client_ip}")
@@ -189,10 +134,6 @@ async def offer(request):
             # Notify vision service that Pi is connected
             vision_service.set_pi_connection_status(True)
             print(f"[OPTICS] Pip-Boy visual sensors ONLINE - initiating reconnaissance protocols")
-            
-            # Check if this is a local STT client
-            client_type = params.get('client_type', 'unknown')
-            is_local_stt = 'local_stt' in client_type
             
             if is_local_stt:
                 print(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
@@ -267,7 +208,67 @@ async def offer(request):
                 if not pi_clients:
                     vision_service.set_pi_connection_status(False)
                     print(f"[OPTICS] All Pip-Boys disconnected - reconnaissance protocols OFFLINE")
+        
+        # -------------------------------------------------------------
+        #  STT SET-UP (run only once – on first connection)
+        # -------------------------------------------------------------
+        if not getattr(stt_service, "is_processing", False):
+            # Define a synchronous callback that will forward the final
+            # transcription to the main F.R.E.D. server and relay the
+            # response back to all connected Pi clients.
+            def process_pi_transcription(text, from_pi=False):
+                """Handle text recognised from Pi audio."""
+                if not text or not text.strip():
+                    return
 
+                logging.info(f"[PIP-BOY COMM] Field operative transmission → '{text}'")
+
+                # Prepare chat request for main server
+                payload = {
+                    "message": text,
+                    "model": config.DEFAULT_MODEL,
+                    "mute_fred": False,  # Enable TTS for Pi glasses - F.R.E.D. speaks through the glasses
+                    "from_pi_glasses": True,
+                }
+
+                def _call_fred():
+                    try:
+                        import requests, json as _json
+                        resp = requests.post("http://localhost:5000/chat", json=payload, stream=True, timeout=60)
+                        if resp.status_code == 200:
+                            buffer = ""
+                            for line in resp.iter_lines():
+                                if not line:
+                                    continue
+                                try:
+                                    data = _json.loads(line.decode("utf-8"))
+                                except Exception:
+                                    continue
+
+                                if "response" in data:
+                                    # incremental content from server – buffer and forward
+                                    fragment = data["response"]
+                                    buffer += fragment
+                                    for ch in data_channels.copy():
+                                        try:
+                                            ch.send(fragment)
+                                        except Exception:
+                                            data_channels.discard(ch)
+                        else:
+                            logging.error(f"Chat request failed: {resp.status_code}")
+                    except Exception as exc:
+                        logging.error(f"Error relaying message to F.R.E.D.: {exc}")
+
+                import threading as _threading
+                _threading.Thread(target=_call_fred, daemon=True).start()
+
+            # Start STT processing – this will spin up the processing thread
+            try:
+                stt_service.start_processing(process_pi_transcription)
+                logging.info("STT processing thread started for Pi audio")
+            except Exception as stt_err:
+                logging.error(f"Unable to start STT processing: {stt_err}")
+        
         @pc.on('track')
         async def on_track(track):
             print(f"[SIGNAL] {track.kind.upper()} link established with field operative {client_ip}")
@@ -296,11 +297,143 @@ async def offer(request):
                 if client_ip in client_video_tracks:
                     del client_video_tracks[client_ip]
                 logging.info(f"Connection from {client_ip} closed.")
+        
+        @pc.on('iceconnectionstatechange')
+        async def on_iceconnectionstatechange():
+            ice_state = pc.iceConnectionState
+            print(f"🔧 [DEBUG] ICE connection state changed to: {ice_state}")
+            
+            if ice_state == "connected" or ice_state == "completed":
+                print(f"🎯 [ICE] Connection established! Data channel should be available now.")
+                
+                # MANUAL DATA CHANNEL DETECTION - WORKAROUND FOR AIORTC BUG
+                await asyncio.sleep(1)  # Give it a moment to settle
+                
+                # Try to access internal data channels directly
+                if hasattr(pc, '_RTCPeerConnection__dataChannels'):
+                    channels = pc._RTCPeerConnection__dataChannels
+                    print(f"🔧 [DEBUG] Found {len(channels)} internal data channels")
+                    
+                    for channel_id, channel in channels.items():
+                        print(f"🔧 [DEBUG] Manual channel detection: {channel.label}, state: {channel.readyState}")
+                        
+                        if channel.label == 'text' and channel not in data_channels:
+                            print(f"🎯 [MANUAL] Found text data channel! Registering manually...")
+                            
+                            # Manually trigger what the datachannel event should have done
+                            data_channels.add(channel)
+                            pi_clients.add(channel)
+                            print(f"[PIP-BOY] Data channel '{channel.label}' established with field operative at {client_ip} (manual)")
+                            
+                            # Notify vision service that Pi is connected
+                            vision_service.set_pi_connection_status(True)
+                            print(f"[OPTICS] Pip-Boy visual sensors ONLINE - initiating reconnaissance protocols")
+                            
+                            if is_local_stt:
+                                print(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
+                            
+                            # Register message handler manually
+                            @channel.on('message')
+                            def on_message(message):
+                                if message == '[HEARTBEAT]':
+                                    print(f"[VITAL-MONITOR] Pip-Boy heartbeat confirmed from {client_ip}")
+                                    channel.send('[HEARTBEAT_ACK]')
+                                    return
+
+                                try:
+                                    data = json.loads(message)
+                                    if data.get('type') == 'transcription':
+                                        text = data.get('text', '').strip()
+                                        if not text:
+                                            return
+                                        
+                                        print(f"🗣️  [PI TRANSCRIPTION] '{text}' from {client_ip}")
+                                        
+                                        # --- Simplified and Robust Response Handling ---
+                                        try:
+                                            # 1. Prepare payload for F.R.E.D.
+                                            payload = {
+                                                "message": text,
+                                                "model": config.DEFAULT_MODEL,
+                                                "mute_fred": False, # Ensure TTS for Pi glasses
+                                                "from_pi_glasses": True,
+                                            }
+                                            
+                                            # 2. Call F.R.E.D. server directly
+                                            import requests
+                                            resp = requests.post("http://localhost:5000/chat", json=payload, timeout=60)
+                                            resp.raise_for_status() # Raise an exception for bad status codes
+                                            
+                                            response_data = resp.json()
+                                            
+                                            # 3. Relay complete response back to Pi
+                                            fred_text = response_data.get("response", "No text response.")
+                                            fred_audio_b64 = response_data.get("audio")
+
+                                            if fred_audio_b64:
+                                                print(f"🔊 Relaying audio response to {client_ip}")
+                                                channel.send(json.dumps({
+                                                    "type": "audio",
+                                                    "audio": fred_audio_b64
+                                                }))
+                                            else:
+                                                print(f"💬 Relaying text-only response to {client_ip}")
+                                                channel.send(json.dumps({
+                                                    "type": "text",
+                                                    "text": fred_text
+                                                }))
+
+                                        except requests.exceptions.RequestException as e:
+                                            logging.error(f"Failed to get response from F.R.E.D.: {e}")
+                                            channel.send(json.dumps({"type": "status", "status": f"Error: {e}"}))
+                                        except Exception as e:
+                                            logging.error(f"Error processing transcription on server: {e}")
+                                            channel.send(json.dumps({"type": "status", "status": f"Server Error: {e}"}))
+
+                                except json.JSONDecodeError:
+                                    logging.warning(f"Received non-JSON message from {client_ip}: {message}")
+                            
+                            @channel.on('close')
+                            def on_close():
+                                data_channels.discard(channel)
+                                pi_clients.discard(channel)
+                                print(f"[PIP-BOY] Data channel '{channel.label}' closed from {client_ip}")
+                                
+                                # If no more Pi clients, stop vision processing
+                                if not pi_clients:
+                                    vision_service.set_pi_connection_status(False)
+                                    print(f"[OPTICS] All Pip-Boys disconnected - reconnaissance protocols OFFLINE")
+                            
+                            # Test the connection immediately
+                            if channel.readyState == "open":
+                                print(f"✅ [MANUAL] Channel is open! Sending test message...")
+                                try:
+                                    test_message = json.dumps({
+                                        "type": "status", 
+                                        "status": "Data channel manually connected - F.R.E.D. online",
+                                        "timestamp": time.time()
+                                    })
+                                    channel.send(test_message)
+                                    print(f"📤 [TEST] Sent initialization message to Pi")
+                                except Exception as e:
+                                    print(f"❌ [TEST] Failed to send test message: {e}")
+                            
+                            break  # Only handle the first text channel
+                
+                else:
+                    print(f"❌ [DEBUG] No internal data channels attribute found")
+                    print(f"🔧 [DEBUG] Available attributes: {[attr for attr in dir(pc) if 'data' in attr.lower()]}")
+        
+        @pc.on('icegatheringstatechange')
+        async def on_icegatheringstatechange():
+            print(f"🔧 [DEBUG] ICE gathering state: {pc.iceGatheringState}")
 
         await pc.setRemoteDescription(offer)
         
         print(f"🔧 [DEBUG] Remote description set for {client_ip}")
         print(f"🔧 [DEBUG] Connection state: {pc.connectionState}")
+        print(f"🔧 [DEBUG] Ice connection state: {pc.iceConnectionState}")
+        print(f"🔧 [DEBUG] Ice gathering state: {pc.iceGatheringState}")
         
         await recorder.start() # Start recording (or blackholing) media
         
@@ -309,6 +442,19 @@ async def offer(request):
         
         print(f"🔧 [DEBUG] Answer created and local description set for {client_ip}")
         print(f"🔧 [DEBUG] Connection state after answer: {pc.connectionState}")
+        print(f"🔧 [DEBUG] Ice connection state after answer: {pc.iceConnectionState}")
+        
+        # Add a delay to see if data channel appears later
+        async def check_for_datachannel():
+            await asyncio.sleep(5)
+            print(f"🔧 [DEBUG] After 5s - checking for data channels...")
+            print(f"🔧 [DEBUG] Connection state: {pc.connectionState}")
+            print(f"🔧 [DEBUG] Ice connection state: {pc.iceConnectionState}")
+            # Force a manual check for data channels
+            if hasattr(pc, '_RTCPeerConnection__dataChannels'):
+                print(f"🔧 [DEBUG] Internal data channels: {pc._RTCPeerConnection__dataChannels}")
+        
+        asyncio.create_task(check_for_datachannel())
 
         return web.json_response({
             'sdp': pc.localDescription.sdp,
