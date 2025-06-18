@@ -29,8 +29,9 @@ import threading
 import queue
 import numpy as np
 import logging
+import json
 from typing import Optional, Callable
-from faster_whisper import WhisperModel
+import vosk
 
 # Import Ollie-Tec theming
 from ollietec_theme import apply_theme, banner
@@ -43,11 +44,12 @@ logger = logging.getLogger(__name__)
 class FREDPiSTTService:
     """
     Vault-Tec Speech Recognition Module
-    Optimized for Pi with tiny.en model and int8 quantization
+    Optimized for Pi with Vosk small English model
     """
     
     def __init__(self):
         self.model = None
+        self.recognizer = None
         self.is_initialized = False
         
         # Audio processing configuration (optimized for Pi)
@@ -57,7 +59,7 @@ class FREDPiSTTService:
         # Speech detection settings
         self.speech_buffer = []
         self.last_speech_time = 0
-        self.silence_duration = 0.8
+        self.silence_duration = 1.0  # Slightly longer for Vosk
         self.silence_threshold = 0.002
         
         # Processing control
@@ -82,26 +84,43 @@ class FREDPiSTTService:
         self._start_time = time.time()
         
     def initialize(self):
-        """Initialize the Whisper model optimized for Pi"""
+        """Initialize the Vosk model optimized for Pi"""
         if self.is_initialized:
             return True
             
         try:
             print("[PIP-BOY STT] Initializing voice recognition systems...")
-            print("🔧 Loading tiny.en model with int8 quantization...")
+            print("🔧 Loading Vosk small English model...")
             
-            # Optimal settings for Raspberry Pi
-            self.model = WhisperModel(
-                "tiny.en",              # Fastest English model
-                device="cpu",           # Pi doesn't have CUDA
-                compute_type="int8",    # Optimal quantization for Pi
-                cpu_threads=4,          # Use all Pi cores efficiently
-                num_workers=1           # Single worker to avoid memory issues
-            )
+            # Set Vosk log level to reduce noise
+            vosk.SetLogLevel(-1)
+            
+            # Look for Vosk model in common locations
+            model_paths = [
+                "models/vosk-model-small-en-us-0.15",
+                "../models/vosk-model-small-en-us-0.15",
+                "./vosk-model-small-en-us-0.15",
+                "/home/raspberry/FRED-V2/pi_client/models/vosk-model-small-en-us-0.15"
+            ]
+            
+            model_path = None
+            for path in model_paths:
+                if os.path.exists(path):
+                    model_path = path
+                    break
+            
+            if not model_path:
+                print("❌ [CRITICAL] Vosk model not found!")
+                print("💡 [SOLUTION] Run: bash install_vosk_model.sh")
+                return False
+            
+            # Initialize Vosk model
+            self.model = vosk.Model(model_path)
+            self.recognizer = vosk.KaldiRecognizer(self.model, self.sample_rate)
             
             print("✅ [PIP-BOY STT] Voice recognition ONLINE")
-            print(f"📊 Model: tiny.en (int8 quantized)")
-            print(f"🔧 CPU threads: 4, Memory optimized for Pi")
+            print(f"📊 Model: Vosk small English (optimized for Pi)")
+            print(f"📍 Path: {model_path}")
             
             self.is_initialized = True
             return True
@@ -109,6 +128,7 @@ class FREDPiSTTService:
         except Exception as e:
             logger.error(f"[CRITICAL] STT initialization failed: {e}")
             print(f"❌ [PIP-BOY STT] Voice recognition FAILED: {e}")
+            print("💡 [SOLUTION] Run: bash install_vosk_model.sh")
             return False
     
     def start_processing(self, callback: Callable):
@@ -669,32 +689,37 @@ async def main():
             logger.error(f"Audio chunk processing error: {e}")
     
     def _transcribe_audio(self, audio_chunk: np.ndarray) -> str:
-        """Transcribe audio using optimized Whisper settings"""
+        """Transcribe audio using Vosk"""
         try:
             if len(audio_chunk) < 1600:  # Less than 0.1 seconds
                 return ""
             
-            # Ensure proper format for Whisper
-            audio_data = audio_chunk.flatten().astype(np.float32)
+            # Convert to int16 format that Vosk expects
+            if audio_chunk.dtype == np.float32:
+                # Convert float32 [-1, 1] to int16
+                audio_data = (audio_chunk * 32767).astype(np.int16)
+            else:
+                audio_data = audio_chunk.astype(np.int16)
             
-            # Transcribe with optimized settings
-            segments, info = self.model.transcribe(
-                audio_data,
-                language="en",
-                beam_size=1,
-                temperature=0.0,
-                condition_on_previous_text=False,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 300},
-                initial_prompt="Voice command to FRED AI assistant."
-            )
+            # Convert to bytes
+            audio_bytes = audio_data.tobytes()
             
-            # Combine segments
-            text = ""
-            for segment in segments:
-                text += segment.text
+            # Process with Vosk
+            if self.recognizer.AcceptWaveform(audio_bytes):
+                # Final result
+                result = json.loads(self.recognizer.Result())
+                text = result.get('text', '')
+            else:
+                # Partial result
+                result = json.loads(self.recognizer.PartialResult())
+                text = result.get('partial', '')
             
             self._transcription_count += 1
+            if self._transcription_count % 100 == 0:
+                elapsed = time.time() - self._start_time
+                avg_time = elapsed / self._transcription_count
+                print(f"📊 [PERFORMANCE] {self._transcription_count} transcriptions, avg: {avg_time:.3f}s")
+            
             return text.strip()
             
         except Exception as e:

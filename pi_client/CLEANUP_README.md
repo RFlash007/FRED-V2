@@ -8,17 +8,18 @@
 
 ### ✅ New Consolidated File
 - **`fred_pi_client.py`** - Single startup file combining:
-  - Local STT processing (from `pi_stt_service.py`)
+  - Local STT processing with Vosk small English model (from `pi_stt_service.py`)
   - Camera vision capture 
   - F.R.E.D. server communication
   - Audio playback
   - [Vault-Tec themed interface as requested]
 
-### 📦 Files Marked for Removal
+### 📦 Files Removed ✅
 - **`client.py`** - Old WebRTC streaming client (redundant)
 - **`pi_stt_service.py`** - Separate STT service (now integrated)
 - **`audio_capture_alternative.py`** - Alternative audio capture (functionality integrated)
-- **`diagnose_audio.py`** - Diagnostic tool (can be removed after cleanup)
+- **`diagnose_audio.py`** - Diagnostic tool (cleaned up)
+- **`release_video.py`** - Video device utility (outdated)
 
 ### 🔧 Files to Keep
 - **`requirements.txt`** - Dependencies
@@ -42,6 +43,7 @@ python fred_pi_client.py --server http://192.168.1.100:8000
 ## 🔄 Migration Notes
 
 - All functionality from old files is preserved
+- Uses Vosk small English model for local STT (lightweight and fast)
 - Uses sounddevice for audio capture (more reliable than aiortc MediaPlayer)
 - Maintains wake word detection and buffering
 - Compatible with existing F.R.E.D. server endpoints
