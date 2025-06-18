@@ -216,8 +216,8 @@ async def offer(request):
                     try:
                         buffer = []
                         total_samples = 0
-                        # Pi-audio: use ~3-second chunk (48 000 samples @16 kHz) for lower latency
-                        CHUNK_TARGET = config.STT_SAMPLE_RATE * 3  # 48 000 samples
+                        # Pi-audio: use ~5-second chunk (80,000 samples @16 kHz) like old system
+                        CHUNK_TARGET = config.STT_SAMPLE_RATE * 5  # 48 000 samples
 
                         while True:
                             frame = await track.recv()
@@ -235,16 +235,39 @@ async def offer(request):
                             if pcm.ndim == 2:
                                 pcm = pcm.flatten()
 
-                            # Ensure sample rate consistency (WebRTC delivers 48 kHz by default)
+                            # HIGH QUALITY AUDIO: Preserve original 48kHz and let Whisper handle resampling
                             input_sr = getattr(frame, 'sample_rate', 48000)
                             target_sr = config.STT_SAMPLE_RATE
+                            
+                            # CRITICAL FIX: Use high-quality resampling and preserve float32 precision
                             if input_sr != target_sr:
                                 try:
-                                    pcm_f32 = pcm.astype(np.float32)
+                                    # Convert to float32 normalized [-1, 1] for high-quality processing
+                                    if pcm.dtype == np.int16:
+                                        pcm_f32 = pcm.astype(np.float32) / 32768.0
+                                    elif pcm.dtype == np.float32:
+                                        pcm_f32 = pcm
+                                    else:
+                                        pcm_f32 = pcm.astype(np.float32)
+                                    
+                                    # High-quality Kaiser window resampling (like your old system)
+                                    from scipy.signal import resample_poly
                                     pcm_resampled = resample_poly(pcm_f32, target_sr, input_sr)
-                                    pcm = np.clip(pcm_resampled, -32768, 32767).astype(np.int16)
+                                    
+                                    # Keep as float32 to preserve quality (don't quantize to int16!)
+                                    pcm = pcm_resampled.astype(np.float32)
+                                    
                                 except Exception as rs_err:
                                     print(f"[WARNING] Audio resampling error ({input_sr}->{target_sr}): {rs_err}")
+                                    # Fallback: simple decimation
+                                    if input_sr == 48000 and target_sr == 16000:
+                                        pcm = pcm[::3].astype(np.float32) / 32768.0 if pcm.dtype == np.int16 else pcm[::3]
+                            else:
+                                # Normalize to float32 even if no resampling needed
+                                if pcm.dtype == np.int16:
+                                    pcm = pcm.astype(np.float32) / 32768.0
+                                elif pcm.dtype != np.float32:
+                                    pcm = pcm.astype(np.float32)
 
                             buffer.append(pcm)
                             total_samples += pcm.shape[0]

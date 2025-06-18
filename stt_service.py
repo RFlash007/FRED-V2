@@ -268,16 +268,21 @@ class STTService:
                     audio_chunk, from_pi = queue_item, False
                     print(f"[DEBUG] Processing local audio chunk ({len(audio_chunk)} samples)")
                 
-                # Normalize audio to float32 [-1, 1] for Whisper
+                # ENHANCED: Proper audio normalization (preserve quality from WebRTC)
                 if isinstance(audio_chunk, np.ndarray):
-                    if np.issubdtype(audio_chunk.dtype, np.integer):
-                        # Assume int16 range
+                    if audio_chunk.dtype == np.float32:
+                        # Already normalized from WebRTC pipeline
+                        audio_data = audio_chunk.flatten() if audio_chunk.ndim > 1 else audio_chunk
+                    elif np.issubdtype(audio_chunk.dtype, np.integer):
+                        # Legacy int16 conversion (local mic)
                         audio_data = audio_chunk.astype(np.float32) / 32768.0
                     else:
                         audio_data = audio_chunk.flatten().astype(np.float32)
                 else:
                     # Fallback – ensure numpy
-                    audio_data = np.asarray(audio_chunk, dtype=np.float32) / 32768.0
+                    audio_data = np.asarray(audio_chunk, dtype=np.float32)
+                    if np.max(np.abs(audio_data)) > 1.1:  # Not normalized
+                        audio_data = audio_data / 32768.0
                 
                 # Calculate audio level - EXACT same as old system
                 audio_level = np.abs(audio_data).mean()

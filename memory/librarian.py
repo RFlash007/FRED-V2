@@ -63,7 +63,7 @@ def init_db():
         with get_db_connection() as con:
             con.execute(f"""
                 CREATE TABLE IF NOT EXISTS nodes (
-                    nodeid BIGINT PRIMARY KEY DEFAULT (CAST(strftime(current_timestamp, '%s%f') AS BIGINT)),
+                    nodeid BIGINT PRIMARY KEY DEFAULT (CAST(epoch_ms(current_timestamp) AS BIGINT)),
                     type TEXT CHECK (type IN ('Semantic', 'Episodic', 'Procedural')),
                     label TEXT NOT NULL,
                     text TEXT NOT NULL,
@@ -91,7 +91,7 @@ def init_db():
             """)
             con.execute("""
                 CREATE TABLE IF NOT EXISTS pending_edge_creation_tasks (
-                    task_id BIGINT PRIMARY KEY DEFAULT (CAST(strftime(current_timestamp, '%s%f') AS BIGINT)),
+                    task_id BIGINT PRIMARY KEY DEFAULT (CAST(epoch_ms(current_timestamp) AS BIGINT)),
                     node_id_to_process BIGINT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
                     attempts INTEGER DEFAULT 0,
