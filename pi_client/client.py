@@ -11,6 +11,10 @@ import subprocess
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer
 
+# Suppress libcamera INFO spam
+if 'LIBCAMERA_LOG_LEVELS' not in os.environ:
+    os.environ['LIBCAMERA_LOG_LEVELS'] = '*:0'  # only critical messages
+
 def play_audio_from_base64(audio_b64, format_type='wav'):
     """Decode base64 audio and play it on the Pi."""
     try:
@@ -133,10 +137,14 @@ def create_local_tracks(video=True, audio=True):
 
                 def __del__(self):
                     """Cleanup camera resources."""
-                    print("🧹 Stopping Picamera2...")
-                    if self.picam2.is_open:
-                        self.picam2.stop()
-                    print("✅ Picamera2 stopped.")
+                    try:
+                        if hasattr(self, 'picam2') and getattr(self, 'picam2', None):
+                            if self.picam2.is_open:
+                                self.picam2.stop()
+                                print('🛑 Picamera2 stopped (cleanup).')
+                    except Exception as e:
+                        # Silently ignore cleanup exceptions to avoid noisy traces
+                        pass
 
             tracks.append(PiCamera2Track())
             print("✅ Picamera2 video track created successfully!")

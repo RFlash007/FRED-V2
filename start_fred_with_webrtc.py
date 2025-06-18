@@ -95,10 +95,10 @@ def main():
     - F.R.E.D. Flask server runs in a separate thread.
     - WebRTC aiohttp server runs in the main thread's asyncio loop.
     """
-    print("═══════════════════════════════════════════════════")
-    print("      F.R.E.D. MAINFRAME INITIALIZATION")
-    print("    Vault-Tec Advanced AI Assistant Platform")
-    print("═══════════════════════════════════════════════════")
+    print("\033[92m" + "═"*55 + "\033[0m")
+    print("\033[96m      STARK-TEC™ F.R.E.D. MAINFRAME ONLINE\033[0m")
+    print("\033[96m    Vault-Tec Advanced AI Assistant Platform\033[0m")
+    print("\033[92m" + "═"*55 + "\033[0m")
 
     # 1. Run the Flask/SocketIO server in its own thread
     # This is necessary because it uses its own blocking eventlet server.
