@@ -179,6 +179,9 @@ async def offer(request):
         # Store data channel when created
         @pc.on('datachannel')
         def on_datachannel(channel):
+            print(f"🔧 [DEBUG] Data channel event triggered for {client_ip}")
+            print(f"🔧 [DEBUG] Channel label: {channel.label}, state: {channel.readyState}")
+            
             data_channels.add(channel)
             pi_clients.add(channel)  # Track Pi clients
             print(f"[PIP-BOY] Data channel '{channel.label}' established with field operative at {client_ip}")
@@ -295,10 +298,17 @@ async def offer(request):
                 logging.info(f"Connection from {client_ip} closed.")
 
         await pc.setRemoteDescription(offer)
+        
+        print(f"🔧 [DEBUG] Remote description set for {client_ip}")
+        print(f"🔧 [DEBUG] Connection state: {pc.connectionState}")
+        
         await recorder.start() # Start recording (or blackholing) media
         
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
+        
+        print(f"🔧 [DEBUG] Answer created and local description set for {client_ip}")
+        print(f"🔧 [DEBUG] Connection state after answer: {pc.connectionState}")
 
         return web.json_response({
             'sdp': pc.localDescription.sdp,

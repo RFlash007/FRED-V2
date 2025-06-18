@@ -336,10 +336,13 @@ async def run(server_url):
     
     # Create data channel for text communication
     data_channel = pc.createDataChannel('text', ordered=True)
+    print(f"🔧 [DEBUG] Data channel created: {data_channel}")
+    print(f"🔧 [DEBUG] Data channel state: {data_channel.readyState}")
     
     @data_channel.on('open')
     def on_data_channel_open():
         print("📡 [DATA CHANNEL] Connected to F.R.E.D. mainframe")
+        print(f"🔧 [DEBUG] Data channel state after open: {data_channel.readyState}")
         
         # Start local audio processing
         global audio_processor
