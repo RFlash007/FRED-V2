@@ -151,6 +151,10 @@ class LocalAudioProcessor:
 def create_video_track():
     """Create video track with Picamera2"""
     try:
+        # Handle numpy compatibility issues
+        import warnings
+        warnings.filterwarnings("ignore", message=".*dtype size changed.*")
+        
         from picamera2 import Picamera2
         import libcamera
         from aiortc import VideoStreamTrack
@@ -220,9 +224,12 @@ def create_video_track():
         
     except ImportError:
         print("❌ Picamera2 library not found")
+        print("💡 Video will be disabled - audio-only mode")
         return None
     except Exception as e:
         print(f"❌ Picamera2 setup failed: {e}")
+        print("💡 Continuing without video - STT will still work")
+        print("🔧 To fix: sudo apt update && sudo apt install python3-picamera2")
         return None
 
 def get_server_url(provided_url=None):
@@ -371,7 +378,12 @@ async def run(server_url):
         # Create offer
         await pc.setLocalDescription(await pc.createOffer())
         
-        # Send offer to server
+        # Send offer to server with authentication
+        headers = {
+            'Authorization': 'Bearer fred_pi_glasses_2024',
+            'Content-Type': 'application/json'
+        }
+        
         response = requests.post(
             f"{server_url}/offer",
             json={
@@ -379,6 +391,7 @@ async def run(server_url):
                 'type': pc.localDescription.type,
                 'client_type': 'pi_glasses_with_local_stt'
             },
+            headers=headers,
             timeout=10
         )
         
