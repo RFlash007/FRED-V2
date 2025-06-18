@@ -364,7 +364,7 @@ async def run_with_reconnection(server_url, max_retries=5):
 
 async def run(server_url):
     """Main client function with local STT"""
-    global data_channel, audio_processor
+    global data_channel, audio_processor, http_fallback_mode, http_fallback_url
     
     print(f"🚀 Connecting to F.R.E.D. server: {server_url}")
     
@@ -534,7 +534,6 @@ async def run(server_url):
                     # If still not open, enable HTTP fallback
                     if data_channel.readyState != "open":
                         print("🔄 [FALLBACK] Data channel still not open - enabling HTTP fallback mode")
-                        global http_fallback_mode, http_fallback_url
                         http_fallback_mode = True
                         # We'll set the URL during the timeout check below
                     
@@ -544,7 +543,6 @@ async def run(server_url):
                     print("🔄 [FALLBACK] Enabling HTTP fallback mode due to send failure")
                     
                     # Enable HTTP fallback immediately
-                    global http_fallback_mode, http_fallback_url
                     http_fallback_mode = True
                     # We'll set the URL during the timeout check below
             
@@ -614,7 +612,6 @@ async def run(server_url):
                     print("🔄 [FALLBACK] Switching to HTTP-based communication...")
                     
                     # Enable HTTP fallback mode
-                    global http_fallback_mode, http_fallback_url
                     http_fallback_mode = True
                     base_url = server_url.replace('/offer', '') if '/offer' in server_url else server_url
                     http_fallback_url = f"{base_url}/text_message"
