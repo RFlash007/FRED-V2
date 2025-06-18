@@ -13,7 +13,7 @@ import requests
 import time
 import aiohttp
 from config import config
-import builtins as _b
+from ollietec_theme import apply_theme, banner
 
 # Global variable to store tunnel info
 tunnel_info = {"webrtc_server": None, "main_url": None}
@@ -22,36 +22,8 @@ tunnel_info = {"webrtc_server": None, "main_url": None}
 from app import run_app as run_fred_server
 from webrtc_server import main as run_webrtc_server_async
 
-# === Vault-Tec themed print wrapper ===
-_RESET = '\033[0m'
-_COLOR_MAP = {
-    'CRITICAL': '\033[91m',
-    'ERROR': '\033[91m',
-    'WARNING': '\033[93m',
-    'SUCCESS': '\033[92m',
-    'AUDIO': '\033[95m',
-    'NETWORK': '\033[96m',
-    'VAULT': '\033[96m',
-    'PIP-BOY': '\033[96m',
-    'MAINFRAME': '\033[95m',
-}
-_orig_print = _b.print
-
-def _vault_print(*args, **kwargs):
-    colored_args = []
-    for arg in args:
-        text = str(arg)
-        color = ''
-        for token, col in _COLOR_MAP.items():
-            if token in text:
-                color = col
-                break
-        if color:
-            text = f"{color}{text}{_RESET}"
-        colored_args.append(text)
-    _orig_print(*colored_args, **kwargs)
-
-_b.print = _vault_print
+# Apply OLLIE-TEC theming to all prints
+apply_theme()
 
 async def start_ngrok_tunnel():
     """Start ngrok tunnel asynchronously."""
@@ -127,14 +99,7 @@ def main():
     - F.R.E.D. Flask server runs in a separate thread.
     - WebRTC aiohttp server runs in the main thread's asyncio loop.
     """
-    banner = (\
-        "\033[92m" + "═"*60 + "\033[0m\n"\
-        "\033[95m  🛰️  OLLIE-TEC™  F.R.E.D. MAINFRAME ONLINE  🛰️\033[0m\n"\
-        "\033[96m  Vault-Tec Advanced AI Assistant Platform\033[0m\n"\
-        f"\033[93m  Boot Sequence Initiated: {time.strftime('%Y-%m-%d %H:%M:%S')}\033[0m\n"\
-        "\033[92m" + "═"*60 + "\033[0m"\
-    )
-    print(banner)
+    print(banner("F.R.E.D. MAINFRAME"))
 
     # 1. Run the Flask/SocketIO server in its own thread
     # This is necessary because it uses its own blocking eventlet server.

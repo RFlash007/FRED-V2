@@ -13,6 +13,7 @@ import argparse
 import ssl
 import numpy as np
 from scipy.signal import resample_poly
+from ollietec_theme import apply_theme, banner
 
 # Import configuration
 from config import config
@@ -20,6 +21,8 @@ from config import config
 # Get security configuration from config
 FRED_AUTH_TOKEN = config.FRED_AUTH_TOKEN
 MAX_CONNECTIONS = config.MAX_PI_CONNECTIONS
+
+apply_theme()
 
 pcs = set()
 data_channels = set()  # Store data channels for sending responses back to Pi
@@ -438,11 +441,10 @@ async def main():
     site = web.TCPSite(runner, host=args.host, port=args.port, ssl_context=ssl_context)
     await site.start()
     
-    print(f"======== F.R.E.D. WebRTC Server ========")
+    print(banner("WebRTC Server"))
     print(f"🔐 Authentication: {'Enabled' if FRED_AUTH_TOKEN else 'Disabled'}")
     print(f"🔢 Max connections: {MAX_CONNECTIONS}")
     print(f"🚀 Listening on http://{args.host}:{args.port}")
-    print("==========================================")
 
     # Keep server running until interrupted
     while True:

@@ -7,6 +7,9 @@ from PIL import Image
 import ollama
 import numpy as np
 from config import config
+from ollietec_theme import apply_theme
+
+apply_theme()
 
 logger = logging.getLogger(__name__)
 
