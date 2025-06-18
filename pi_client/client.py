@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
 # Shut up libcamera: only errors
-os.environ.setdefault('LIBCAMERA_LOG_LEVELS', '*:0')
+os.environ.setdefault('LIBCAMERA_LOG_LEVELS', '*:3')
 
 import asyncio
 import argparse
