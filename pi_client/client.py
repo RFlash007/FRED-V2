@@ -209,17 +209,17 @@ def create_video_track():
                 self.picam2 = get_picamera_instance()
                 if self.picam2 is None:
                     raise RuntimeError("Failed to get Picamera2 instance.")
-
-                # Start the camera stream if it's not already running
-                if not self.picam2.is_open:
-                    self.picam2.start()
-                    print("📹 Camera stream started.")
-
                 self.frame_count = 0
                 self.start_time = time.time()
 
             async def recv(self):
                 """Receive video frames from the camera."""
+                # Ensure the camera stream is running before capturing a frame.
+                if not self.picam2.is_open:
+                    loop = asyncio.get_running_loop()
+                    await loop.run_in_executor(None, self.picam2.start)
+                    print("📹 Camera stream started.")
+                    
                 pts, time_base = await self.next_timestamp()
                 
                 try:
