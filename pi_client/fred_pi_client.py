@@ -864,14 +864,30 @@ class FREDPiClient:
             if not self.camera:
                 return
                 
-            # Capture image
-            image_array = self.camera.capture_array("main")
-            
-            # Convert to base64
-            import cv2
-            _, buffer = cv2.imencode('.jpg', cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR), 
-                                   [cv2.IMWRITE_JPEG_QUALITY, 85])
-            image_b64 = base64.b64encode(buffer).decode('utf-8')
+            # Use PIL (which is usually available) to capture and encode
+            try:
+                from PIL import Image
+                import io
+                
+                # Capture image array
+                image_array = self.camera.capture_array("main")
+                
+                # Convert to PIL Image and then to JPEG bytes
+                img = Image.fromarray(image_array)
+                img_buffer = io.BytesIO()
+                img.save(img_buffer, format='JPEG', quality=85)
+                img_bytes = img_buffer.getvalue()
+                
+                # Convert to base64
+                image_b64 = base64.b64encode(img_bytes).decode('utf-8')
+                
+            except ImportError:
+                # Fallback: capture as array and send raw (larger but works)
+                print("📸 [VISION] PIL not available, using raw capture...")
+                image_array = self.camera.capture_array("main")
+                # Convert numpy array to bytes and base64
+                img_bytes = image_array.tobytes()
+                image_b64 = base64.b64encode(img_bytes).decode('utf-8')
             
             # Send to F.R.E.D.
             await self._send_to_fred({
