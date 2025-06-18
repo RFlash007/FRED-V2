@@ -43,8 +43,9 @@ python fred_pi_client.py --server http://192.168.1.100:8000
 ## 🔄 Migration Notes
 
 - All functionality from old files is preserved
-- Uses Vosk small English model for local STT (lightweight and fast)
-- Uses sounddevice for audio capture (more reliable than aiortc MediaPlayer)
+- **ONLY CHANGED:** STT engine from faster_whisper to Vosk (lightweight and fast)
+- Maintains original WebRTC video streaming to server
+- Maintains original audio streaming via WebRTC
 - Maintains wake word detection and buffering
 - Compatible with existing F.R.E.D. server endpoints
 - [Preserves user preferences for terminal display and native resolution]

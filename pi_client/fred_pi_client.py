@@ -359,10 +359,15 @@ class FREDPiClient:
             max_res = max_mode['size']
             print(f"🎯 [VISION] Using native resolution {max_res}")
             
-            config = self.camera.create_still_configuration(
+            config = self.camera.create_video_configuration(
                 main={"size": max_res, "format": "RGB888"},
-                controls={"FrameRate": 1, "Brightness": 0.1, "Contrast": 1.1},
-                buffer_count=1
+                controls={
+                    "FrameRate": 5,  # Lower FPS for processing
+                    "Brightness": 0.1,
+                    "Contrast": 1.1,
+                    "Saturation": 1.0,
+                },
+                buffer_count=2  # Minimize buffer for low latency
             )
             
             self.camera.configure(config)
@@ -372,6 +377,133 @@ class FREDPiClient:
         except Exception as e:
             print(f"❌ [VISION] Camera initialization failed: {e}")
             self.camera = None
+
+    def create_local_tracks(self, video=True, audio=True):
+        """Create video and audio tracks for WebRTC"""
+        tracks = []
+        
+        if video and self.camera:
+            print("🎥 Setting up video with Picamera2...")
+            try:
+                from aiortc import VideoStreamTrack
+                import av
+
+                class PiCamera2Track(VideoStreamTrack):
+                    """Video track that streams video from Picamera2 camera"""
+                    def __init__(self, camera):
+                        super().__init__()
+                        self.camera = camera
+                        self.frame_count = 0
+                        self.start_time = time.time()
+                        print("✅ Picamera2 video track initialized")
+
+                    async def recv(self):
+                        """Receive video frames from the camera"""
+                        pts, time_base = await self.next_timestamp()
+                        
+                        try:
+                            array = self.camera.capture_array("main")
+                        except Exception as e:
+                            print(f"💥 Failed to capture frame from Picamera2: {e}")
+                            # Fallback black frame
+                            array = np.zeros((2464, 3280, 3), dtype=np.uint8)
+                        
+                        # Convert to video frame for aiortc
+                        frame = av.VideoFrame.from_ndarray(array, format="rgb24")
+                        frame.pts = pts
+                        frame.time_base = time_base
+
+                        self.frame_count += 1
+                        if self.frame_count == 1:
+                            print(f"🚀 First frame sent! Size: {array.shape}")
+                        elif self.frame_count % 150 == 0:
+                            elapsed = time.time() - self.start_time
+                            if elapsed > 0:
+                                fps = self.frame_count / elapsed
+                                print(f"📊 Sent {self.frame_count} frames. Average FPS: {fps:.2f}")
+
+                        return frame
+
+                tracks.append(PiCamera2Track(self.camera))
+                print("✅ Picamera2 video track created successfully!")
+                
+            except Exception as e:
+                print(f"❌ Video track creation failed: {e}")
+        
+        if audio:
+            print("🎤 Setting up audio...")
+            # Try sounddevice audio track
+            try:
+                import sounddevice as sd
+                from aiortc import MediaStreamTrack
+                from av import AudioFrame
+                import collections
+                from fractions import Fraction
+
+                class SoundDeviceAudioTrack(MediaStreamTrack):
+                    kind = "audio"
+                    
+                    def __init__(self, device=None, sample_rate=16000, channels=1):
+                        super().__init__()
+                        self.device = device
+                        self.sample_rate = sample_rate
+                        self.channels = channels
+                        
+                        self.buffer = collections.deque(maxlen=self.sample_rate * 2)
+                        self.samples_sent = 0
+                        self.time_base = Fraction(1, self.sample_rate)
+                        self.stream = None
+                        self._running = False
+                        
+                    def start(self):
+                        if self._running:
+                            return
+                            
+                        def audio_callback(indata, frames, time, status):
+                            mono = indata.mean(axis=1).astype(np.float32)
+                            self.buffer.extend(mono)
+                        
+                        self.stream = sd.InputStream(
+                            device=self.device,
+                            channels=self.channels,
+                            samplerate=self.sample_rate,
+                            callback=audio_callback,
+                            dtype=np.float32
+                        )
+                        
+                        self.stream.start()
+                        self._running = True
+                        print("✅ Audio capture started!")
+                        
+                    async def recv(self):
+                        if not self._running:
+                            self.start()
+                        
+                        frame_samples = int(self.sample_rate * 0.02)  # 20ms
+                        
+                        while len(self.buffer) < frame_samples:
+                            await asyncio.sleep(0.001)
+                        
+                        samples = [self.buffer.popleft() for _ in range(frame_samples)]
+                        pcm_i16 = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
+                        pcm_i16 = pcm_i16.reshape(1, -1)
+                        
+                        frame = AudioFrame.from_ndarray(pcm_i16, format='s16', layout='mono')
+                        frame.sample_rate = self.sample_rate
+                        frame.pts = self.samples_sent
+                        frame.time_base = self.time_base
+                        
+                        self.samples_sent += frame_samples
+                        return frame
+                
+                audio_track = SoundDeviceAudioTrack()
+                tracks.append(audio_track)
+                print("✅ Audio working with sounddevice")
+                
+            except Exception as e:
+                print(f"❌ Audio track creation failed: {e}")
+        
+        return tracks
 
     async def _setup_webrtc(self):
         """Setup WebRTC connection to F.R.E.D. server"""
@@ -428,6 +560,18 @@ class FREDPiClient:
             def on_close():
                 print('[CRITICAL] Connection to F.R.E.D. mainframe terminated')
                 raise Exception("Data channel closed")
+            
+            # Add tracks (video and audio) - RESTORE ORIGINAL FUNCTIONALITY
+            tracks = self.create_local_tracks(video=True, audio=True)
+            
+            if not tracks:
+                print("⚠️  No media tracks available - connecting with data channel only")
+            
+            for track in tracks:
+                self.pc.addTrack(track)
+                track_kind = getattr(track, 'kind', 'unknown')
+                track_type = type(track).__name__
+                print(f"📡 Added {track_kind} track ({track_type})")
             
             # Create offer and connect
             offer = await self.pc.createOffer()
