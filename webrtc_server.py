@@ -30,12 +30,6 @@ pi_clients = set()  # Track Pi clients for vision processing
 client_video_tracks = {}  # Store video tracks for on-demand frame requests
 connection_timestamps = {}  # Track connection times for rate limiting
 
-# Make the AppRunner accessible to the module scope so that we can clean it up
-# reliably in the __main__ guard. This avoids a NameError raised when the file
-# is executed directly and the `runner` local variable only exists inside
-# `main()`.
-runner = None  # type: ignore
-
 async def request_frame_from_client(client_ip):
     """Request a fresh frame from a specific client"""
     if client_ip not in client_video_tracks:
@@ -116,99 +110,6 @@ async def offer(request):
         except Exception as e:
             logging.warning(f"Recorder failed to start: {e}")
         
-        # CHECK IF THIS IS A LOCAL STT CLIENT FIRST
-        client_type = params.get('client_type', 'unknown')
-        is_local_stt = 'local_stt' in client_type
-        print(f"🔧 [DEBUG] Client type: {client_type}, is_local_stt: {is_local_stt}")
-        
-        # REGISTER DATA CHANNEL HANDLER BEFORE PROCESSING OFFER
-        @pc.on('datachannel')
-        def on_datachannel(channel):
-            print(f"🔧 [DEBUG] Data channel event triggered for {client_ip}")
-            print(f"🔧 [DEBUG] Channel label: {channel.label}, state: {channel.readyState}")
-            
-            data_channels.add(channel)
-            pi_clients.add(channel)  # Track Pi clients
-            print(f"[PIP-BOY] Data channel '{channel.label}' established with field operative at {client_ip}")
-            
-            # Notify vision service that Pi is connected
-            vision_service.set_pi_connection_status(True)
-            print(f"[OPTICS] Pip-Boy visual sensors ONLINE - initiating reconnaissance protocols")
-            
-            if is_local_stt:
-                print(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
-            
-            @channel.on('message')
-            def on_message(message):
-                if message == '[HEARTBEAT]':
-                    print(f"[VITAL-MONITOR] Pip-Boy heartbeat confirmed from {client_ip}")
-                    channel.send('[HEARTBEAT_ACK]')
-                    return
-
-                try:
-                    data = json.loads(message)
-                    if data.get('type') == 'transcription':
-                        text = data.get('text', '').strip()
-                        if not text:
-                            return
-                        
-                        print(f"🗣️  [PI TRANSCRIPTION] '{text}' from {client_ip}")
-                        
-                        # --- Simplified and Robust Response Handling ---
-                        try:
-                            # 1. Prepare payload for F.R.E.D.
-                            payload = {
-                                "message": text,
-                                "model": config.DEFAULT_MODEL,
-                                "mute_fred": False, # Ensure TTS for Pi glasses
-                                "from_pi_glasses": True,
-                            }
-                            
-                            # 2. Call F.R.E.D. server directly
-                            import requests
-                            resp = requests.post("http://localhost:5000/chat", json=payload, timeout=60)
-                            resp.raise_for_status() # Raise an exception for bad status codes
-                            
-                            response_data = resp.json()
-                            
-                            # 3. Relay complete response back to Pi
-                            fred_text = response_data.get("response", "No text response.")
-                            fred_audio_b64 = response_data.get("audio")
-
-                            if fred_audio_b64:
-                                print(f"🔊 Relaying audio response to {client_ip}")
-                                channel.send(json.dumps({
-                                    "type": "audio",
-                                    "audio": fred_audio_b64
-                                }))
-                            else:
-                                print(f"💬 Relaying text-only response to {client_ip}")
-                                channel.send(json.dumps({
-                                    "type": "text",
-                                    "text": fred_text
-                                }))
-
-                        except requests.exceptions.RequestException as e:
-                            logging.error(f"Failed to get response from F.R.E.D.: {e}")
-                            channel.send(json.dumps({"type": "status", "status": f"Error: {e}"}))
-                        except Exception as e:
-                            logging.error(f"Error processing transcription on server: {e}")
-                            channel.send(json.dumps({"type": "status", "status": f"Server Error: {e}"}))
-
-                except json.JSONDecodeError:
-                    logging.warning(f"Received non-JSON message from {client_ip}: {message}")
-            
-            @channel.on('close')
-            def on_close():
-                data_channels.discard(channel)
-                pi_clients.discard(channel)
-                print(f"[PIP-BOY] Data channel '{channel.label}' closed from {client_ip}")
-                
-                # If no more Pi clients, stop vision processing
-                if not pi_clients:
-                    vision_service.set_pi_connection_status(False)
-                    print(f"[OPTICS] All Pip-Boys disconnected - reconnaissance protocols OFFLINE")
-        
         # -------------------------------------------------------------
         #  STT SET-UP (run only once – on first connection)
         # -------------------------------------------------------------
@@ -269,131 +170,224 @@ async def offer(request):
             except Exception as stt_err:
                 logging.error(f"Unable to start STT processing: {stt_err}")
         
+        # Store data channel when created
+        @pc.on('datachannel')
+        def on_datachannel(channel):
+            data_channels.add(channel)
+            pi_clients.add(channel)  # Track Pi clients
+            print(f"[PIP-BOY] Data channel '{channel.label}' established with field operative at {client_ip}")
+            
+            # Notify vision service that Pi is connected
+            vision_service.set_pi_connection_status(True)
+            print(f"[OPTICS] Pip-Boy visual sensors ONLINE - initiating reconnaissance protocols")
+            
+            # Check if this is a local STT client
+            client_type = params.get('client_type', 'unknown')
+            is_local_stt = 'local_stt' in client_type
+            
+            if is_local_stt:
+                print(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
+            
+            @channel.on('message')
+            def on_message(message):
+                # Handle heartbeat messages
+                if message == '[HEARTBEAT]':
+                    print(f"[VITAL-MONITOR] Pip-Boy heartbeat confirmed from {client_ip}")
+                    channel.send('[HEARTBEAT_ACK]')
+                elif is_local_stt:
+                    # Handle transcribed text from Pi
+                    try:
+                        import json
+                        data = json.loads(message)
+                        if data.get('type') == 'transcription':
+                            text = data.get('text', '').strip()
+                            if text:
+                                print(f"🗣️ [PI TRANSCRIPTION] '{text}' from {client_ip}")
+                                # Process the transcribed text (same as old audio processing)
+                                process_pi_transcription(text, from_pi=True)
+                    except json.JSONDecodeError:
+                        # Handle plain text messages
+                        if message.strip():
+                            print(f"🗣️ [PI TRANSCRIPTION] '{message.strip()}' from {client_ip}")
+                            process_pi_transcription(message.strip(), from_pi=True)
+                else:
+                    print(f"[PIP-BOY COMM] Field operative message: {message}")
+            
+            @channel.on('close')
+            def on_close():
+                data_channels.discard(channel)
+                pi_clients.discard(channel)
+                print(f"[PIP-BOY] Data channel '{channel.label}' closed from {client_ip}")
+                
+                # If no more Pi clients, stop vision processing
+                if not pi_clients:
+                    vision_service.set_pi_connection_status(False)
+                    print(f"[OPTICS] All Pip-Boys disconnected - reconnaissance protocols OFFLINE")
+
         @pc.on('track')
         async def on_track(track):
             print(f"[SIGNAL] {track.kind.upper()} link established with field operative {client_ip}")
             
             if track.kind == 'audio':
-                # Local STT clients don't send processable audio
-                print("[AUDIO] Client uses local STT - audio stream will be ignored.")
-                # We still need to consume the track to prevent buffer issues
-                recorder.addTrack(track)
-            
-            if track.kind == 'video':
-                print(f"[OPTICS] Video feed from {client_ip} is now available for on-demand analysis.")
+                # Check if this is a local STT client
+                client_type = params.get('client_type', 'unknown')
+                is_local_stt = 'local_stt' in client_type
+                
+                if is_local_stt:
+                    print("[AUDIO] Client uses local STT - skipping server audio processing")
+                    # Just consume frames without processing to prevent buffer buildup
+                    async def consume_audio_frames_minimal():
+                        try:
+                            frame_count = 0
+                            while True:
+                                frame = await track.recv()
+                                frame_count += 1
+                                if frame_count == 1:
+                                    print(f"[AUDIO] Receiving audio frames from {client_ip} (not processing - local STT active)")
+                                elif frame_count % 5000 == 0:  # Very minimal logging
+                                    print(f"[AUDIO] {frame_count} frames received (local STT mode)")
+                        except Exception as e:
+                            print(f"[AUDIO] Audio stream ended: {e}")
+                    
+                    asyncio.create_task(consume_audio_frames_minimal())
+                else:
+                    print("[AUDIO] Voice communication protocols active (server STT)")
+                    frame_count = 0
+                    
+                    # Create a task to consume audio frames from the track
+                    async def consume_audio_frames():
+                        nonlocal frame_count
+                        
+                        try:
+                            buffer = []
+                            total_samples = 0
+                            # Pi-audio: use ~5-second chunk (80,000 samples @16 kHz) like old system
+                            CHUNK_TARGET = config.STT_SAMPLE_RATE * 5  # 48 000 samples
+
+                            while True:
+                                frame = await track.recv()
+                                frame_count += 1
+
+                                if frame_count == 1:
+                                    print(f"[AUDIO] First transmission received from {client_ip}")
+                                # Reduced frequency of frame logging for conciseness
+                                elif frame_count % 2000 == 0:  # Every ~40 seconds instead of every 10
+                                    print(f"[AUDIO] {frame_count} frames processed")
+
+                                pcm = frame.to_ndarray()
+
+                                # Shape (1, samples) -> flatten to samples
+                                if pcm.ndim == 2:
+                                    pcm = pcm.flatten()
+
+                                # HIGH QUALITY AUDIO: Preserve original 48kHz and let Whisper handle resampling
+                                input_sr = getattr(frame, 'sample_rate', 48000)
+                                target_sr = config.STT_SAMPLE_RATE
+                                
+                                # CRITICAL FIX: Use high-quality resampling and preserve float32 precision
+                                if input_sr != target_sr:
+                                    try:
+                                        # Convert to float32 normalized [-1, 1] for high-quality processing
+                                        if pcm.dtype == np.int16:
+                                            pcm_f32 = pcm.astype(np.float32) / 32768.0
+                                        elif pcm.dtype == np.float32:
+                                            pcm_f32 = pcm
+                                        else:
+                                            pcm_f32 = pcm.astype(np.float32)
+                                        
+                                        # High-quality Kaiser window resampling (like your old system)
+                                        from scipy.signal import resample_poly
+                                        pcm_resampled = resample_poly(pcm_f32, target_sr, input_sr)
+                                        
+                                        # Keep as float32 to preserve quality (don't quantize to int16!)
+                                        pcm = pcm_resampled.astype(np.float32)
+                                        
+                                    except Exception as rs_err:
+                                        print(f"[WARNING] Audio resampling error ({input_sr}->{target_sr}): {rs_err}")
+                                        # Fallback: simple decimation
+                                        if input_sr == 48000 and target_sr == 16000:
+                                            pcm = pcm[::3].astype(np.float32) / 32768.0 if pcm.dtype == np.int16 else pcm[::3]
+                                else:
+                                    # Normalize to float32 even if no resampling needed
+                                    if pcm.dtype == np.int16:
+                                        pcm = pcm.astype(np.float32) / 32768.0
+                                    elif pcm.dtype != np.float32:
+                                        pcm = pcm.astype(np.float32)
+
+                                buffer.append(pcm)
+                                total_samples += pcm.shape[0]
+
+                                if total_samples >= CHUNK_TARGET:
+                                    chunk = np.concatenate(buffer)
+                                    stt_service.audio_queue.put((chunk, True))
+                                    buffer = []
+                                    total_samples = 0
+                                    # Reduced frequency of chunk processing logs
+                                    if frame_count % 3000 == 0:  # Much less frequent
+                                        print(f"[PROCESSING] Speech data sent to recognition system")
+
+                        except Exception as e:
+                            print(f"[ERROR] Audio transmission ended: {e}")
+                        finally:
+                            # graceful exit when track ends
+                            return
+                    
+                    asyncio.create_task(consume_audio_frames())
+                
+            elif track.kind == 'video':
+                print("[OPTICS] Visual reconnaissance feed active")
+                frame_count = 0
+                
+                # Store track for on-demand frame requests
                 client_video_tracks[client_ip] = track
-                # Don't record video unless explicitly requested
-                # recorder.addTrack(track)
+                
+                # Test: Request first frame immediately
+                try:
+                    frame = await track.recv()
+                    frame_count += 1
+                    print(f"[OPTICS] Visual feed confirmed ({frame.width}x{frame.height})")
+                    
+                    # Store frame for vision processing
+                    vision_service.store_latest_frame(frame)
+                    
+                except Exception as e:
+                    print(f"[ERROR] Visual feed initialization failed: {e}")
+            
+            # Add track to recorder safely
+            if recorder:
+                try:
+                    recorder.addTrack(track)
+                except Exception as rec_err:
+                    logging.error(f"[WARNING] Track recording failed: {rec_err}")
 
         @pc.on('connectionstatechange')
         async def on_connectionstatechange():
             
-            state = pc.connectionState
-            logging.info(f"Connection state is {state}")
-            
-            if state == "failed" or state == "closed":
-                await pc.close()
-                pcs.discard(pc)
+            if pc.connectionState == 'connected':
+                print(f"[SUCCESS] Pip-Boy fully operational at {client_ip}")
+            elif pc.connectionState in ('failed', 'closed'):
+                print(f"[DISCONNECT] Pip-Boy {client_ip} offline")
+                # Clean up video track reference
                 if client_ip in client_video_tracks:
                     del client_video_tracks[client_ip]
-                logging.info(f"Connection from {client_ip} closed.")
-        
-        @pc.on('iceconnectionstatechange')
-        async def on_iceconnectionstatechange():
-            ice_state = pc.iceConnectionState
-            print(f"🔧 [DEBUG] ICE connection state changed to: {ice_state}")
-            
-            if ice_state == "connected" or ice_state == "completed":
-                print(f"🎯 [ICE] Connection established! Data channel should be available now.")
-                
-                # DIFFERENT APPROACH - TRY VARIOUS AIORTC DATA CHANNEL ACCESS METHODS
-                await asyncio.sleep(1)  # Give it a moment to settle
-                
-                # Method 1: Check for _dataChannels
-                if hasattr(pc, '_dataChannels'):
-                    channels = pc._dataChannels
-                    print(f"🔧 [DEBUG] Found _dataChannels: {len(channels)}")
-                    for ch in channels.values():
-                        print(f"🔧 [DEBUG] Channel: {ch.label}, state: {ch.readyState}")
-                
-                # Method 2: Check for dataChannels
-                elif hasattr(pc, 'dataChannels'):
-                    channels = pc.dataChannels
-                    print(f"🔧 [DEBUG] Found dataChannels: {len(channels)}")
-                    
-                # Method 3: Check different internal attributes
-                else:
-                    print(f"❌ [DEBUG] No data channels found via standard methods")
-                    print(f"🔧 [DEBUG] Available attributes: {[attr for attr in dir(pc) if 'data' in attr.lower() or 'channel' in attr.lower()]}")
-                    
-                    # Try to inspect the SDP to see if data channel is negotiated
-                    if hasattr(pc, 'localDescription') and pc.localDescription:
-                        sdp = pc.localDescription.sdp
-                        if 'application' in sdp and 'DTLS/SCTP' in sdp:
-                            print(f"🔧 [DEBUG] Data channel negotiated in SDP!")
-                            # Force client to send a message to establish the connection
-                            print(f"📡 [FORCE] Attempting to force data channel activation...")
-                
-                # TRY TO FORCE DATA CHANNEL BY WAITING LONGER
-                print(f"⏰ [WAIT] Waiting additional time for data channel negotiation...")
-                await asyncio.sleep(3)
-                
-                # Check again after longer wait
-                if hasattr(pc, '_dataChannels') and pc._dataChannels:
-                    print(f"🎯 [DELAYED] Data channels appeared after delay!")
-                elif hasattr(pc, 'dataChannels') and pc.dataChannels:
-                    print(f"🎯 [DELAYED] Data channels appeared after delay!")
-                else:
-                    print(f"💔 [TIMEOUT] Data channel never appeared - this might be an aiortc version issue")
-                    print(f"🔧 [INFO] Client will need to send a message to trigger connection")
-        
-        @pc.on('icegatheringstatechange')
-        async def on_icegatheringstatechange():
-            print(f"🔧 [DEBUG] ICE gathering state: {pc.iceGatheringState}")
+                await pc.close()
+                pcs.discard(pc)  # free slot for new connections
 
         await pc.setRemoteDescription(offer)
-        
-        print(f"🔧 [DEBUG] Remote description set for {client_ip}")
-        print(f"🔧 [DEBUG] Connection state: {pc.connectionState}")
-        print(f"🔧 [DEBUG] Ice connection state: {pc.iceConnectionState}")
-        print(f"🔧 [DEBUG] Ice gathering state: {pc.iceGatheringState}")
-        
-        await recorder.start() # Start recording (or blackholing) media
-        
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
-        
-        print(f"🔧 [DEBUG] Answer created and local description set for {client_ip}")
-        print(f"🔧 [DEBUG] Connection state after answer: {pc.connectionState}")
-        print(f"🔧 [DEBUG] Ice connection state after answer: {pc.iceConnectionState}")
-        
-        # Add a delay to see if data channel appears later
-        async def check_for_datachannel():
-            await asyncio.sleep(5)
-            print(f"🔧 [DEBUG] After 5s - checking for data channels...")
-            print(f"🔧 [DEBUG] Connection state: {pc.connectionState}")
-            print(f"🔧 [DEBUG] Ice connection state: {pc.iceConnectionState}")
-            # Force a manual check for data channels
-            if hasattr(pc, '_RTCPeerConnection__dataChannels'):
-                print(f"🔧 [DEBUG] Internal data channels: {pc._RTCPeerConnection__dataChannels}")
-        
-        asyncio.create_task(check_for_datachannel())
 
-        return web.json_response({
-            'sdp': pc.localDescription.sdp,
-            'type': pc.localDescription.type
-        })
+        return web.json_response({'sdp': pc.localDescription.sdp,
+                                  'type': pc.localDescription.type})
     
     except Exception as e:
-        logging.error(f"Failed to establish WebRTC connection with {client_ip}: {e}")
-        await pc.close()
-        pcs.discard(pc)
-        return web.json_response({'error': str(e)}, status=500)
+        logging.error(f"Error handling offer from {client_ip}: {e}")
+        return web.json_response({'error': 'Internal server error'}, status=500)
 
 # SocketIO event handlers for receiving responses from main F.R.E.D. server
 @sio_client.event
 async def connect():
-    logging.info("[VAULT-NET] ✅ Connection to F.R.E.D. main server established.")
+    print("[VAULT-NET] Established secure link to F.R.E.D. mainframe")
     # Emit connection confirmation
     await sio_client.emit('webrtc_server_connected')
     print("[BRIDGE] Wasteland communication network ONLINE - standing by for field operations")
@@ -482,58 +476,7 @@ async def init_app(app):
     except Exception as e:
         print(f"Failed to connect to F.R.E.D. main server: {e}")
 
-async def text_message(request):
-    """HTTP fallback for text messages when WebRTC data channel fails"""
-    
-    # Authenticate request
-    if not authenticate_request(request):
-        logging.warning(f"Unauthorized text message attempt from {request.remote}")
-        return web.json_response({'error': 'Unauthorized'}, status=401)
-    
-    try:
-        data = await request.json()
-        client_ip = request.remote
-        
-        print(f"📨 [HTTP FALLBACK] Text message from {client_ip}: {data}")
-        
-        if data.get('type') == 'transcription':
-            text = data.get('text', '').strip()
-            if text:
-                print(f"🗣️  [HTTP TRANSCRIPTION] '{text}' from {client_ip}")
-                
-                # Process the transcription same as WebRTC
-                try:
-                    payload = {
-                        "message": text,
-                        "model": config.DEFAULT_MODEL,
-                        "mute_fred": False,
-                        "from_pi_glasses": True,
-                    }
-                    
-                    import requests
-                    resp = requests.post("http://localhost:5000/chat", json=payload, timeout=60)
-                    resp.raise_for_status()
-                    
-                    response_data = resp.json()
-                    
-                    return web.json_response({
-                        'status': 'success',
-                        'response': response_data.get("response", "No response"),
-                        'audio': response_data.get("audio")
-                    })
-                    
-                except Exception as e:
-                    logging.error(f"Failed to process HTTP transcription: {e}")
-                    return web.json_response({'error': str(e)}, status=500)
-        
-        return web.json_response({'status': 'received'})
-        
-    except Exception as e:
-        logging.error(f"HTTP text message error: {e}")
-        return web.json_response({'error': str(e)}, status=500)
-
 async def main():
-    global runner
     parser = argparse.ArgumentParser(description="F.R.E.D. WebRTC server")
     parser.add_argument("--cert-file", help="SSL certificate file (for HTTPS)")
     parser.add_argument("--key-file", help="SSL key file (for HTTPS)")
@@ -560,7 +503,6 @@ async def main():
     app.on_shutdown.append(cleanup)
     app.router.add_get("/", index)
     app.router.add_post("/offer", offer)
-    app.router.add_post("/text_message", text_message)
 
     runner = web.AppRunner(app)
     await runner.setup()

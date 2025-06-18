@@ -2,14 +2,14 @@
 
 echo "🤖 F.R.E.D. Pi Client Local STT Installation"
 echo "============================================="
-echo "Setting up on-device speech recognition with tiny.en model"
+echo "Setting up on-device speech recognition with Vosk small English model"
 echo
 
 # Update system packages
 echo "📦 Updating system packages..."
 sudo apt update && sudo apt upgrade -y
 
-# Install system dependencies for faster-whisper
+# Install system dependencies for Vosk
 echo "🔧 Installing system dependencies..."
 sudo apt install -y \
     python3-dev \
@@ -22,24 +22,39 @@ sudo apt install -y \
     libportaudio2 \
     libportaudiocpp0 \
     ffmpeg \
-    cmake \
-    pkg-config
+    wget \
+    unzip \
+    curl
 
 # Install Python dependencies
 echo "🐍 Installing Python dependencies..."
 pip3 install --upgrade pip
 pip3 install -r requirements.txt
 
-# Download and cache the tiny.en model
-echo "🧠 Downloading tiny.en Whisper model..."
-python3 -c "
-import os
-from faster_whisper import WhisperModel
-print('Downloading tiny.en model with int8 quantization...')
-model = WhisperModel('tiny.en', device='cpu', compute_type='int8')
-print('✅ Model downloaded successfully!')
-print('Model cached for offline use')
-"
+# Download Vosk small English model
+echo "🧠 Downloading Vosk small English model..."
+VOSK_MODEL="vosk-model-small-en-us-0.15"
+VOSK_URL="https://alphacephei.com/vosk/models/${VOSK_MODEL}.zip"
+VOSK_HOME="${HOME}/${VOSK_MODEL}"
+
+if [ ! -d "$VOSK_HOME" ]; then
+    echo "📥 Downloading ${VOSK_MODEL}..."
+    cd "$HOME"
+    wget "$VOSK_URL"
+    
+    if [ $? -eq 0 ]; then
+        echo "📂 Extracting model..."
+        unzip "${VOSK_MODEL}.zip"
+        rm "${VOSK_MODEL}.zip"
+        echo "✅ Vosk model installed at: $VOSK_HOME"
+    else
+        echo "❌ Model download failed. You can manually download:"
+        echo "   wget $VOSK_URL"
+        echo "   unzip ${VOSK_MODEL}.zip -d ~/"
+    fi
+else
+    echo "✅ Vosk model already exists at: $VOSK_HOME"
+fi
 
 # Test audio setup
 echo "🎤 Testing audio setup..."
@@ -69,11 +84,12 @@ try:
     print('✅ Pi STT service import successful!')
     
     if pi_stt_service.initialize():
-        print('✅ Whisper model initialization successful!')
+        print('✅ Vosk model initialization successful!')
         print('🎯 Ready for local speech recognition')
         pi_stt_service.stop_processing()
     else:
         print('❌ STT initialization failed')
+        print('Make sure the Vosk model is downloaded correctly')
 except Exception as e:
     print(f'❌ STT test failed: {e}')
 "
@@ -82,10 +98,11 @@ echo
 echo "🎉 F.R.E.D. Pi Client Local STT Installation Complete!"
 echo
 echo "📝 Next Steps:"
-echo "1. Run the new client: python3 client_with_local_stt.py --server https://your-ngrok-url"
+echo "1. Run the client: python3 client.py --server https://your-ngrok-url"
 echo "2. Say a wake word like 'Hey Fred' to activate"
-echo "3. Speech will be processed locally on the Pi!"
+echo "3. Speech will be processed locally on the Pi using Vosk!"
 echo
-echo "💡 Performance Tip: The tiny.en model is optimized for Pi Zero hardware"
+echo "💡 Performance Tip: Vosk small English model is optimized for Pi hardware"
 echo "🔋 Battery Note: Local processing uses more CPU but reduces network usage"
+echo "🎯 Model: ${VOSK_MODEL} (~40MB)"
 echo 

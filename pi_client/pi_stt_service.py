@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Pi-Based Speech-to-Text Service for F.R.E.D. Glasses
-Upgraded with dynamic calibration and robust utterance detection.
+Optimized for Raspberry Pi with Vosk small English model
 """
 
 import time
@@ -9,10 +9,10 @@ import threading
 import queue
 import numpy as np
 import logging
-from typing import Optional, Callable
-from vosk import Model, KaldiRecognizer
 import json
 import os
+from typing import Optional, Callable
+import vosk
 from ollietec_theme import apply_theme
 
 apply_theme()
@@ -20,255 +20,269 @@ apply_theme()
 logger = logging.getLogger(__name__)
 
 class PiSTTService:
-    """
-    Optimized STT service for Raspberry Pi, featuring dynamic noise calibration
-    and robust end-of-speech detection.
-    """
+    """Optimized STT service for Raspberry Pi using Vosk small English"""
     
     def __init__(self):
-        # Vosk STT objects
-        self.model: Optional[Model] = None
-        self.recognizer: Optional[KaldiRecognizer] = None
+        self.model = None
+        self.recognizer = None
         self.is_initialized = False
         
-        # Audio processing configuration compatible with Vosk small model
+        # Audio processing configuration (optimized for Pi)
         self.sample_rate = 16000
         self.channels = 1
-        self.block_duration_s = 2  # Process audio in 2-second chunks
+        self.block_duration = 0.5  # Shorter blocks for streaming
+        self.blocksize = int(self.block_duration * self.sample_rate)
         
-        # VAD & Speech detection settings
+        # Speech detection settings
         self.speech_buffer = []
         self.last_speech_time = 0
-        self.silence_duration_s = 0.8  # Seconds of silence to trigger end-of-speech
-        self.silence_threshold = 0.0015  # Fixed silence threshold
+        self.silence_duration = 1.0  # Time before processing complete utterance
+        self.silence_threshold = 0.002  # Audio level threshold
         
         # Processing control
-        self.audio_queue = queue.Queue(maxsize=10)
-        self.is_listening = False # True when wake word is detected
-        self.is_processing = False # True when the service is running
-        self.processing_thread: Optional[threading.Thread] = None
-        self.transcription_callback: Optional[Callable[[str], None]] = None
+        self.audio_queue = queue.Queue()
+        self.is_listening = False
+        self.is_processing = False
+        self.processing_thread = None
+        self.transcription_callback: Optional[Callable] = None
         
-        # Wake/Stop words
+        # Wake word detection
         self.wake_words = [
-            "fred", "hey fred", "okay fred", "hi fred", "excuse me fred"
+            "fred", "hey fred", "okay fred", 
+            "hi fred", "excuse me fred", "fred are you there"
         ]
         self.stop_words = [
-            "goodbye", "bye fred", "stop listening", "that's all", "sleep now"
+            "goodbye", "bye fred", "stop listening", 
+            "that's all", "thank you fred", "sleep now"
         ]
         
+        # Performance monitoring
+        self._transcription_count = 0
+        self._start_time = time.time()
+        
     def initialize(self):
-        """Initialize the Vosk model optimized for Pi."""
+        """Initialize the Vosk model"""
         if self.is_initialized:
             return True
             
         try:
             print("[PIP-BOY STT] Initializing voice recognition systems...")
-            print("🔧 Loading Vosk small English model (~50 MB)...")
-            # Expecting the model to be downloaded and extracted at this path.
-            # Users can obtain it from: https://alphacephei.com/vosk/models
-            model_path = os.getenv("VOSK_MODEL_PATH", "models/vosk-model-small-en-us-0.15")
-
-            if not os.path.isdir(model_path):
-                print(f"❌ [MODEL ERROR] Vosk model not found at '{model_path}'")
-                print("📋 [INSTALLATION HELP] To fix this:")
-                print("   1. Create models directory: mkdir -p models")
-                print("   2. Download model: wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip")
-                print("   3. Extract: unzip vosk-model-small-en-us-0.15.zip -d models/")
-                print("   4. Or set VOSK_MODEL_PATH environment variable")
-                print("💡 [ALTERNATIVE] Use server-side STT by running original client.py")
-                raise FileNotFoundError(
-                    f"Vosk model not found at '{model_path}'. "
-                    "Download and unpack the small English model, then set VOSK_MODEL_PATH." )
-
-            print(f"📁 [MODEL] Loading from: {model_path}")
-            self.model = Model(model_path)
-            self.recognizer = KaldiRecognizer(self.model, self.sample_rate)
+            print("🔧 Loading Vosk small English model...")
+            
+            # Set log level to reduce Vosk verbosity
+            vosk.SetLogLevel(-1)
+            
+            # Check if model exists, if not download it
+            model_path = self._ensure_model_downloaded()
+            if not model_path:
+                return False
+            
+            # Initialize Vosk model and recognizer
+            self.model = vosk.Model(model_path)
+            self.recognizer = vosk.KaldiRecognizer(self.model, self.sample_rate)
+            
+            # Configure recognizer for better performance
+            self.recognizer.SetWords(True)  # Enable word-level timestamps
+            self.recognizer.SetPartialWords(False)  # Disable for better performance
             
             print("✅ [PIP-BOY STT] Voice recognition ONLINE")
+            print(f"📊 Model: Vosk small English")
+            print(f"🔧 Sample rate: {self.sample_rate}Hz, optimized for Pi")
+            
             self.is_initialized = True
             return True
             
         except Exception as e:
             logger.error(f"[CRITICAL] STT initialization failed: {e}")
             print(f"❌ [PIP-BOY STT] Voice recognition FAILED: {e}")
-            print("🔄 [SUGGESTION] Try using server-side STT instead")
             return False
     
-    def start_processing(self, callback: Callable[[str], None]):
-        """Start the audio processing loop."""
+    def _ensure_model_downloaded(self):
+        """Ensure Vosk small English model is available"""
+        model_dir = "vosk-model-small-en-us-0.15"
+        model_path = os.path.join(os.path.expanduser("~"), model_dir)
+        
+        if os.path.exists(model_path) and os.path.isdir(model_path):
+            print(f"📁 [MODEL] Found existing model at {model_path}")
+            return model_path
+        
+        print("📥 [MODEL] Vosk small English model not found")
+        print("🔗 [INFO] Please download the model manually:")
+        print("   wget https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip")
+        print("   unzip vosk-model-small-en-us-0.15.zip -d ~/")
+        print(f"   Expected location: {model_path}")
+        
+        # Try alternative locations
+        alt_paths = [
+            "/opt/vosk-model-small-en-us-0.15",
+            "/usr/local/share/vosk-model-small-en-us-0.15",
+            "./vosk-model-small-en-us-0.15"
+        ]
+        
+        for alt_path in alt_paths:
+            if os.path.exists(alt_path) and os.path.isdir(alt_path):
+                print(f"📁 [MODEL] Found model at alternative location: {alt_path}")
+                return alt_path
+        
+        return None
+    
+    def start_processing(self, callback: Callable):
+        """Start the audio processing with wake word detection"""
         if not self.is_initialized:
             if not self.initialize():
                 return False
                 
+        print("🎤 [PIP-BOY STT] Starting audio processing...")
         self.transcription_callback = callback
         self.is_processing = True
         
-        self.processing_thread = threading.Thread(target=self._process_audio_loop, daemon=True)
+        # Start processing thread
+        self.processing_thread = threading.Thread(
+            target=self._process_audio_loop, 
+            daemon=True
+        )
         self.processing_thread.start()
         
-        print("🎤 [PIP-BOY STT] Voice service activated.")
+        print("👂 [PIP-BOY STT] Listening for wake word...")
+        logger.info("Pi STT processing started - waiting for wake word")
         return True
     
     def stop_processing(self):
-        """Stop audio processing."""
+        """Stop audio processing"""
         self.is_processing = False
         if self.processing_thread:
             self.processing_thread.join(timeout=2.0)
-        print("🔇 [PIP-BOY STT] Voice service offline.")
+        print("🔇 [PIP-BOY STT] Voice recognition offline")
+        logger.info("Pi STT processing stopped")
     
     def add_audio_chunk(self, audio_data: np.ndarray):
-        """Add audio chunk for processing."""
+        """Add audio chunk for processing"""
         if self.is_processing and not self.audio_queue.full():
             self.audio_queue.put(audio_data)
     
     def _process_audio_loop(self):
-        """Main audio processing loop."""
-        print("👂 Listening for wake word...")
+        """Main audio processing loop with wake word detection"""
+        accumulated_audio = b''
         
-        audio_buffer = np.array([], dtype=np.float32)
-
         while self.is_processing:
             try:
-                # Wait for a chunk of audio
-                audio_chunk = self.audio_queue.get(timeout=1.0)
-                
-                # Append new data to the buffer
-                audio_buffer = np.concatenate([audio_buffer, audio_chunk])
-
-                # Process buffer only if it's large enough
-                if len(audio_buffer) < self.sample_rate * self.block_duration_s:
+                if self.audio_queue.empty():
+                    time.sleep(0.05)
                     continue
-
-                # --- Voice Activity Detection ---
-                audio_level = np.abs(audio_buffer).mean()
                 
-                # If silent, check if we need to process a completed utterance
+                audio_chunk = self.audio_queue.get()
+                
+                # Calculate audio level for voice activity detection
+                audio_level = np.abs(audio_chunk).mean()
+                
+                # Skip if too quiet
                 if audio_level < self.silence_threshold:
-                    if self.is_listening and self.speech_buffer and \
-                       time.time() - self.last_speech_time > self.silence_duration_s:
-                        self._process_complete_utterance()
-                    # Clear buffer during silence
-                    audio_buffer = np.array([], dtype=np.float32)
+                    # Check if we should process buffered speech
+                    if self.is_listening and accumulated_audio:
+                        if time.time() - self.last_speech_time > self.silence_duration:
+                            self._finalize_recognition()
+                            accumulated_audio = b''
                     continue
-
-                # --- Transcription ---
-                # We have sound, so transcribe it
-                text = self._transcribe_audio(audio_buffer)
-                audio_buffer = np.array([], dtype=np.float32) # Clear buffer after processing
                 
-                if text:
-                    self._handle_transcribed_text(text)
-
-            except queue.Empty:
-                # This is normal, just means no audio is coming in
-                if self.is_listening and self.speech_buffer and \
-                   time.time() - self.last_speech_time > self.silence_duration_s:
-                    self._process_complete_utterance()
-                continue
+                # Convert to bytes for Vosk
+                audio_bytes = audio_chunk.tobytes()
+                accumulated_audio += audio_bytes
+                
+                # Process with Vosk
+                if self.recognizer.AcceptWaveform(audio_bytes):
+                    # Final result
+                    result = json.loads(self.recognizer.Result())
+                    text = result.get('text', '').strip()
+                    if text:
+                        self._handle_transcribed_text(text.lower())
+                        self.last_speech_time = time.time()
+                else:
+                    # Partial result - update last speech time if we got something
+                    partial = json.loads(self.recognizer.PartialResult())
+                    if partial.get('partial', '').strip():
+                        self.last_speech_time = time.time()
+                        
             except Exception as e:
-                logger.error(f"Audio processing loop error: {e}")
+                logger.error(f"Audio processing error: {e}")
                 time.sleep(0.1)
     
-    def _transcribe_audio(self, audio_data: np.ndarray) -> str:
-        """Transcribe audio using the Vosk streaming recognizer."""
-        if self.recognizer is None:
-            return ""
-
+    def _finalize_recognition(self):
+        """Get final recognition result"""
         try:
-            # Convert to 16-bit little-endian required by Vosk
-            if audio_data.dtype != np.int16:
-                audio_int16 = (audio_data * 32767).astype(np.int16)
-            else:
-                audio_int16 = audio_data
-
-            if self.recognizer.AcceptWaveform(audio_int16.tobytes()):
-                result_json = json.loads(self.recognizer.Result())
-                return result_json.get("text", "").strip()
-            else:
-                # Partial result not returned to keep wake-word logic simple
-                return ""
-
+            final_result = json.loads(self.recognizer.FinalResult())
+            text = final_result.get('text', '').strip()
+            if text:
+                self._handle_transcribed_text(text.lower())
+                
+            # Reset recognizer for next utterance
+            self.recognizer = vosk.KaldiRecognizer(self.model, self.sample_rate)
+            self.recognizer.SetWords(True)
+            self.recognizer.SetPartialWords(False)
+            
         except Exception as e:
-            logger.error(f"Error transcribing audio: {e}")
-            return ""
+            logger.error(f"Error finalizing recognition: {e}")
     
     def _handle_transcribed_text(self, text: str):
-        """Handle transcribed text with wake/stop word logic."""
-        text = text.lower()
-        print(f"🎙️  [DETECTED] '{text}'")
+        """Handle transcribed text with wake word detection"""
+        if not text:
+            return
+            
+        print(f"🎙️ [DETECTED] '{text}'")
         
+        # Performance monitoring
+        self._transcription_count += 1
+        if self._transcription_count % 25 == 0:
+            elapsed = time.time() - self._start_time
+            avg_time = elapsed / self._transcription_count if self._transcription_count > 0 else 0
+            print(f"📊 [PERFORMANCE] {self._transcription_count} transcriptions, avg: {avg_time:.2f}s")
+        
+        # Check for wake words when not listening
         if not self.is_listening:
             if any(wake_word in text for wake_word in self.wake_words):
-                print("👋 [WAKE] Wake word detected! Listening for command...")
+                print(f"👋 [WAKE] Wake word detected! Listening...")
                 self.is_listening = True
-                self.speech_buffer = [] # Clear buffer for new command
+                self.speech_buffer = []
                 self.last_speech_time = time.time()
-            return
-
+                return
+        
+        # Process speech while listening
         if self.is_listening:
-            # Update last speech time
-            self.last_speech_time = time.time()
-            
             # Check for stop words
             if any(stop_word in text for stop_word in self.stop_words):
-                print("💤 [SLEEP] Stop word detected. Returning to standby.")
-                self.is_listening = False
+                print(f"💤 [SLEEP] Stop word detected")
                 if self.transcription_callback:
-                    self.transcription_callback("goodbye") # Signal end
+                    self.transcription_callback("goodbye")
+                self.is_listening = False
+                self.speech_buffer = []
                 return
             
-            # Add meaningful text to buffer
-            if text:
+            # Add to speech buffer if meaningful
+            if len(text.split()) > 0:  # Has words
                 print(f"📝 [BUFFER] Adding: '{text}'")
+                self.last_speech_time = time.time()
                 self.speech_buffer.append(text)
+                
+                # Process immediately for more responsive interaction
+                if len(self.speech_buffer) >= 1:  # Process after getting some speech
+                    self._process_complete_utterance()
     
     def _process_complete_utterance(self):
-        """Process the complete buffered utterance."""
+        """Process complete buffered utterance"""
         if not self.speech_buffer:
             return
             
-        complete_text = " ".join(self.speech_buffer).strip()
-        print(f"🗣️  [SENDING] Processing complete command: '{complete_text}'")
+        complete_text = " ".join(self.speech_buffer)
+        print(f"🗣️ [COMPLETE] Processing: '{complete_text}'")
         
+        # Clear buffer
         self.speech_buffer = []
         
-        # We've processed the command, go back to sleep until next wake word
-        self.is_listening = False 
-        print("👂 Listening for wake word...")
-        
-        if self.transcription_callback and complete_text:
+        # Send to callback
+        if self.transcription_callback:
             self.transcription_callback(complete_text)
+        
+        # Resume listening
+        print("👂 [READY] Listening for next command...")
 
-# Singleton instance
-pi_stt_service = PiSTTService()
-
-if __name__ == "__main__":
-    # Example usage for direct testing
-    logging.basicConfig(level=logging.INFO)
-    
-    def test_callback(text: str):
-        print(f"\n[CALLBACK] Received final text: '{text}'\n")
-
-    pi_stt_service.start_processing(test_callback)
-    
-    try:
-        # Simulate audio coming from another source
-        # In the real app, client.py's audio capture loop calls add_audio_chunk
-        print("\n--- Mocking audio input for testing ---")
-        print("This test requires you to speak into the default microphone.")
-        import sounddevice as sd
-
-        def audio_callback(indata, frames, time, status):
-            pi_stt_service.add_audio_chunk(indata.copy())
-
-        with sd.InputStream(callback=audio_callback,
-                            samplerate=pi_stt_service.sample_rate,
-                            channels=pi_stt_service.channels,
-                            dtype='float32'):
-            while True:
-                time.sleep(1)
-                
-    except KeyboardInterrupt:
-        print("\n--- Shutting down test ---")
-        pi_stt_service.stop_processing() 
+# Global instance
+pi_stt_service = PiSTTService() 

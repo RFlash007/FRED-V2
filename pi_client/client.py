@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 F.R.E.D. Pi Client with Local Speech-to-Text
-by OllieTec
-Processes voice locally using Vosk small English model, sends transcribed text to server
+Processes voice locally using tiny.en model, sends transcribed text to server
 """
 
 import os
@@ -30,88 +29,43 @@ from pi_stt_service import pi_stt_service
 # Apply theming to all prints
 apply_theme()
 
-# --- Global Singleton for Camera Hardware ---
-picam2 = None
-
-def get_picamera_instance():
-    """
-    Initializes and returns a singleton Picamera2 instance to prevent
-    re-acquiring the hardware lock on every reconnection.
-    """
-    global picam2
-    if picam2 is None:
-        try:
-            from picamera2 import Picamera2
-            import libcamera
-            
-            print("📸 Initializing Picamera2 hardware for the first time...")
-            picam2 = Picamera2()
-            
-            sensor_modes = picam2.sensor_modes
-            max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
-            max_res = max_mode['size']
-            print(f"🎯 Using native resolution {max_res} = {(max_res[0] * max_res[1] / 1_000_000):.1f} MP")
-
-            config = picam2.create_video_configuration(
-                main={"size": max_res, "format": "RGB888"},
-                controls={
-                    "FrameRate": 5, "Brightness": 0.1, "Contrast": 1.1, "Saturation": 1.0,
-                },
-                buffer_count=2
-            )
-            picam2.configure(config)
-            print("✅ Picamera2 hardware initialized successfully.")
-
-        except Exception as e:
-            print(f"❌ Picamera2 hardware initialization failed: {e}")
-            picam2 = None
-    return picam2
-
 def play_audio_from_base64(audio_b64, format_type='wav'):
-    """Decode base64 audio and play it on the Pi in a non-blocking thread."""
-    
-    def _playback_thread():
-        temp_file_path = None
+    """Decode base64 audio and play it on the Pi."""
+    try:
+        # Decode base64 audio
+        audio_data = base64.b64decode(audio_b64)
+        print(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
+        
+        # Create temporary file
+        with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
+            temp_file.write(audio_data)
+            temp_file_path = temp_file.name
+        
+        # Play using aplay (ALSA) - most reliable on Pi
         try:
-            # Decode base64 audio
-            audio_data = base64.b64decode(audio_b64)
-            print(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
-            
-            # Create temporary file
-            with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
-                temp_file.write(audio_data)
-                temp_file_path = temp_file.name
-            
-            # Play using aplay (ALSA) - most reliable on Pi
+            subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
+            print("[SUCCESS] F.R.E.D. voice transmission complete")
+        except subprocess.CalledProcessError as e:
+            # Fallback to paplay (PulseAudio)
             try:
-                subprocess.run(['aplay', temp_file_path], check=True, capture_output=True, timeout=30)
-                print("[SUCCESS] F.R.E.D. voice transmission complete")
-            except subprocess.CalledProcessError:
-                # Fallback to paplay (PulseAudio)
+                subprocess.run(['paplay', temp_file_path], check=True, capture_output=True)
+                print("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)")
+            except subprocess.CalledProcessError as e2:
+                # Last resort: mpv
                 try:
-                    subprocess.run(['paplay', temp_file_path], check=True, capture_output=True, timeout=30)
-                    print("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)")
-                except subprocess.CalledProcessError:
-                    # Last resort: mpv
-                    try:
-                        subprocess.run(['mpv', '--no-video', temp_file_path], check=True, capture_output=True, timeout=30)
-                        print("[SUCCESS] F.R.E.D. voice transmission complete (mpv)")
-                    except subprocess.CalledProcessError:
-                        print("[CRITICAL] All audio protocols failed - check Pip-Boy speakers")
+                    subprocess.run(['mpv', '--no-video', temp_file_path], check=True, capture_output=True)
+                    print("[SUCCESS] F.R.E.D. voice transmission complete (mpv)")
+                except subprocess.CalledProcessError as e3:
+                    print(f"[CRITICAL] All audio protocols failed - check Pip-Boy speakers")
+        
+        # Clean up temporary file
+        try:
+            os.unlink(temp_file_path)
+        except Exception as cleanup_err:
+            print(f"[WARNING] Failed to purge audio cache: {cleanup_err}")
             
-        except Exception as e:
-            print(f"[CRITICAL] Audio playback system failure: {e}")
-        finally:
-            # Clean up temporary file
-            if temp_file_path:
-                try:
-                    os.unlink(temp_file_path)
-                except Exception as cleanup_err:
-                    print(f"[WARNING] Failed to purge audio cache: {cleanup_err}")
-
-    # Run playback in a separate daemon thread to avoid blocking the main asyncio loop
-    playback_thread = threading.Thread(target=_playback_thread, daemon=True)
-    playback_thread.start()
+    except Exception as e:
+        print(f"[CRITICAL] Audio playback system failure: {e}")
 
 class LocalAudioProcessor:
     """Handles local audio capture and processing for STT"""
@@ -164,8 +118,11 @@ class LocalAudioProcessor:
                 if status:
                     print(f"[WARNING] Audio status: {status}")
                 
-                # The STT service expects a 1D float32 numpy array.
+                # Convert to the format expected by STT
                 audio_data = indata[:, 0] if indata.ndim > 1 else indata
+                audio_data = (audio_data * 32767).astype(np.int16)
+                
+                # Feed to STT service
                 pi_stt_service.add_audio_chunk(audio_data)
             
             # Start recording with sounddevice
@@ -192,7 +149,7 @@ class LocalAudioProcessor:
         pass
 
 def create_video_track():
-    """Create video track using a shared Picamera2 instance."""
+    """Create video track with Picamera2 - EXACT COPY from working client.py"""
     try:
         from picamera2 import Picamera2
         import libcamera
@@ -201,36 +158,57 @@ def create_video_track():
 
         class PiCamera2Track(VideoStreamTrack):
             """
-            A video track that streams video from the shared Picamera2 instance.
+            A video track that streams video from a Picamera2 camera.
+            This is the modern, recommended approach for Raspberry Pi.
             """
             def __init__(self):
                 super().__init__()
-                # Use the singleton instance
-                self.picam2 = get_picamera_instance()
-                if self.picam2 is None:
-                    raise RuntimeError("Failed to get Picamera2 instance.")
+                print("📸 Initializing Picamera2...")
+                self.picam2 = Picamera2()
+                
+                # Configure for Qwen 2.5-VL 7B - Maximum quality approach
+                # Capture at maximum available resolution for full field of view
+                sensor_modes = self.picam2.sensor_modes
+                max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
+                max_res = max_mode['size']
+                print(f"🎯 Using native resolution {max_res} = {(max_res[0] * max_res[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL - no upscaling needed!)")
+                
+                config = self.picam2.create_video_configuration(
+                    main={"size": max_res, "format": "RGB888"},  # Full sensor resolution for maximum FOV
+                    controls={
+                        "FrameRate": 5,  # Lower FPS for on-demand processing
+                        "Brightness": 0.1,  # Slightly brighter for better AI analysis
+                        "Contrast": 1.1,    # Enhanced contrast
+                        "Saturation": 1.0,  # Natural colors
+                        # "NoiseReductionMode": libcamera.controls.NoiseReductionModeEnum.Off, # Removed: Causes crash on newer libcamera
+                    },
+                    buffer_count=2  # Minimize buffer for low latency
+                )
+                self.picam2.configure(config)
+                self.picam2.start()
+                
                 self.frame_count = 0
                 self.start_time = time.time()
+                print("✅ Picamera2 initialized successfully.")
 
             async def recv(self):
                 """Receive video frames from the camera."""
-                # Ensure the camera stream is running before capturing a frame.
-                if not self.picam2.is_open:
-                    loop = asyncio.get_running_loop()
-                    await loop.run_in_executor(None, self.picam2.start)
-                    print("📹 Camera stream started.")
-                    
                 pts, time_base = await self.next_timestamp()
                 
+                # Get the frame from Picamera2
                 try:
                     array = self.picam2.capture_array("main")
                 except Exception as e:
                     print(f"💥 Failed to capture frame from Picamera2: {e}")
+                    # As a fallback, create a black frame at native resolution
                     array = np.zeros((2464, 3280, 3), dtype=np.uint8)
                 
+                # Use native camera resolution - no resizing needed!
+                # Native 3280x2464 = 8.1 MP is within Qwen 2.5-VL's 12.8 MP budget
                 if self.frame_count == 1:
-                    print(f"📐 Native Resolution: {array.shape[1]}x{array.shape[0]} = {(array.shape[0] * array.shape[1] / 1_000_000):.1f} MP")
+                    print(f"📐 Native Resolution: {array.shape[1]}x{array.shape[0]} = {(array.shape[0] * array.shape[1] / 1_000_000):.1f} MP (optimal for Qwen 2.5-VL)")
                 
+                # Convert to video frame for aiortc
                 frame = av.VideoFrame.from_ndarray(array, format="rgb24")
                 frame.pts = pts
                 frame.time_base = time_base
@@ -238,7 +216,7 @@ def create_video_track():
                 self.frame_count += 1
                 if self.frame_count == 1:
                     print(f"🚀 First frame sent! Size: {array.shape}")
-                elif self.frame_count % 150 == 0:
+                elif self.frame_count % 150 == 0: # Log every ~10 seconds
                     elapsed = time.time() - self.start_time
                     if elapsed > 0:
                         fps = self.frame_count / elapsed
@@ -246,13 +224,16 @@ def create_video_track():
 
                 return frame
 
-            def stop(self):
-                """Stops the camera stream but does NOT release the hardware."""
-                super().stop()
-                if hasattr(self, 'picam2') and self.picam2.is_open:
-                    print("🎥 Stopping camera stream (hardware remains active)...")
-                    self.picam2.stop()
-                    print("🛑 Picamera2 stream stopped.")
+            def __del__(self):
+                """Cleanup camera resources."""
+                try:
+                    if hasattr(self, 'picam2') and getattr(self, 'picam2', None):
+                        if self.picam2.is_open:
+                            self.picam2.stop()
+                            print('🛑 Picamera2 stopped (cleanup).')
+                except Exception as e:
+                    # Silently ignore cleanup exceptions to avoid noisy traces
+                    pass
 
         return PiCamera2Track()
         
@@ -295,49 +276,6 @@ def get_server_url(provided_url=None):
 # Global variables for managing connection state
 data_channel = None
 audio_processor = None
-http_fallback_mode = False
-http_fallback_url = None
-
-async def send_via_http(text, server_url):
-    """Send transcription via HTTP fallback when WebRTC fails"""
-    try:
-        headers = {
-            'Authorization': 'Bearer fred_pi_glasses_2024',
-            'Content-Type': 'application/json'
-        }
-        
-        payload = {
-            'type': 'transcription',
-            'text': text,
-            'timestamp': time.time()
-        }
-        
-        print(f"📡 [HTTP] Sending via fallback: '{text}'")
-        import aiohttp
-        async with aiohttp.ClientSession() as session:
-            async with session.post(http_fallback_url, json=payload, headers=headers, timeout=10) as response:
-                
-                if response.status == 200:
-                    data = await response.json()
-                    print(f"✅ [HTTP] Response received: {data.get('status')}")
-                    
-                    # Handle audio response
-                    if data.get('audio'):
-                        print("🔊 [HTTP] Audio response received")
-                        play_audio_from_base64(data['audio'])
-                    
-                    # Handle text response
-                    if data.get('response'):
-                        print(f"💬 [HTTP] F.R.E.D. says: {data['response']}")
-                        
-                    return True
-                else:
-                    print(f"❌ [HTTP] Failed: {response.status}")
-                    return False
-            
-    except Exception as e:
-        print(f"❌ [HTTP] Error: {e}")
-        return False
 
 async def run_with_reconnection(server_url, max_retries=5):
     """Run the client with automatic reconnection"""
@@ -364,7 +302,7 @@ async def run_with_reconnection(server_url, max_retries=5):
 
 async def run(server_url):
     """Main client function with local STT"""
-    global data_channel, audio_processor, http_fallback_mode, http_fallback_url
+    global data_channel, audio_processor
     
     print(f"🚀 Connecting to F.R.E.D. server: {server_url}")
     
@@ -379,82 +317,33 @@ async def run(server_url):
     
     # Create data channel for text communication
     data_channel = pc.createDataChannel('text', ordered=True)
-    print(f"🔧 [DEBUG] Data channel created: {data_channel}")
-    print(f"🔧 [DEBUG] Data channel state: {data_channel.readyState}")
     
     @data_channel.on('open')
     def on_data_channel_open():
         print("📡 [DATA CHANNEL] Connected to F.R.E.D. mainframe")
-        print(f"🔧 [DEBUG] Data channel state after open: {data_channel.readyState}")
         
         # Start local audio processing
         global audio_processor
         audio_processor = LocalAudioProcessor()
         
-        # Get the running asyncio event loop to safely call async functions from the STT thread
-        loop = asyncio.get_running_loop()
-
         def on_transcription(text):
-            """Handle transcribed text by safely sending it from the main event loop."""
+            """Handle transcribed text"""
             print(f"🗣️ [TRANSCRIBED] '{text}'")
-            
-            async def send_to_server():
-                """Coroutine to send text over the data channel or HTTP fallback."""
-                global http_fallback_mode
-                
-                # Try WebRTC data channel first
-                if not http_fallback_mode and data_channel and data_channel.readyState == 'open':
-                    try:
-                        # Send transcribed text to server via WebRTC
-                        message = {
-                            'type': 'transcription',
-                            'text': text,
-                            'timestamp': time.time()
-                        }
-                        data_channel.send(json.dumps(message))
-                        print(f"📤 [WebRTC] Text to F.R.E.D.: '{text}'")
-                        return
-                    except Exception as e:
-                        print(f"❌ [WebRTC] Failed to send: {e}")
-                        print("🔄 [SWITCH] Falling back to HTTP...")
-                        http_fallback_mode = True
-                
-                # Use HTTP fallback
-                if http_fallback_mode and http_fallback_url:
-                    success = await send_via_http(text, http_fallback_url)
-                    if not success:
-                        print("💔 [CRITICAL] Both WebRTC and HTTP communication failed!")
-                else:
-                    print("⚠️ [WARNING] No communication method available")
-
-            # Schedule the coroutine to be executed on the main event loop
-            if loop.is_running():
-                asyncio.run_coroutine_threadsafe(send_to_server(), loop)
-        
-        # Start audio processing with callback
-        try:
-            print("🎤 [INITIALIZING] Local voice recognition...")
-            if audio_processor.start_recording(on_transcription):
-                print("🎤 [SUCCESS] Local voice recognition active")
-            else:
-                print("❌ [CRITICAL] Failed to start voice recognition")
-                print("💡 [FALLBACK] Data channel is open but STT failed")
-                # Send a test message to confirm data channel works
-                test_message = {
-                    'type': 'status',
-                    'text': 'STT initialization failed, but data channel is working',
+            if data_channel and data_channel.readyState == 'open':
+                # Send transcribed text to server
+                message = {
+                    'type': 'transcription',
+                    'text': text,
                     'timestamp': time.time()
                 }
-                data_channel.send(json.dumps(test_message))
-        except Exception as e:
-            print(f"❌ [CRITICAL] Audio processor initialization failed: {e}")
-            # Send error status to server
-            error_message = {
-                'type': 'error',
-                'text': f'Audio initialization failed: {str(e)}',
-                'timestamp': time.time()
-            }
-            data_channel.send(json.dumps(error_message))
+                data_channel.send(json.dumps(message))
+                print(f"📤 [SENT] Text to F.R.E.D.: '{text}'")
+        
+        # Start audio processing with callback
+        if audio_processor.start_recording(on_transcription):
+            print("🎤 [SUCCESS] Local voice recognition active")
+        else:
+            print("❌ [CRITICAL] Failed to start voice recognition")
     
     @data_channel.on('message')
     def on_data_channel_message(message):
@@ -487,11 +376,9 @@ async def run(server_url):
     
     @data_channel.on('close')
     def on_data_channel_close():
-        print("📡 [DATA CHANNEL] Closed")
-    
-    @data_channel.on('error')
-    def on_data_channel_error(error):
-        print(f"📡 [DATA CHANNEL] Error: {error}")
+        print("📡 [DATA CHANNEL] Disconnected from F.R.E.D.")
+        if audio_processor:
+            audio_processor.stop_recording()
     
     @pc.on('connectionstatechange')
     async def on_connectionstatechange():
@@ -500,60 +387,6 @@ async def run(server_url):
             await pc.close()
             if audio_processor:
                 audio_processor.stop_recording()
-    
-    @pc.on('iceconnectionstatechange')
-    async def on_iceconnectionstatechange():
-        ice_state = pc.iceConnectionState
-        print(f"🧊 [ICE] Connection state: {ice_state}")
-        
-        if ice_state == "connected" or ice_state == "completed":
-            print(f"🎯 [ICE] Connection established! Data channel state: {data_channel.readyState}")
-            
-            # Try to force data channel open if it's still connecting
-            if data_channel.readyState == "connecting":
-                print("🔄 [DEBUG] Data channel still connecting after ICE connected")
-                
-                # FORCE SEND A TEST MESSAGE TO TRIGGER SERVER-SIDE DETECTION
-                print("📡 [FORCE] Attempting to force data channel activation by sending test message...")
-                await asyncio.sleep(2)  # Wait a bit more
-                
-                try:
-                    # Try to send a test message even if state is "connecting"
-                    test_message = json.dumps({
-                        'type': 'ping',
-                        'message': 'Force activation test',
-                        'timestamp': time.time()
-                    })
-                    data_channel.send(test_message)
-                    print("📤 [FORCE] Test message sent successfully!")
-                    
-                    # Wait and check if state changes
-                    await asyncio.sleep(1)
-                    print(f"📊 [STATUS] Data channel state after force: {data_channel.readyState}")
-                    
-                    # If still not open, enable HTTP fallback
-                    if data_channel.readyState != "open":
-                        print("🔄 [FALLBACK] Data channel still not open - enabling HTTP fallback mode")
-                        http_fallback_mode = True
-                        # We'll set the URL during the timeout check below
-                    
-                except Exception as e:
-                    print(f"❌ [FORCE] Failed to send test message: {e}")
-                    print(f"🔧 [DEBUG] This indicates data channel is not functional")
-                    print("🔄 [FALLBACK] Enabling HTTP fallback mode due to send failure")
-                    
-                    # Enable HTTP fallback immediately
-                    http_fallback_mode = True
-                    # We'll set the URL during the timeout check below
-            
-            elif data_channel.readyState == "open":
-                print("✅ [SUCCESS] Data channel is open! Connection should work normally.")
-            else:
-                print(f"⚠️ [WARNING] Unexpected data channel state: {data_channel.readyState}")
-    
-    @pc.on('icegatheringstatechange')
-    async def on_icegatheringstatechange():
-        print(f"🧊 [ICE] Gathering state: {pc.iceGatheringState}")
     
     # Create offer and get answer from server
     try:
@@ -592,92 +425,11 @@ async def run(server_url):
         
         # Keep connection alive
         try:
-            connection_timeout = 30  # seconds to wait for data channel
-            start_time = time.time()
-            
-            # Wait for data channel to open with timeout
             while pc.connectionState != 'closed':
                 await asyncio.sleep(1)
-                
-                # Check if data channel opened
-                if data_channel and data_channel.readyState == 'open':
-                    print("✅ [DATA CHANNEL] Successfully opened!")
-                    break
-                
-                # Timeout check
-                if time.time() - start_time > connection_timeout:
-                    print(f"⏰ [TIMEOUT] Data channel failed to open within {connection_timeout}s")
-                    print("🔍 [DEBUG] Data channel state:", data_channel.readyState if data_channel else "None")
-                    print("🔍 [DEBUG] Connection state:", pc.connectionState)
-                    print("🔄 [FALLBACK] Switching to HTTP-based communication...")
-                    
-                    # Enable HTTP fallback mode
-                    http_fallback_mode = True
-                    base_url = server_url.replace('/offer', '') if '/offer' in server_url else server_url
-                    http_fallback_url = f"{base_url}/text_message"
-                    print(f"📡 [HTTP] Fallback URL: {http_fallback_url}")
-                    
-                    # Try to send a test message anyway
-                    if data_channel:
-                        try:
-                            test_msg = json.dumps({'type': 'ping', 'timestamp': time.time()})
-                            data_channel.send(test_msg)
-                            print("📡 [TEST] Sent ping message")
-                        except Exception as e:
-                            print(f"❌ [TEST] Failed to send ping: {e}")
-                            print("✅ [CONFIRMED] HTTP fallback is the correct choice")
-                    break
-            
-            # Set HTTP fallback URL if it was enabled but not set yet
-            if http_fallback_mode and not http_fallback_url:
-                base_url = server_url.replace('/offer', '') if '/offer' in server_url else server_url
-                http_fallback_url = f"{base_url}/text_message"
-                print(f"📡 [HTTP] Fallback URL configured: {http_fallback_url}")
-            
-            # Show final status
-            if data_channel and data_channel.readyState == 'open':
-                print("✅ [WebRTC] Data channel is operational!")
-            elif http_fallback_mode:
-                print("✅ [HTTP] Fallback mode activated - communication will work via HTTP")
-                
-                # Test HTTP connection immediately
-                try:
-                    print("🧪 [TEST] Testing HTTP fallback connection...")
-                    success = await send_via_http("System test - HTTP fallback active", server_url)
-                    if success:
-                        print("🎉 [SUCCESS] HTTP fallback is working!")
-                    else:
-                        print("❌ [ERROR] HTTP fallback test failed!")
-                except Exception as e:
-                    print(f"❌ [ERROR] HTTP fallback test error: {e}")
-            else:
-                print("⚠️ [WARNING] No communication method confirmed - trying to continue anyway")
-            
-            # Main keep-alive loop
-            last_ping = time.time()
-            while pc.connectionState != 'closed':
-                await asyncio.sleep(1)
-                
-                # Send periodic ping if data channel is open
-                if data_channel and data_channel.readyState == 'open':
-                    if time.time() - last_ping > 30:  # Ping every 30 seconds
-                        try:
-                            ping_msg = json.dumps({
-                                'type': 'ping', 
-                                'timestamp': time.time(),
-                                'status': 'alive'
-                            })
-                            data_channel.send(ping_msg)
-                            last_ping = time.time()
-                            print("💓 [PING] Keep-alive sent")
-                        except Exception as e:
-                            print(f"❌ [PING] Failed: {e}")
-                
         except KeyboardInterrupt:
             print("\n🛑 Shutdown requested")
-        except Exception as e:
-            print(f"❌ [KEEP-ALIVE ERROR] {e}")
-            
+        
     except Exception as e:
         print(f"❌ [CONNECTION ERROR] {e}")
         raise
@@ -699,23 +451,16 @@ def main():
     server_url = get_server_url(args.server)
     
     print("🤖 [F.R.E.D. GLASSES] Initializing Pip-Boy interface...")
-    print("🧠 [LOCAL STT] Using Vosk small English model for on-device speech recognition")
+    print("🧠 [LOCAL STT] Using tiny.en model with int8 quantization")
     print("📡 [NETWORK] Sending transcribed text instead of raw audio")
     
-    global picam2
     try:
         asyncio.run(run_with_reconnection(server_url))
     except KeyboardInterrupt:
         print("\n👋 [SHUTDOWN] F.R.E.D. Pip-Boy interface offline")
     except Exception as e:
         print(f"❌ [CRITICAL ERROR] {e}")
-    finally:
-        # Final hardware cleanup on application exit
-        if picam2 and picam2.is_open:
-            print("🧹 Releasing camera hardware...")
-            picam2.close()
-            print("✅ Camera hardware released.")
-        sys.exit(0)
+        sys.exit(1)
 
 if __name__ == '__main__':
     main() 
