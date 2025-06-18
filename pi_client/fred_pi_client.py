@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 F.R.E.D. Pi Glasses Client - Consolidated Local STT & Communication
-Vault-Tec Approved™ | OLLIE-TEC Advanced Wasteland Computing Division
+ShelterNet Approved™ | OLLIE-TEC Advanced Wasteland Computing Division
 
 This is the single startup file for F.R.E.D. Pi glasses that handles:
 - Local speech-to-text processing (Vosk small English model)
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 class FREDPiSTTService:
     """
-    Vault-Tec Speech Recognition Module
+    ShelterNet Speech Recognition Module
     Optimized for Pi with Vosk small English model
     """
     
@@ -91,7 +91,7 @@ class FREDPiSTTService:
             return True
             
         try:
-            print("[PIP-BOY STT] Initializing voice recognition systems...")
+            print("[ARMLINK STT] Initializing voice recognition systems...")
             print("🔧 Loading Vosk small English model...")
             
             # Set Vosk log level to reduce noise
@@ -120,7 +120,7 @@ class FREDPiSTTService:
             self.model = vosk.Model(model_path)
             self.recognizer = vosk.KaldiRecognizer(self.model, self.sample_rate)
             
-            print("✅ [PIP-BOY STT] Voice recognition ONLINE")
+            print("✅ [ARMLINK STT] Voice recognition ONLINE")
             print(f"📊 Model: Vosk small English (optimized for Pi)")
             print(f"📍 Path: {model_path}")
             
@@ -129,7 +129,7 @@ class FREDPiSTTService:
             
         except Exception as e:
             logger.error(f"[CRITICAL] STT initialization failed: {e}")
-            print(f"❌ [PIP-BOY STT] Voice recognition FAILED: {e}")
+            print(f"❌ [ARMLINK STT] Voice recognition FAILED: {e}")
             print("💡 [SOLUTION] Run: bash install_vosk_model.sh")
             return False
 
@@ -139,7 +139,7 @@ class FREDPiSTTService:
             if not self.initialize():
                 return False
                 
-        print("🎤 [PIP-BOY STT] Starting audio processing...")
+        print("🎤 [ARMLINK STT] Starting audio processing...")
         self.transcription_callback = callback
         self.is_processing = True
         
@@ -150,7 +150,7 @@ class FREDPiSTTService:
         )
         self.processing_thread.start()
         
-        print("👂 [PIP-BOY STT] Listening for wake word...")
+        print("👂 [ARMLINK STT] Listening for wake word...")
         return True
     
     def stop_processing(self):
@@ -158,7 +158,7 @@ class FREDPiSTTService:
         self.is_processing = False
         if self.processing_thread:
             self.processing_thread.join(timeout=2.0)
-        print("🔇 [PIP-BOY STT] Voice recognition offline")
+        print("🔇 [ARMLINK STT] Voice recognition offline")
     
     def _audio_capture_loop(self):
         """Audio capture and processing loop using sounddevice"""
@@ -326,7 +326,7 @@ class FREDPiClient:
     async def start(self):
         """Start the F.R.E.D. Pi client"""
         print(banner("F.R.E.D. Pi Glasses v2.0"))
-        print("[VAULT-TEC] Initializing post-apocalyptic AI interface...")
+        print("[SHELTER-CORE] Booting field AI interface...")
         
         # Store the event loop for thread-safe operations
         self.loop = asyncio.get_running_loop()
@@ -343,8 +343,8 @@ class FREDPiClient:
         await self._setup_webrtc()
         
         self.is_running = True
-        print("[VAULT-NET] F.R.E.D. Pi Glasses ONLINE!")
-        print("[PIP-BOY] Ready for wasteland operations...")
+        print("[SHELTER-NET] F.R.E.D. Pi Glasses ONLINE!")
+        print("[ARMLINK] Ready for wasteland operations...")
         
         # Main loop
         await self._run_main_loop()
@@ -352,7 +352,7 @@ class FREDPiClient:
     async def _init_camera(self):
         """Initialize Picamera2 for vision"""
         try:
-            print("📸 [VISION] Initializing Pip-Boy camera systems...")
+            print("📸 [VISION] Initializing ArmLink camera systems...")
             from picamera2 import Picamera2
             
             self.camera = Picamera2()
@@ -531,8 +531,8 @@ class FREDPiClient:
             
             @self.data_channel.on('open')
             def on_open():
-                print('[VAULT-NET] Secure connection established with F.R.E.D. mainframe!')
-                print('[PIP-BOY] Audio/visual sensors ONLINE - ready for wasteland operations...')
+                print('[SHELTER-NET] Secure connection established with F.R.E.D. mainframe!')
+                print('[ARMLINK] Audio/visual sensors ONLINE - ready for wasteland operations...')
             
             @self.data_channel.on('message')
             def on_message(message):
@@ -558,7 +558,7 @@ class FREDPiClient:
                     print(f'\n[F.R.E.D.] {message}')
                 
                 if not message.startswith('[HEARTBEAT_ACK]'):
-                    print('[PIP-BOY] Standing by for commands...')
+                    print('[ARMLINK] Standing by for commands...')
             
             @self.data_channel.on('close')
             def on_close():
@@ -622,7 +622,7 @@ class FREDPiClient:
                         self.data_channel.send('[HEARTBEAT]')
                         last_heartbeat = current_time
                         if int(current_time) % 120 == 0:  # Every 2 minutes
-                            print("[VITAL-MONITOR] Pip-Boy status confirmed")
+                            print("[VITAL-MONITOR] ArmLink status confirmed")
                     else:
                         raise Exception("Data channel not open")
                         
@@ -693,7 +693,7 @@ class FREDPiClient:
     
     async def _cleanup(self):
         """Cleanup resources"""
-        print("[CLEANUP] Shutting down Pip-Boy systems...")
+        print("[CLEANUP] Shutting down ArmLink systems...")
         
         self.stt_service.stop_processing()
         
@@ -708,7 +708,7 @@ class FREDPiClient:
             await self.pc.close()
         
         self.is_running = False
-        print("[VAULT-TEC] All systems offline. Stay safe in the wasteland!")
+        print("[SHELTER-CORE] All systems offline. Stay safe out there!")
 
 
 def get_server_url(provided_url=None):
@@ -750,7 +750,7 @@ def get_server_url(provided_url=None):
         pass
     
     print("❌ [CRITICAL] No F.R.E.D. server found!")
-    print("\n[VAULT-TEC] Troubleshooting protocols:")
+    print("\n[SHELTER-CORE] Troubleshooting protocols:")
     print("1. Start F.R.E.D. WebRTC server: python start_fred_with_webrtc.py")
     print("2. Use local URL: --server http://localhost:8080")
     print("3. Use ngrok tunnel URL")
@@ -773,7 +773,7 @@ async def main():
         print("\n[SHUTDOWN] Field operative terminating connection")
     except Exception as e:
         print(f"\n[CRITICAL] System failure: {e}")
-        print("\n[VAULT-TEC] Troubleshooting protocols:")
+        print("\n[SHELTER-CORE] Troubleshooting protocols:")
         print("1. Verify F.R.E.D. mainframe is operational")
         print("2. Check wasteland communication network")
         print("3. Try manual server specification with --server")

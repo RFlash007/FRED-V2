@@ -100,7 +100,7 @@ async def offer(request):
         pc = RTCPeerConnection()
         pcs.add(pc)
         
-        logging.info(f"[VAULT-NET] New Pip-Boy connection from {client_ip}")
+        logging.info(f"[SHELTER-NET] New ArmLink connection from {client_ip}")
 
         # Initialize media recorder (blackhole – we don't save media)
         recorder = MediaBlackhole()
@@ -122,7 +122,7 @@ async def offer(request):
                 if not text or not text.strip():
                     return
 
-                logging.info(f"[PIP-BOY COMM] Field operative transmission → '{text}'")
+                logging.info(f"[ARMLINK COMM] Field operative transmission → '{text}'")
 
                 # Prepare chat request for main server
                 payload = {
@@ -175,11 +175,11 @@ async def offer(request):
         def on_datachannel(channel):
             data_channels.add(channel)
             pi_clients.add(channel)  # Track Pi clients
-            print(f"[PIP-BOY] Data channel '{channel.label}' established with field operative at {client_ip}")
+            print(f"[ARMLINK] Data channel '{channel.label}' established with field operative at {client_ip}")
             
             # Notify vision service that Pi is connected
             vision_service.set_pi_connection_status(True)
-            print(f"[OPTICS] Pip-Boy visual sensors ONLINE - initiating reconnaissance protocols")
+            print(f"[OPTICS] ArmLink visual sensors ONLINE - initiating reconnaissance protocols")
             
             # Check if this is a local STT client
             client_type = params.get('client_type', 'unknown')
@@ -192,7 +192,7 @@ async def offer(request):
             def on_message(message):
                 # Handle heartbeat messages
                 if message == '[HEARTBEAT]':
-                    print(f"[VITAL-MONITOR] Pip-Boy heartbeat confirmed from {client_ip}")
+                    print(f"[VITAL-MONITOR] ArmLink heartbeat confirmed from {client_ip}")
                     channel.send('[HEARTBEAT_ACK]')
                 elif is_local_stt:
                     # Handle transcribed text from Pi
@@ -211,18 +211,18 @@ async def offer(request):
                             print(f"🗣️ [PI TRANSCRIPTION] '{message.strip()}' from {client_ip}")
                             process_pi_transcription(message.strip(), from_pi=True)
                 else:
-                    print(f"[PIP-BOY COMM] Field operative message: {message}")
+                    print(f"[ARMLINK COMM] Field operative message: {message}")
             
             @channel.on('close')
             def on_close():
                 data_channels.discard(channel)
                 pi_clients.discard(channel)
-                print(f"[PIP-BOY] Data channel '{channel.label}' closed from {client_ip}")
+                print(f"[ARMLINK] Data channel '{channel.label}' closed from {client_ip}")
                 
                 # If no more Pi clients, stop vision processing
                 if not pi_clients:
                     vision_service.set_pi_connection_status(False)
-                    print(f"[OPTICS] All Pip-Boys disconnected - reconnaissance protocols OFFLINE")
+                    print(f"[OPTICS] All ArmLinks disconnected - reconnaissance protocols OFFLINE")
 
         @pc.on('track')
         async def on_track(track):
@@ -364,9 +364,9 @@ async def offer(request):
         async def on_connectionstatechange():
             
             if pc.connectionState == 'connected':
-                print(f"[SUCCESS] Pip-Boy fully operational at {client_ip}")
+                print(f"[SUCCESS] ArmLink fully operational at {client_ip}")
             elif pc.connectionState in ('failed', 'closed'):
-                print(f"[DISCONNECT] Pip-Boy {client_ip} offline")
+                print(f"[DISCONNECT] ArmLink {client_ip} offline")
                 # Clean up video track reference
                 if client_ip in client_video_tracks:
                     del client_video_tracks[client_ip]
@@ -387,7 +387,7 @@ async def offer(request):
 # SocketIO event handlers for receiving responses from main F.R.E.D. server
 @sio_client.event
 async def connect():
-    print("[VAULT-NET] Established secure link to F.R.E.D. mainframe")
+    print("[SHELTER-NET] Established secure link to F.R.E.D. mainframe")
     # Emit connection confirmation
     await sio_client.emit('webrtc_server_connected')
     print("[BRIDGE] Wasteland communication network ONLINE - standing by for field operations")
@@ -427,7 +427,7 @@ async def fred_audio(data):
     
     if audio_b64:
         print(f"[TRANSMISSION] Audio matrix received from F.R.E.D. ({len(audio_b64)} chars) → '{text[:50]}...'")
-        print(f"[NETWORK] {len(data_channels)} Pip-Boy device(s) in communication range")
+        print(f"[NETWORK] {len(data_channels)} ArmLink device(s) in communication range")
         
         # Send audio to all connected Pi clients
         sent_count = 0
@@ -436,13 +436,13 @@ async def fred_audio(data):
                 message = f"[AUDIO_BASE64:{audio_format}]{audio_b64}"
                 channel.send(message)
                 sent_count += 1
-                print(f"[RELAY] Voice data transmitted to Pip-Boy #{sent_count} → '{text[:50]}...'")
+                print(f"[RELAY] Voice data transmitted to ArmLink #{sent_count} → '{text[:50]}...'")
             except Exception as e:
-                print(f"[ERROR] Pip-Boy #{sent_count+1} transmission failure: {e}")
+                print(f"[ERROR] ArmLink #{sent_count+1} transmission failure: {e}")
                 data_channels.discard(channel)
         
         if sent_count == 0:
-            print("[WARNING] No Pip-Boy devices available - audio transmission failed")
+            print("[WARNING] No ArmLink devices available - audio transmission failed")
         else:
             print(f"[SUCCESS] Voice transmission complete → {sent_count} field operative(s) reached")
         

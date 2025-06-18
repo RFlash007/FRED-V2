@@ -28,7 +28,7 @@ apply_theme()
 async def start_ngrok_tunnel():
     """Start ngrok tunnel asynchronously."""
     try:
-        print("[VAULT-NET] Establishing external communication tunnel...")
+        print("[SHELTER-NET] Establishing external communication tunnel...")
         ngrok_process = await asyncio.create_subprocess_exec(
             "ngrok", "http", str(config.WEBRTC_PORT),
             "--log", "stdout",
@@ -81,7 +81,7 @@ async def run_with_ngrok():
     ngrok_process = None
     
     if config.NGROK_ENABLED:
-        print("[VAULT-NET] External tunnel protocols enabled...")
+        print("[SHELTER-NET] External tunnel protocols enabled...")
         ngrok_process = await start_ngrok_tunnel()
         if ngrok_process:
             print("[SUCCESS] External communications link established")
@@ -95,13 +95,13 @@ async def run_with_ngrok():
         else:
             print("[WARNING] External tunnel failed - operating in local mode only")
     else:
-        print("[LOCAL] External tunnel disabled - vault network access only")
+        print("[LOCAL] External tunnel disabled - shelter network access only")
     
     try:
         await run_webrtc_server_async()
     finally:
         if ngrok_process:
-            print("[VAULT-NET] Terminating external communication tunnel...")
+            print("[SHELTER-NET] Terminating external communication tunnel...")
             ngrok_process.terminate()
             await ngrok_process.wait()
 
@@ -131,7 +131,7 @@ def main():
         print("\n[SHUTDOWN] F.R.E.D. mainframe shutting down...")
     finally:
         # The servers are daemonized or will shut down on loop completion
-        print("[VAULT-TEC] All systems offline. Stay safe out there, vault dweller.")
+        print("[SHELTER-CORE] All systems offline. Stay safe out there.")
         # Note: Proper cleanup of the WebRTC runner is handled within webrtc_server.py
         # on loop cancellation. The fred_thread is a daemon and will exit with the main thread.
 
