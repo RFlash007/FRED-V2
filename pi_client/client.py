@@ -13,7 +13,7 @@ from aiortc.contrib.media import MediaPlayer
 
 # Suppress libcamera INFO spam
 if 'LIBCAMERA_LOG_LEVELS' not in os.environ:
-    os.environ['LIBCAMERA_LOG_LEVELS'] = '*:0'  # only critical messages
+    os.environ['LIBCAMERA_LOG_LEVELS'] = '*:ERROR'  # only critical messages
 
 def play_audio_from_base64(audio_b64, format_type='wav'):
     """Decode base64 audio and play it on the Pi."""
