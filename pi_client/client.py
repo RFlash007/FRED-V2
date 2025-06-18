@@ -323,18 +323,28 @@ async def run(server_url):
         global audio_processor
         audio_processor = LocalAudioProcessor()
         
+        # Get the running asyncio event loop to safely call async functions from the STT thread
+        loop = asyncio.get_running_loop()
+
         def on_transcription(text):
-            """Handle transcribed text"""
+            """Handle transcribed text by safely sending it from the main event loop."""
             print(f"🗣️ [TRANSCRIBED] '{text}'")
-            if data_channel and data_channel.readyState == 'open':
-                # Send transcribed text to server
-                message = {
-                    'type': 'transcription',
-                    'text': text,
-                    'timestamp': time.time()
-                }
-                data_channel.send(json.dumps(message))
-                print(f"📤 [SENT] Text to F.R.E.D.: '{text}'")
+            
+            async def send_to_server():
+                """Coroutine to send text over the data channel."""
+                if data_channel and data_channel.readyState == 'open':
+                    # Send transcribed text to server
+                    message = {
+                        'type': 'transcription',
+                        'text': text,
+                        'timestamp': time.time()
+                    }
+                    data_channel.send(json.dumps(message))
+                    print(f"📤 [SENT] Text to F.R.E.D.: '{text}'")
+
+            # Schedule the coroutine to be executed on the main event loop
+            if loop.is_running():
+                asyncio.run_coroutine_threadsafe(send_to_server(), loop)
         
         # Start audio processing with callback
         if audio_processor.start_recording(on_transcription):
