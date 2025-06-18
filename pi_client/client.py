@@ -1,7 +1,11 @@
+#!/usr/bin/env python3
+import os
+# Shut up libcamera: only errors
+os.environ.setdefault('LIBCAMERA_LOG_LEVELS', '*:0')
+
 import asyncio
 import argparse
 import requests
-import os
 import json
 import time
 import sys
@@ -10,10 +14,6 @@ import tempfile
 import subprocess
 from aiortc import RTCPeerConnection, RTCSessionDescription
 from aiortc.contrib.media import MediaPlayer
-
-# Suppress libcamera INFO spam
-if 'LIBCAMERA_LOG_LEVELS' not in os.environ:
-    os.environ['LIBCAMERA_LOG_LEVELS'] = '*:0'  # only critical messages
 
 def play_audio_from_base64(audio_b64, format_type='wav'):
     """Decode base64 audio and play it on the Pi."""
