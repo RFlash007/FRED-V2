@@ -531,9 +531,22 @@ async def run(server_url):
                     await asyncio.sleep(1)
                     print(f"📊 [STATUS] Data channel state after force: {data_channel.readyState}")
                     
+                    # If still not open, enable HTTP fallback
+                    if data_channel.readyState != "open":
+                        print("🔄 [FALLBACK] Data channel still not open - enabling HTTP fallback mode")
+                        global http_fallback_mode, http_fallback_url
+                        http_fallback_mode = True
+                        # We'll set the URL during the timeout check below
+                    
                 except Exception as e:
                     print(f"❌ [FORCE] Failed to send test message: {e}")
-                    print(f"🔧 [DEBUG] This might indicate a deeper connection issue")
+                    print(f"🔧 [DEBUG] This indicates data channel is not functional")
+                    print("🔄 [FALLBACK] Enabling HTTP fallback mode due to send failure")
+                    
+                    # Enable HTTP fallback immediately
+                    global http_fallback_mode, http_fallback_url
+                    http_fallback_mode = True
+                    # We'll set the URL during the timeout check below
             
             elif data_channel.readyState == "open":
                 print("✅ [SUCCESS] Data channel is open! Connection should work normally.")
@@ -615,7 +628,33 @@ async def run(server_url):
                             print("📡 [TEST] Sent ping message")
                         except Exception as e:
                             print(f"❌ [TEST] Failed to send ping: {e}")
+                            print("✅ [CONFIRMED] HTTP fallback is the correct choice")
                     break
+            
+            # Set HTTP fallback URL if it was enabled but not set yet
+            if http_fallback_mode and not http_fallback_url:
+                base_url = server_url.replace('/offer', '') if '/offer' in server_url else server_url
+                http_fallback_url = f"{base_url}/text_message"
+                print(f"📡 [HTTP] Fallback URL configured: {http_fallback_url}")
+            
+            # Show final status
+            if data_channel and data_channel.readyState == 'open':
+                print("✅ [WebRTC] Data channel is operational!")
+            elif http_fallback_mode:
+                print("✅ [HTTP] Fallback mode activated - communication will work via HTTP")
+                
+                # Test HTTP connection immediately
+                try:
+                    print("🧪 [TEST] Testing HTTP fallback connection...")
+                    success = await send_via_http("System test - HTTP fallback active", server_url)
+                    if success:
+                        print("🎉 [SUCCESS] HTTP fallback is working!")
+                    else:
+                        print("❌ [ERROR] HTTP fallback test failed!")
+                except Exception as e:
+                    print(f"❌ [ERROR] HTTP fallback test error: {e}")
+            else:
+                print("⚠️ [WARNING] No communication method confirmed - trying to continue anyway")
             
             # Main keep-alive loop
             last_ping = time.time()
