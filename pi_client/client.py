@@ -221,16 +221,13 @@ def create_video_track():
 
                 return frame
 
-            def __del__(self):
-                """Cleanup camera resources."""
-                try:
-                    if hasattr(self, 'picam2') and getattr(self, 'picam2', None):
-                        if self.picam2.is_open:
-                            self.picam2.stop()
-                            print('🛑 Picamera2 stopped (cleanup).')
-                except Exception as e:
-                    # Silently ignore cleanup exceptions to avoid noisy traces
-                    pass
+            async def stop(self):
+                """Release camera resources cleanly when the track is stopped."""
+                await super().stop()
+                if hasattr(self, 'picam2'):
+                    print("🎥 Releasing camera resources...")
+                    self.picam2.close()
+                    print("🛑 Picamera2 resources released.")
 
         return PiCamera2Track()
         
