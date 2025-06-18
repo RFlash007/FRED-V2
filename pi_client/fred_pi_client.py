@@ -217,10 +217,13 @@ class FREDPiSTTService:
             if self.is_listening:
                 if is_speech:
                     self.last_speech_time = time.time()
-                elif self.speech_buffer: # End of speech detected
+                    # Mark that we have speech and should process the end of it
+                    if not self.speech_buffer:
+                        self.speech_buffer.append("placeholder")
+                elif self.speech_buffer:  # End of speech detected
                     if time.time() - self.last_speech_time > self.silence_duration:
                         self._process_final_utterance()
-            else: # Not listening, check for wake word
+            else:  # Not listening, check for wake word
                 if is_speech:
                     partial_text = json.loads(self.recognizer.PartialResult()).get('partial', '')
                     if any(wake_word in partial_text.lower() for wake_word in self.wake_words):
