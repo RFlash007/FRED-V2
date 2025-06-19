@@ -7,6 +7,7 @@ import time
 import os # For potential environment variables later
 import logging
 import threading
+from ollie_print import olliePrint
 from contextlib import contextmanager
 
 # --- Configuration ---
@@ -1200,11 +1201,11 @@ def clear_all_memory(force=False):
 try:
     import duckdb
     if __name__ == "__main__":
-        print("Librarian script loaded. Initializing database...")
+        olliePrint("Librarian script loaded. Initializing database...")
         init_db()
-        print("Database ready.")
+        olliePrint("Database ready.")
         # Add test calls here if desired, wrapped in try/except ImportError
 except ImportError:
     logging.warning("DuckDB not found during import. Database functionality is disabled.")
     if __name__ == "__main__":
-        print("Librarian script loaded, but DuckDB is missing. Database functionality disabled.")
+        olliePrint("Librarian script loaded, but DuckDB is missing. Database functionality disabled.")

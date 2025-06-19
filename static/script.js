@@ -1,3 +1,13 @@
+function olliePrint(msg, level = 'info') {
+  const colors = {info: '\x1b[34m', success: '\x1b[32m', warning: '\x1b[33m', error: '\x1b[31m'};
+  const reset = '\x1b[0m';
+  const comments = {info: 'Systems green across the board.', success: 'Mission accomplished!', warning: 'Caution: power conduit unstable.', error: 'Critical failure detected!'};
+  const ts = new Date().toISOString();
+  const header = `BROWSER [${ts}] - Designed by Ollie-Tec`;
+  const bar = '-'.repeat(header.length);
+  console.log(`${bar}\n${header}\n${bar}\n${colors[level] || ''}${msg}${reset} ${comments[level] || ''}`);
+}
+
 const messageForm = document.getElementById('message-form');
 const messageInput = document.getElementById('message-input');
 const chatHistory = document.getElementById('chat-history');
@@ -261,14 +271,14 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 muteFredButton.style.background = 'rgba(var(--fred-error), 0.1)';
             }
-            console.log(`F.R.E.D. Muted: ${isFredMuted}`);
+            olliePrint(`F.R.E.D. Muted: ${isFredMuted}`);
         });
     }
     
     // Initialize system status
     updateSystemStatus('Ready', 'success');
     
-    console.log('F.R.E.D. Interface Initialized');
+    olliePrint('F.R.E.D. Interface Initialized');
 });
 
 // Check local storage on load - Default to dark mode
@@ -503,14 +513,14 @@ document.addEventListener('keydown', (event) => {
 //             memoryContentDisplay.textContent = `Accessing ${memoryType} memory...`;
 //             memoryContentDisplay.style.opacity = '0.7';
 //         }, 300);
-//         console.log(`Switched to ${memoryType} memory view.`);
+//         olliePrint(`Switched to ${memoryType} memory view.`);
 
 //     }
 // });
 
 // Initial Setup
 adjustTextareaHeight(messageInput);
-console.log('Fred UI Initialized');
+olliePrint('Fred UI Initialized');
 
 // --- Potential Future Enhancements ---
 // Additional features to implement:
@@ -520,4 +530,4 @@ console.log('Fred UI Initialized');
 // - Implement actual memory content loading/display
 // - More robust Markdown rendering
 
-console.log('Clay UI Chat Initialized'); 
+olliePrint('Clay UI Chat Initialized'); 

@@ -19,6 +19,7 @@ from stt_service import stt_service
 from vision_service import vision_service
 import threading
 from ollietec_theme import apply_theme, banner, startup_block
+from ollie_print import olliePrint
 
 apply_theme()
 import time
@@ -172,7 +173,7 @@ def summarize_thinking(thinking_content, ollama_client):
 
 Condensed reasoning (2-3 sentences only):"""
 
-        print(f"\n[THINKING SUMMARY] Summarizing {len(thinking_content)} chars of thinking...")
+        olliePrint(f"\n[THINKING SUMMARY] Summarizing {len(thinking_content)} chars of thinking...")
         response = ollama_client.chat(
             model="hf.co/unsloth/Qwen3-4B-GGUF:Q4_K_M",
             messages=[{"role": "user", "content": prompt}],
@@ -183,12 +184,12 @@ Condensed reasoning (2-3 sentences only):"""
         # Extract only the summary content, not the 4B model's thinking
         summary = strip_think_tags(raw_summary_response).strip()
         
-        print(f"[THINKING SUMMARY] Raw 4B response ({len(raw_summary_response)} chars):")
-        print(f"[THINKING SUMMARY] {raw_summary_response[:200]}{'...' if len(raw_summary_response) > 200 else ''}")
-        print(f"[THINKING SUMMARY] Extracted summary ({len(summary)} chars): {summary}")
+        olliePrint(f"[THINKING SUMMARY] Raw 4B response ({len(raw_summary_response)} chars):")
+        olliePrint(f"[THINKING SUMMARY] {raw_summary_response[:200]}{'...' if len(raw_summary_response) > 200 else ''}")
+        olliePrint(f"[THINKING SUMMARY] Extracted summary ({len(summary)} chars): {summary}")
         return summary
     except Exception as e:
-        print(f"[THINKING SUMMARY] Failed to summarize: {e}")
+        olliePrint(f"[THINKING SUMMARY] Failed to summarize: {e}")
         logging.warning(f"Failed to summarize thinking: {e}")
         return thinking_content[:200] + "..." if len(thinking_content) > 200 else thinking_content
 
@@ -208,16 +209,16 @@ def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
             
             if age <= 3 and thinking:
                 # Recent messages: include full thinking
-                print(f"[THINKING] Including full thinking for recent message (age {age})")
+                olliePrint(f"[THINKING] Including full thinking for recent message (age {age})")
                 full_content = f"<think>\n{thinking}\n</think>\n{content}"
-                print("[THINKING CONTEXT] Message with full thinking being sent to model:")
-                print(f"{'='*50}")
-                print(full_content)
-                print(f"{'='*50}\n")
+                olliePrint("[THINKING CONTEXT] Message with full thinking being sent to model:")
+                olliePrint(f"{'='*50}")
+                olliePrint(full_content)
+                olliePrint(f"{'='*50}\n")
                 messages.append({"role": "assistant", "content": full_content})
             elif age <= 6 and thinking:
                 # Older messages: include summarized thinking
-                print(f"[THINKING] Including summarized thinking for older message (age {age})")
+                olliePrint(f"[THINKING] Including summarized thinking for older message (age {age})")
                 if not hasattr(prepare_messages_with_thinking, '_thinking_cache'):
                     prepare_messages_with_thinking._thinking_cache = {}
                 
@@ -228,17 +229,17 @@ def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
                 summarized = prepare_messages_with_thinking._thinking_cache[cache_key]
                 if summarized:
                     full_content = f"<think>\n{summarized}\n</think>\n{content}"
-                    print("[THINKING CONTEXT] Message with summarized thinking being sent to model:")
-                    print(f"{'='*50}")
-                    print(full_content)
-                    print(f"{'='*50}\n")
+                    olliePrint("[THINKING CONTEXT] Message with summarized thinking being sent to model:")
+                    olliePrint(f"{'='*50}")
+                    olliePrint(full_content)
+                    olliePrint(f"{'='*50}\n")
                     messages.append({"role": "assistant", "content": full_content})
                 else:
                     messages.append({"role": "assistant", "content": content})
             else:
                 # Oldest messages: no thinking context
                 if thinking:
-                    print(f"[THINKING] Excluding thinking for old message (age {age})")
+                    olliePrint(f"[THINKING] Excluding thinking for old message (age {age})")
                 messages.append({"role": "assistant", "content": content})
     
     # Add current user message
@@ -302,18 +303,18 @@ def fred_speak(text, mute_fred=False, target_device='local'):
         target_device: 'local' for main computer, 'pi' for Pi glasses, 'all' for both
     """
     if mute_fred:
-        print(f"[SHELTER-NET] Audio protocols disabled - transmission suppressed: '{text[:50]}...'")
+        olliePrint(f"[SHELTER-NET] Audio protocols disabled - transmission suppressed: '{text[:50]}...'")
         return
         
     if not text.strip():
-        print("[SHELTER-NET] Warning: Empty transmission detected - aborting voice synthesis")
+        olliePrint("[SHELTER-NET] Warning: Empty transmission detected - aborting voice synthesis")
         return
         
     if not os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-        print(f"[CRITICAL] Voice matrix file missing: {config.FRED_SPEAKER_WAV_PATH}")
+        olliePrint(f"[CRITICAL] Voice matrix file missing: {config.FRED_SPEAKER_WAV_PATH}")
         return
 
-    print(f"[F.R.E.D.] Initializing voice synthesis - Target: {target_device.upper()} | '{text[:50]}...'")
+    olliePrint(f"[F.R.E.D.] Initializing voice synthesis - Target: {target_device.upper()} | '{text[:50]}...'")
 
     # Cleanup previous file
     if fred_state.last_played_wav and os.path.exists(fred_state.last_played_wav):
@@ -332,28 +333,28 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             logging.warning("TTS engine not initialized, skipping speech generation")
             return
 
-        print(f"[ARC-MODE] Synthesizing neural voice patterns → {output_path}")
+        olliePrint(f"[ARC-MODE] Synthesizing neural voice patterns → {output_path}")
         tts_engine.tts_to_file(
             text=text,
             speaker_wav=config.FRED_SPEAKER_WAV_PATH,
             language=config.FRED_LANGUAGE,
             file_path=output_path
         )
-        print(f"[SUCCESS] Voice synthesis complete - audio matrix ready")
+        olliePrint(f"[SUCCESS] Voice synthesis complete - audio matrix ready")
 
         # Route audio based on target device
         if target_device in ['local', 'all']:
             # Play locally on main computer
-            print(f"[LOCAL-COMM] Broadcasting to main terminal: '{text[:50]}...'")
+            olliePrint(f"[LOCAL-COMM] Broadcasting to main terminal: '{text[:50]}...'")
             playsound.playsound(output_path, block=False)
 
         if target_device in ['pi', 'all']:
             # Send audio to Pi glasses
-            print(f"[TRANSMISSION] Routing audio to ArmLink interface...")
+            olliePrint(f"[TRANSMISSION] Routing audio to ArmLink interface...")
             send_audio_to_pi(output_path, text)
 
         if target_device not in ['local', 'pi', 'all']:
-            print(f"[ERROR] Unknown device '{target_device}' - defaulting to local broadcast")
+            olliePrint(f"[ERROR] Unknown device '{target_device}' - defaulting to local broadcast")
             playsound.playsound(output_path, block=False)
 
         # Schedule cleanup after a delay
@@ -362,7 +363,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             try:
                 if os.path.exists(output_path):
                     os.remove(output_path)
-                    print(f"[CLEANUP] Voice file purged from memory banks")
+                    olliePrint(f"[CLEANUP] Voice file purged from memory banks")
             except Exception:
                 pass
 
@@ -371,30 +372,30 @@ def fred_speak(text, mute_fred=False, target_device='local'):
 
     except Exception as e:
         logging.error(f"TTS error: {e}")
-        print(f"[CRITICAL] Voice synthesis failure: {e}")
+        olliePrint(f"[CRITICAL] Voice synthesis failure: {e}")
 
 def send_audio_to_pi(audio_file_path, text):
     """Send audio file to connected Pi clients."""
     try:
         import base64
         
-        print(f"[ARMLINK] Initiating field comm protocol...")
-        print(f"   → Audio matrix: {audio_file_path}")
-        print(f"   → Message: '{text[:50]}...'")
+        olliePrint(f"[ARMLINK] Initiating field comm protocol...")
+        olliePrint(f"   → Audio matrix: {audio_file_path}")
+        olliePrint(f"   → Message: '{text[:50]}...'")
         
         # Check if file exists
         if not os.path.exists(audio_file_path):
-            print(f"[ERROR] Audio matrix not found in data banks: {audio_file_path}")
+            olliePrint(f"[ERROR] Audio matrix not found in data banks: {audio_file_path}")
             return
         
         # Read audio file and encode as base64
         with open(audio_file_path, 'rb') as f:
             audio_data = f.read()
         
-        print(f"   → Data size: {len(audio_data)} bytes")
+        olliePrint(f"   → Data size: {len(audio_data)} bytes")
         
         audio_b64 = base64.b64encode(audio_data).decode('utf-8')
-        print(f"   → Encoded for transmission: {len(audio_b64)} chars")
+        olliePrint(f"   → Encoded for transmission: {len(audio_b64)} chars")
         
         # Send via SocketIO to WebRTC server
         payload = {
@@ -403,15 +404,15 @@ def send_audio_to_pi(audio_file_path, text):
             'format': 'wav'
         }
         
-        print(f"   → Broadcasting via secure channel...")
+        olliePrint(f"   → Broadcasting via secure channel...")
         socketio.emit('fred_audio', payload)
         
-        print(f"[SUCCESS] Transmission complete - audio routed to field operative")
-        print(f"   → Payload: {len(audio_data)} bytes → '{text[:30]}...'")
+        olliePrint(f"[SUCCESS] Transmission complete - audio routed to field operative")
+        olliePrint(f"   → Payload: {len(audio_data)} bytes → '{text[:30]}...'")
         
     except Exception as e:
         logging.error(f"Error sending audio to Pi: {e}")
-        print(f"[CRITICAL] ArmLink transmission failure: {e}")
+        olliePrint(f"[CRITICAL] ArmLink transmission failure: {e}")
         import traceback
         traceback.print_exc()
 
@@ -427,7 +428,7 @@ def cleanup_wav_files():
 # Initialize
 try:
     lib.init_db()
-    print(f"[INFO] Memory DB initialized at: {DB_PATH}")
+    olliePrint(f"[INFO] Memory DB initialized at: {DB_PATH}")
 except Exception as e:
     logging.error(f"Database initialization failed: {e}")
 
@@ -542,16 +543,16 @@ def chat_endpoint():
                 
                 # Print the model's full response including thinking
                 if raw_content:
-                    print(f"\n{'='*60}")
-                    print(f"[MODEL RESPONSE] Full response from iteration {iteration + 1}:")
-                    print(f"{'='*60}")
-                    print(raw_content)
-                    print(f"{'='*60}\n")
+                    olliePrint(f"\n{'='*60}")
+                    olliePrint(f"[MODEL RESPONSE] Full response from iteration {iteration + 1}:")
+                    olliePrint(f"{'='*60}")
+                    olliePrint(raw_content)
+                    olliePrint(f"{'='*60}\n")
                 
                 # Extract and store thinking
                 current_thinking = extract_think_content(raw_content)
                 if current_thinking:
-                    print(f"[THINKING] Extracted {len(current_thinking)} chars of thinking from iteration {iteration + 1}")
+                    olliePrint(f"[THINKING] Extracted {len(current_thinking)} chars of thinking from iteration {iteration + 1}")
                     raw_thinking += current_thinking + "\n"
                 
                 clean_content = strip_think_tags(raw_content)
@@ -564,38 +565,38 @@ def chat_endpoint():
                 
                 if tool_calls:
                     # Execute tools
-                    print(f"\n[TOOL CALLS] Model requested {len(tool_calls)} tool(s):")
+                    olliePrint(f"\n[TOOL CALLS] Model requested {len(tool_calls)} tool(s):")
                     for tc in tool_calls:
                         tool_name = tc.get('function', {}).get('name', 'unknown')
                         tool_args = tc.get('function', {}).get('arguments', {})
-                        print(f"[TOOL CALLS] - {tool_name} with args: {tool_args}")
+                        olliePrint(f"[TOOL CALLS] - {tool_name} with args: {tool_args}")
                         yield json.dumps({
                             "type": "tool_activity",
                             "content": f"Executing {tool_name}..."
                         }) + '\n'
                     
                     tool_outputs = handle_tool_calls(response_message)
-                    print(f"[TOOL CALLS] Executed {len(tool_outputs) if tool_outputs else 0} tools successfully")
+                    olliePrint(f"[TOOL CALLS] Executed {len(tool_outputs) if tool_outputs else 0} tools successfully")
                     
                     # Print tool results
                     if tool_outputs:
-                        print("\n[TOOL RESULTS] Tool execution results:")
-                        print(f"{'='*50}")
+                        olliePrint("\n[TOOL RESULTS] Tool execution results:")
+                        olliePrint(f"{'='*50}")
                         for i, output in enumerate(tool_outputs):
                             tool_call_id = output.get('tool_call_id', 'unknown')
                             content = output.get('content', '{}')
-                            print(f"[TOOL RESULTS] Result {i+1} (ID: {tool_call_id}):")
+                            olliePrint(f"[TOOL RESULTS] Result {i+1} (ID: {tool_call_id}):")
                             try:
                                 # Try to format JSON nicely
                                 import json as json_module
                                 parsed = json_module.loads(content)
                                 formatted = json_module.dumps(parsed, indent=2)
-                                print(formatted)
+                                olliePrint(formatted)
                             except:
                                 # If not JSON, print as-is
-                                print(content)
-                            print(f"{'-'*30}")
-                        print(f"{'='*50}\n")
+                                olliePrint(content)
+                            olliePrint(f"{'-'*30}")
+                        olliePrint(f"{'='*50}\n")
                     
                     if tool_outputs:
                         messages.extend(tool_outputs)
@@ -655,11 +656,11 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     if chunk.get('done', False):
                         # Print full streaming response when done
                         if streaming_response:
-                            print(f"\n{'='*60}")
-                            print("[MODEL RESPONSE] Full streaming response:")
-                            print(f"{'='*60}")
-                            print(streaming_response)
-                            print(f"{'='*60}\n")
+                            olliePrint(f"\n{'='*60}")
+                            olliePrint("[MODEL RESPONSE] Full streaming response:")
+                            olliePrint(f"{'='*60}")
+                            olliePrint(streaming_response)
+                            olliePrint(f"{'='*60}\n")
                         break
             else:
                 # Direct response
@@ -784,7 +785,7 @@ def handle_disconnect():
 
 @socketio.on('webrtc_server_connected')
 def handle_webrtc_server_connect():
-    print("[BRIDGE] WebRTC communication bridge established")
+    olliePrint("[BRIDGE] WebRTC communication bridge established")
     emit('status', {'message': 'WebRTC bridge online'})
 
 @socketio.on('start_stt')
@@ -826,11 +827,11 @@ def handle_voice_message(data):
 def run_app():
     """Starts the F.R.E.D. main server using Flask-SocketIO."""
     info_lines = [f"[MAINFRAME] F.R.E.D. intelligence core initializing on http://{config.HOST}:{config.PORT}"]
-    print(startup_block("Main Server", info_lines))
+    olliePrint(startup_block("Main Server", info_lines))
     try:
         socketio.run(app, host=config.HOST, port=config.PORT, debug=False, use_reloader=False)
     except Exception as e:
-        print(f"[CRITICAL] Mainframe startup failure: {e}")
+        olliePrint(f"[CRITICAL] Mainframe startup failure: {e}")
 
 if __name__ == '__main__':
     cleanup_wav_files()
@@ -838,7 +839,7 @@ if __name__ == '__main__':
     # Check Ollama connection
     try:
         requests.get(config.OLLAMA_BASE_URL, timeout=2)
-        print(f"[NEURAL-NET] AI model interface connected")
+        olliePrint(f"[NEURAL-NET] AI model interface connected")
     except:
         logging.warning("[WARNING] AI model interface not responding")
     
