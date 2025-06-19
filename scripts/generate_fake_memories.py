@@ -14,6 +14,7 @@ This script focuses on creating the memories that will orbit this conceptual cor
 import os
 import sys
 import datetime
+from ollie_print import olliePrint
 
 # Add the parent directory to sys.path to import librarian
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -25,18 +26,18 @@ import memory.librarian as lib
 DB_PATH = os.path.join(parent_dir, 'memory', 'memory.db')
 lib.DB_FILE = DB_PATH
 
-print(f"Setting memory database path to: {DB_PATH}")
+olliePrint(f"Setting memory database path to: {DB_PATH}")
 lib.init_db()
 
 # Clear existing memories
-print("Clearing existing memories...")
+olliePrint("Clearing existing memories...")
 if not lib.clear_all_memory(force=True): # Force clear for test data generation
-    print("CRITICAL: Failed to clear memory. Aborting fake memory generation.")
+    olliePrint("CRITICAL: Failed to clear memory. Aborting fake memory generation.")
     sys.exit(1)
 
 # Function to create specific memories and connections
 def generate_multi_level_test_graph():
-    print("Generating a multi-level deterministic test graph...")
+    olliePrint("Generating a multi-level deterministic test graph...")
     
     node_ids = {} # Use a dict to store nodes by name for clarity
 
@@ -77,14 +78,14 @@ def generate_multi_level_test_graph():
     for key, label, text, mem_type in node_data_to_create:
         try:
             node_ids[key] = lib.add_memory(label=label, text=text, memory_type=mem_type)
-            print(f"Created node '{label}' ({key}) with ID: {node_ids[key]}")
+            olliePrint(f"Created node '{label}' ({key}) with ID: {node_ids[key]}")
         except Exception as e:
-            print(f"ERROR creating node '{label}': {e}")
+            olliePrint(f"ERROR creating node '{label}': {e}")
             node_ids[key] = None # Ensure key exists but is None if creation failed
 
-    print("\n--- Created Memory Nodes ---")
+    olliePrint("\n--- Created Memory Nodes ---")
     success_count = sum(1 for nid in node_ids.values() if nid is not None)
-    print(f"Successfully created {success_count} out of {len(node_data_to_create)} memory nodes.")
+    olliePrint(f"Successfully created {success_count} out of {len(node_data_to_create)} memory nodes.")
 
     # --- Create Edges ---
     # Structure: Primary nodes have many connections, secondary fewer, tertiary fewest
@@ -135,7 +136,7 @@ def generate_multi_level_test_graph():
         ('Security_System', 'Morning_Routine', 'precedes')
     ]
 
-    print("\n--- Creating Edges Between Memory Nodes ---")
+    olliePrint("\n--- Creating Edges Between Memory Nodes ---")
     edge_creation_successful_count = 0
     edge_creation_failed_count = 0
     try:
@@ -147,42 +148,42 @@ def generate_multi_level_test_graph():
                 if source_id and target_id:
                     try:
                         lib.add_edge(sourceid=source_id, targetid=target_id, rel_type=rel_type, con=con)
-                        print(f"Created edge: {source_key} --({rel_type})--> {target_key}")
+                        olliePrint(f"Created edge: {source_key} --({rel_type})--> {target_key}")
                         edge_creation_successful_count += 1
                     except Exception as e:
-                        print(f"ERROR creating edge from '{source_key}' ({source_id}) to '{target_key}' ({target_id}) with rel_type '{rel_type}': {e}")
+                        olliePrint(f"ERROR creating edge from '{source_key}' ({source_id}) to '{target_key}' ({target_id}) with rel_type '{rel_type}': {e}")
                         edge_creation_failed_count += 1
                 else:
-                    print(f"Skipping edge from '{source_key}' to '{target_key}' due to missing node(s).")
+                    olliePrint(f"Skipping edge from '{source_key}' to '{target_key}' due to missing node(s).")
                     edge_creation_failed_count += 1
             
             if edge_creation_successful_count > 0:
-                 print(f"  Successfully created {edge_creation_successful_count} edges.")
+                 olliePrint(f"  Successfully created {edge_creation_successful_count} edges.")
             if edge_creation_failed_count > 0:
-                 print(f"  Failed to create {edge_creation_failed_count} edges. See errors above.")
+                 olliePrint(f"  Failed to create {edge_creation_failed_count} edges. See errors above.")
             if edge_creation_successful_count == 0 and edge_creation_failed_count == 0:
-                 print("  No edges were attempted or created (possibly due to all nodes failing creation).")
+                 olliePrint("  No edges were attempted or created (possibly due to all nodes failing creation).")
 
     except Exception as e:
-        print(f"  Major error during edge creation phase: {e}")
+        olliePrint(f"  Major error during edge creation phase: {e}")
         
     return [nid for nid in node_ids.values() if nid is not None]
 
 # Create the multi-level test graph
 created_node_ids = generate_multi_level_test_graph()
 
-print("\nMulti-level deterministic test graph generation complete!")
+olliePrint("\nMulti-level deterministic test graph generation complete!")
 if created_node_ids:
-    print(f"Successfully created {len(created_node_ids)} memory nodes.")
+    olliePrint(f"Successfully created {len(created_node_ids)} memory nodes.")
     
     # Count edges to inform user about test data size
     try:
         with lib.duckdb.connect(lib.DB_FILE) as con:
             edge_count = con.execute("SELECT COUNT(*) FROM edges").fetchone()[0]
-            print(f"Successfully created {edge_count} edges between memory nodes.")
+            olliePrint(f"Successfully created {edge_count} edges between memory nodes.")
             
             # Print nodes with most connections for reference
-            print("\nTop 5 most connected nodes (these should orbit F.R.E.D. directly):")
+            olliePrint("\nTop 5 most connected nodes (these should orbit F.R.E.D. directly):")
             most_connected = con.execute("""
                 SELECT n.nodeid, n.label, COUNT(e.sourceid) + COUNT(e2.targetid) as edge_count
                 FROM nodes n
@@ -194,10 +195,10 @@ if created_node_ids:
             """).fetchall()
             
             for i, (node_id, label, count) in enumerate(most_connected, 1):
-                print(f"{i}. {label} - {count} connections")
+                olliePrint(f"{i}. {label} - {count} connections")
     except Exception as e:
-        print(f"Error retrieving statistics: {e}")
+        olliePrint(f"Error retrieving statistics: {e}")
 else:
-    print("No memory nodes were successfully created. Please check the logs for errors.")
+    olliePrint("No memory nodes were successfully created. Please check the logs for errors.")
     
-print("\nYou can now restart app.py and view the memory visualization in your browser.") 
+olliePrint("\nYou can now restart app.py and view the memory visualization in your browser.") 

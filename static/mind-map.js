@@ -3,6 +3,20 @@
  * A physics-based 3D solar system with hierarchical orbital relationships
  * and detailed memory interaction
  */
+function olliePrint(msg, level = 'info') {
+    const colors = {info: '\x1b[34m', success: '\x1b[32m', warning: '\x1b[33m', error: '\x1b[31m'};
+    const reset = '\x1b[0m';
+    const comments = {
+        info: 'Systems green across the board.',
+        success: 'Mission accomplished!',
+        warning: 'Caution: power conduit unstable.',
+        error: 'Critical failure detected!'
+    };
+    const ts = new Date().toISOString();
+    const header = `BROWSER [${ts}] - Designed by Ollie-Tec`;
+    const bar = '-'.repeat(header.length);
+    console.log(`${bar}\n${header}\n${bar}\n${colors[level] || ''}${msg}${reset} ${comments[level] || ''}`);
+}
 
 class MemorySolarSystem {
     constructor(container) {
@@ -453,13 +467,13 @@ class MemorySolarSystem {
     
     async loadConnectionData(memoryData) {
         // Load detailed connection information for each memory
-        console.log('Loading connection data for', memoryData.length, 'memories');
+        olliePrint('Loading connection data for', memoryData.length, 'memories');
         for (const memory of memoryData) {
             try {
                 const response = await fetch(`/api/memory/${memory.nodeid}/connections`);
                 if (response.ok) {
                     const connectionData = await response.json();
-                    console.log(`Loaded connections for memory ${memory.nodeid}:`, connectionData);
+                    olliePrint(`Loaded connections for memory ${memory.nodeid}:`, connectionData);
                     this.memoryConnections.set(memory.nodeid.toString(), connectionData);
                 } else {
                     console.warn(`Failed to load connections for memory ${memory.nodeid}: HTTP ${response.status}`);
@@ -469,7 +483,7 @@ class MemorySolarSystem {
                 this.memoryConnections.set(memory.nodeid.toString(), { connections: [] });
             }
         }
-        console.log('Finished loading connection data. Total connections loaded:', this.memoryConnections.size);
+        olliePrint('Finished loading connection data. Total connections loaded:', this.memoryConnections.size);
     }
     
     createHierarchicalMemorySystem(memoryData) {
@@ -972,7 +986,7 @@ class MemorySolarSystem {
         this.selectedMemory = memoryData;
         
         // Debug: log the memory data structure to understand what we're working with
-        console.log('Memory data for details panel:', memoryData);
+        olliePrint('Memory data for details panel:', memoryData);
         
         // Update panel content
         const panel = this.detailsPanel;
@@ -1003,7 +1017,7 @@ class MemorySolarSystem {
             connections = connectionData.connections || [];
         }
         
-        console.log(`Found ${connections.length} connections for memory ${memoryData.nodeid}:`, connections);
+        olliePrint(`Found ${connections.length} connections for memory ${memoryData.nodeid}:`, connections);
         
         if (connections.length > 0) {
             connections.slice(0, 10).forEach(connection => { // Show max 10 connections
@@ -1310,7 +1324,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 script.src = urls[index];
                 
                 script.onload = () => {
-                    console.log(`Three.js loaded successfully from ${urls[index]}`);
+                    olliePrint(`Three.js loaded successfully from ${urls[index]}`);
                     window.mindMap = new MemorySolarSystem(container);
                 };
                 
@@ -1331,7 +1345,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             loadThreeJS(cdnUrls);
         } else {
-            console.log('Three.js already loaded, initializing solar system');
+            olliePrint('Three.js already loaded, initializing solar system');
             window.mindMap = new MemorySolarSystem(container);
         }
     }
@@ -1346,7 +1360,7 @@ window.addEventListener('beforeunload', () => {
 
 // Fallback 2D visualization if Three.js fails to load
 function createFallbackVisualization(container) {
-    console.log('Creating fallback 2D memory visualization');
+    olliePrint('Creating fallback 2D memory visualization');
     
     // Create canvas for 2D visualization
     const canvas = document.createElement('canvas');

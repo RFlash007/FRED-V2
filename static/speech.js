@@ -1,6 +1,21 @@
 // Speech-to-Text functionality for F.R.E.D. v2
 // Improved implementation using patterns from F.R.E.D. v1
 
+function olliePrint(msg, level = 'info') {
+    const colors = {info: '\x1b[34m', success: '\x1b[32m', warning: '\x1b[33m', error: '\x1b[31m'};
+    const reset = '\x1b[0m';
+    const comments = {
+        info: 'Systems green across the board.',
+        success: 'Mission accomplished!',
+        warning: 'Caution: power conduit unstable.',
+        error: 'Critical failure detected!'
+    };
+    const ts = new Date().toISOString();
+    const header = `BROWSER [${ts}] - Designed by Ollie-Tec`;
+    const bar = '-'.repeat(header.length);
+    console.log(`${bar}\n${header}\n${bar}\n${colors[level] || ''}${msg}${reset} ${comments[level] || ''}`);
+}
+
 class SpeechSystem {
     constructor() {
         this.socket = null;
@@ -40,19 +55,19 @@ class SpeechSystem {
     setupSocketEvents() {
         // Connection events
         this.socket.on('connect', () => {
-            console.log('Connected to F.R.E.D. speech system');
+            olliePrint('Connected to F.R.E.D. speech system');
             this.updateStatus('Connected', 'online');
         });
         
         this.socket.on('disconnect', () => {
-            console.log('Disconnected from F.R.E.D.');
+            olliePrint('Disconnected from F.R.E.D.');
             this.updateStatus('Disconnected', 'offline');
             this.stopRecording();
         });
         
         // Status updates
         this.socket.on('status', (data) => {
-            console.log('Status update:', data.message);
+            olliePrint('Status update:', data.message);
             this.updateStatus(data.message, 'online');
             
             // Only update sttEnabled from server if we're not currently toggling
@@ -71,7 +86,7 @@ class SpeechSystem {
         
         // F.R.E.D. acknowledgments (new v1-inspired feature)
         this.socket.on('fred_acknowledgment', (data) => {
-            console.log('F.R.E.D. acknowledgment:', data.text);
+            olliePrint('F.R.E.D. acknowledgment:', data.text);
             this.showFeedback('F.R.E.D. is listening...', 'listening');
             this.isListening = true;
             
@@ -81,7 +96,7 @@ class SpeechSystem {
         
         // Transcription results
         this.socket.on('transcription_result', (data) => {
-            console.log('Transcription:', data.text);
+            olliePrint('Transcription:', data.text);
             
             // Check if this is a wake word activation (silent mode)
             const wakeWords = ['fred', 'hey fred', 'okay fred', 'hi fred', 'excuse me fred', 'fred are you there'];
@@ -89,7 +104,7 @@ class SpeechSystem {
             
             if (isWakeWord && !this.isListening) {
                 // Silent wake word activation - just show listening feedback
-                console.log('Wake word detected - activating silent listening mode');
+                olliePrint('Wake word detected - activating silent listening mode');
                 this.showFeedback('Listening...', 'listening');
                 this.isListening = true;
                 // Don't add wake word to chat history
@@ -127,7 +142,7 @@ class SpeechSystem {
     
     initializeSpeech() {
         // DISABLED: Web audio capture - backend now uses direct microphone access
-        console.log('Using direct backend microphone access - web audio disabled');
+        olliePrint('Using direct backend microphone access - web audio disabled');
         this.updateStatus('Backend handling microphone directly', 'online');
         this.startSTT();
         
@@ -171,7 +186,7 @@ class SpeechSystem {
     
     setupAudioProcessing(stream) {
         // DISABLED: Audio processing now handled by backend directly
-        console.log('Audio processing disabled - backend handles microphone directly');
+        olliePrint('Audio processing disabled - backend handles microphone directly');
         return;
         
         // COMMENTED OUT: Web audio processing
@@ -187,13 +202,13 @@ class SpeechSystem {
             this.setupLegacyAudioProcessing();
         }
         
-        console.log('Audio processing set up successfully');
+        olliePrint('Audio processing set up successfully');
         */
     }
     
     async setupModernAudioProcessing() {
         // DISABLED: Modern audio processing - backend handles audio directly
-        console.log('Modern audio processing disabled - backend handles microphone');
+        olliePrint('Modern audio processing disabled - backend handles microphone');
         return;
         
         // COMMENTED OUT: AudioWorklet processing
@@ -256,7 +271,7 @@ class SpeechSystem {
             this.microphone.connect(this.processor);
             this.processor.connect(this.audioContext.destination);
             
-            console.log('Using modern AudioWorkletNode for audio processing');
+            olliePrint('Using modern AudioWorkletNode for audio processing');
             
         } catch (workletError) {
             console.warn('AudioWorkletNode setup failed, falling back to ScriptProcessorNode:', workletError);
@@ -267,7 +282,7 @@ class SpeechSystem {
     
     setupLegacyAudioProcessing() {
         // DISABLED: Legacy audio processing - backend handles audio directly
-        console.log('Legacy audio processing disabled - backend handles microphone');
+        olliePrint('Legacy audio processing disabled - backend handles microphone');
         return;
         
         // COMMENTED OUT: ScriptProcessorNode processing
@@ -324,7 +339,7 @@ class SpeechSystem {
         this.socket.emit('start_stt');
         this.isRecording = true;
         this.updateStatus('Waiting for wake word...', 'listening');
-        console.log('Started speech-to-text');
+        olliePrint('Started speech-to-text');
     }
     
     stopSTT() {
@@ -333,7 +348,7 @@ class SpeechSystem {
         this.isListening = false;
         this.updateStatus('Speech recognition stopped', 'offline');
         this.hideFeedback();
-        console.log('Stopped speech-to-text');
+        olliePrint('Stopped speech-to-text');
     }
     
     toggleSpeech() {
@@ -467,6 +482,6 @@ class SpeechSystem {
 
 // Initialize speech system when page loads
 document.addEventListener('DOMContentLoaded', () => {
-    console.log('Initializing F.R.E.D. speech system...');
+    olliePrint('Initializing F.R.E.D. speech system...');
     window.speechSystem = new SpeechSystem();
 }); 
