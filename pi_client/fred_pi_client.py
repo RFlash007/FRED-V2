@@ -382,8 +382,8 @@ class FREDPiClient:
             print(f"❌ [VISION] Camera initialization failed: {e}")
             self.camera = None
 
-    def create_local_tracks(self, video=True, audio=True):
-        """Create video and audio tracks for WebRTC"""
+    def create_local_tracks(self, video=True):
+        """Create a video track for WebRTC"""
         tracks = []
         
         if video and self.camera:
@@ -433,79 +433,6 @@ class FREDPiClient:
                 
             except Exception as e:
                 print(f"❌ Video track creation failed: {e}")
-        
-        if audio:
-            print("🎤 Setting up audio...")
-            # Try sounddevice audio track
-            try:
-                import sounddevice as sd
-                from aiortc import MediaStreamTrack
-                from av import AudioFrame
-                import collections
-                from fractions import Fraction
-
-                class SoundDeviceAudioTrack(MediaStreamTrack):
-                    kind = "audio"
-                    
-                    def __init__(self, device=None, sample_rate=16000, channels=1):
-                        super().__init__()
-                        self.device = device
-                        self.sample_rate = sample_rate
-                        self.channels = channels
-                        
-                        self.buffer = collections.deque(maxlen=self.sample_rate * 2)
-                        self.samples_sent = 0
-                        self.time_base = Fraction(1, self.sample_rate)
-                        self.stream = None
-                        self._running = False
-                        
-                    def start(self):
-                        if self._running:
-                            return
-                            
-                        def audio_callback(indata, frames, time, status):
-                            mono = indata.mean(axis=1).astype(np.float32)
-                            self.buffer.extend(mono)
-                        
-                        self.stream = sd.InputStream(
-                            device=self.device,
-                            channels=self.channels,
-                            samplerate=self.sample_rate,
-                            callback=audio_callback,
-                            dtype=np.float32
-                        )
-                        
-                        self.stream.start()
-                        self._running = True
-                        print("✅ Audio capture started!")
-                        
-                    async def recv(self):
-                        if not self._running:
-                            self.start()
-                        
-                        frame_samples = int(self.sample_rate * 0.02)  # 20ms
-                        
-                        while len(self.buffer) < frame_samples:
-                            await asyncio.sleep(0.001)
-                        
-                        samples = [self.buffer.popleft() for _ in range(frame_samples)]
-                        pcm_i16 = (np.clip(samples, -1.0, 1.0) * 32767).astype(np.int16)
-                        pcm_i16 = pcm_i16.reshape(1, -1)
-                        
-                        frame = AudioFrame.from_ndarray(pcm_i16, format='s16', layout='mono')
-                        frame.sample_rate = self.sample_rate
-                        frame.pts = self.samples_sent
-                        frame.time_base = self.time_base
-                        
-                        self.samples_sent += frame_samples
-                        return frame
-                
-                audio_track = SoundDeviceAudioTrack()
-                tracks.append(audio_track)
-                print("✅ Audio working with sounddevice")
-                
-            except Exception as e:
-                print(f"❌ Audio track creation failed: {e}")
         
         return tracks
 
@@ -566,7 +493,7 @@ class FREDPiClient:
                 raise Exception("Data channel closed")
             
             # Add video track. Audio is processed locally for STT and not streamed.
-            tracks = self.create_local_tracks(video=True, audio=False)
+            tracks = self.create_local_tracks(video=True)
             
             if not tracks:
                 print("⚠️  No media tracks available - connecting with data channel only")
