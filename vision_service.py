@@ -47,10 +47,10 @@ class VisionService:
         """Store the latest frame from WebRTC"""
         try:
             self.current_frame = frame
-            print(f"📸 Frame received and stored (size: {frame.width}x{frame.height})")
+            print(f"[OPTICS] Frame received and stored (size: {frame.width}x{frame.height})")
         except Exception as e:
             logger.error(f"Error storing frame: {e}")
-            print(f"❌ Frame storage error: {e}")
+            print(f"[ERROR] Frame storage error: {e}")
     
     def start_continuous_processing(self):
         """Start the continuous vision processing loop"""
@@ -70,13 +70,13 @@ class VisionService:
     
     async def _processing_loop(self):
         """Main processing loop - runs every N seconds when Pi is connected"""
-        print("🔄 Vision processing loop started (on-demand mode)")
+        print("[OPTICS] Vision processing loop started (on-demand mode)")
         while self.is_processing and self.pi_connected:
             try:
                 if time.time() - self.last_processing_time >= self.processing_interval:
-                    print(f"🎯 Time for vision processing (interval: {self.processing_interval}s)")
-                    print(f"🔗 Connecting to Ollama at: {config.OLLAMA_BASE_URL}")
-                    print(f"🤖 Using vision model: {self.model}")
+                    print(f"[OPTICS] Time for vision processing (interval: {self.processing_interval}s)")
+                    print(f"[NETWORK] Connecting to Ollama at: {config.OLLAMA_BASE_URL}")
+                    print(f"[OPTICS] Using vision model: {self.model}")
                     
                     # Request fresh frame from Pi
                     await self._request_and_process_frame()
@@ -107,15 +107,15 @@ class VisionService:
             if frame:
                 # Store the fresh frame
                 self.current_frame = frame
-                print(f"📸 Fresh frame received for processing (size: {frame.width}x{frame.height})")
+                print(f"[OPTICS] Fresh frame received for processing (size: {frame.width}x{frame.height})")
                 
                 # Process it
                 await self._process_current_frame()
             else:
-                print("❌ No frame received from Pi client")
+                print("[ERROR] No frame received from Pi client")
                 
         except Exception as e:
-            print(f"❌ Error requesting frame from Pi: {e}")
+            print(f"[ERROR] Error requesting frame from Pi: {e}")
             logger.error(f"Error requesting frame from Pi: {e}")
     
     async def _process_current_frame(self):
@@ -124,16 +124,16 @@ class VisionService:
             return
         
         try:
-            print("🖼️ Converting frame to base64...")
+            print("[OPTICS] Converting frame to base64...")
             # Convert frame to base64
             image_b64 = self._frame_to_base64(self.current_frame)
-            print(f"✅ Frame converted, base64 length: {len(image_b64)} chars")
+            print(f"[SUCCESS] Frame converted, base64 length: {len(image_b64)} chars")
             
             # Create detailed prompt with change detection
             prompt = self._create_vision_prompt()
-            print(f"📝 Vision prompt created: {len(prompt)} chars")
+            print(f"[OPTICS] Vision prompt created: {len(prompt)} chars")
             
-            print("🧠 Sending to Ollama for vision analysis...")
+            print("[NETWORK] Sending to Ollama for vision analysis...")
             # Call Qwen 2.5-VL 7B
             response = await asyncio.to_thread(
                 self.ollama_client.chat,
@@ -155,19 +155,19 @@ class VisionService:
             
             self.current_scene_description = new_description
             
-            print("🎯 === SCENE ANALYSIS RESULT ===")
+            print("[OPTICS] === SCENE ANALYSIS RESULT ===")
             print(f"📊 {self.current_scene_description}")
-            print("=================================")
+            print("[OPTICS] ===============================")
             
             logger.debug(f"Vision update: {self.current_scene_description[:100]}...")
             
         except ollama.ResponseError as e:
-            print(f"❌ Ollama vision model error: {e}")
-            print("💡 Make sure 'ollama serve' is running and 'qwen2.5vl:7b' model is installed")
+            print(f"[ERROR] Ollama vision model error: {e}")
+            print("[WARNING] Make sure 'ollama serve' is running and 'qwen2.5vl:7b' model is installed")
             logger.error(f"Ollama vision model error: {e}")
             self.current_scene_description = "Vision processing temporarily unavailable."
         except Exception as e:
-            print(f"❌ Frame processing error: {e}")
+            print(f"[ERROR] Frame processing error: {e}")
             logger.error(f"Frame processing error: {e}")
             import traceback
             traceback.print_exc()

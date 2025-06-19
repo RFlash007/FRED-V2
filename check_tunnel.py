@@ -11,7 +11,7 @@ apply_theme()
 def check_tunnel_status():
     """Check and display current tunnel status"""
     
-    print("🔍 Checking F.R.E.D. tunnel status...")
+    print("[NETWORK] Checking F.R.E.D. tunnel status...")
     
     # Check tunnel_info.json
     if os.path.exists('tunnel_info.json'):
@@ -33,20 +33,20 @@ def check_tunnel_status():
                         import requests
                         response = requests.get(tunnel_url, timeout=5)
                         if response.status_code == 200:
-                            print("✅ Tunnel is ACTIVE and reachable!")
+                            print("[SUCCESS] Tunnel is ACTIVE and reachable!")
                         else:
-                            print(f"⚠️  Tunnel responds but may have issues (Status: {response.status_code})")
+                            print(f"[WARNING] Tunnel responds but may have issues (Status: {response.status_code})")
                     except Exception as e:
-                        print(f"❌ Tunnel may be down (Error: {e})")
+                        print(f"[ERROR] Tunnel may be down (Error: {e})")
                         
                 else:
-                    print("❌ No tunnel URL found in tunnel_info.json")
+                    print("[ERROR] No tunnel URL found in tunnel_info.json")
                     
         except Exception as e:
-            print(f"❌ Error reading tunnel_info.json: {e}")
+            print(f"[ERROR] Error reading tunnel_info.json: {e}")
     else:
-        print("❌ No tunnel_info.json found")
-        print("💡 Start F.R.E.D. with: python start_fred_with_webrtc.py")
+        print("[ERROR] No tunnel_info.json found")
+        print("[INFO] Start F.R.E.D. with: python start_fred_with_webrtc.py")
     
     # Check if ngrok is running
     try:

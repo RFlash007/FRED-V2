@@ -18,7 +18,7 @@ import traceback
 from stt_service import stt_service
 from vision_service import vision_service
 import threading
-from ollietec_theme import apply_theme, banner
+from ollietec_theme import apply_theme, banner, startup_block
 
 apply_theme()
 import time
@@ -825,8 +825,8 @@ def handle_voice_message(data):
 # --- Main Execution ---
 def run_app():
     """Starts the F.R.E.D. main server using Flask-SocketIO."""
-    print(banner("Main Server"))
-    print(f"[MAINFRAME] F.R.E.D. intelligence core initializing on http://{config.HOST}:{config.PORT}")
+    info_lines = [f"[MAINFRAME] F.R.E.D. intelligence core initializing on http://{config.HOST}:{config.PORT}"]
+    print(startup_block("Main Server", info_lines))
     try:
         socketio.run(app, host=config.HOST, port=config.PORT, debug=False, use_reloader=False)
     except Exception as e:

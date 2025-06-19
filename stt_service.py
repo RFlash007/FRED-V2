@@ -15,16 +15,22 @@ import sounddevice as sd  # ADD: Direct audio capture like old system
 import queue  # ADD: Proper queue for audio processing
 import sys  # ADD: For printing to stderr
 from config import config
+from ollietec_theme import apply_theme
+
+apply_theme()
 
 # === TERMINAL TRANSCRIPTION LOGGING ===
 def print_transcription_to_terminal(text, source="TRANSCRIPTION"):
     """Print transcription results to terminal with clear formatting"""
     timestamp = datetime.now().strftime('%H:%M:%S')
     separator = "=" * 50
-    print(f"\n{separator}")
-    print(f"🎤 {source} [{timestamp}]")
-    print(f"📝 Text: '{text}'")
-    print(f"{separator}\n")
+    message = (
+        f"\n{separator}\n"
+        f"🎤 {source} [{timestamp}]\n"
+        f"📝 Text: '{text}'\n"
+        f"{separator}\n"
+    )
+    print("".join(message))
 
 logger = logging.getLogger(__name__)
 
@@ -175,12 +181,12 @@ class STTService:
                 blocksize=self.blocksize
             )
             self.stream.start()
-            print("[DEBUG] Direct audio stream started successfully")
+            print("[ARMLINK AUDIO] Direct audio stream active")
         except Exception as e:
             logger.warning(f"Failed to start local audio stream (this is normal if using Pi glasses): {e}")
             # Don't return False - Pi glasses audio will be handled via WebRTC
             self.stream = None
-            print("🍇 Local audio disabled - Pi glasses audio will be used via WebRTC")
+            print("🍇 [ARMLINK AUDIO] Local capture off - using Pi glasses via WebRTC")
         
         # Calibrate silence threshold like v1
         self.calibrate_silence_threshold()
@@ -188,8 +194,7 @@ class STTService:
         self.processing_thread = threading.Thread(target=self._process_audio_loop, daemon=True)
         self.processing_thread.start()
         
-        print("[DEBUG] Processing thread started successfully")
-        print("Voice system initialized. Waiting for wake word...")  # Like Transcribe.py
+        print("[ARMLINK STT] Processing thread active - awaiting wake word...")
         logger.info("STT processing started - waiting for wake word...")
         return True
     
@@ -211,13 +216,11 @@ class STTService:
     def calibrate_silence_threshold(self):
         """Calibrate the silence threshold based on ambient noise - EXACTLY like old system"""
         if self.stream is None:
-            print("🍇 Pi glasses mode - skipping microphone calibration (will use Pi audio)")
             self.silence_threshold = self.pi_silence_threshold  # Use Pi default threshold
-            print(f"Using default Pi glasses threshold: {self.silence_threshold:.6f}")
-            print()
+            print(f"🍇 [ARMLINK AUDIO] Pi glasses mode - default threshold {self.silence_threshold:.6f}")
             return
             
-        print("Calibrating microphone... Please remain quiet.")
+        print("[AUDIO] Calibrating microphone... Please remain quiet.")
         start_time = time.time()
         
         while time.time() - start_time < self.calibration_duration:
@@ -232,11 +235,9 @@ class STTService:
             # Set threshold slightly above the average ambient noise like v1
             avg_noise = np.mean(self.calibration_samples)
             self.silence_threshold = avg_noise * 1.1  # Exact same formula as old system
-            print(f"Silence threshold calibrated to: {self.silence_threshold:.6f}")
+            print(f"[AUDIO] Silence threshold calibrated to: {self.silence_threshold:.6f}")
         else:
-            print("[DEBUG] No calibration samples collected, using default threshold")
-            print("Using default silence threshold")
-        print()
+            print("[WARNING] No calibration samples collected - using default silence threshold")
     
     def _process_audio_loop(self):
         """Main audio processing loop - EXACTLY like old system"""

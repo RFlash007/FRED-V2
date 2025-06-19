@@ -7,6 +7,7 @@ _COLOR_MAP = {
     'ERROR': '\033[91m',
     'WARNING': '\033[93m',
     'SUCCESS': '\033[92m',
+    'DEBUG': '\033[90m',
     'AUDIO': '\033[95m',
     'NETWORK': '\033[96m',
     'OPTICS': '\033[96m',
@@ -48,3 +49,8 @@ def banner(component: str) -> str:
         '\033[92m' + '═' * 60 + '\033[0m',
     ]
     return '\n'.join(lines)
+
+
+def startup_block(component: str, info_lines: list[str]) -> str:
+    """Return a banner joined with additional startup info lines."""
+    return '\n'.join([banner(component), *info_lines])
