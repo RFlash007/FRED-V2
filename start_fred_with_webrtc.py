@@ -13,7 +13,7 @@ import requests
 import time
 import aiohttp
 from config import config
-from ollietec_theme import apply_theme, banner
+from ollietec_theme import apply_theme, banner, startup_block
 
 # Global variable to store tunnel info
 tunnel_info = {"webrtc_server": None, "main_url": None}
@@ -111,13 +111,13 @@ def main():
     - F.R.E.D. Flask server runs in a separate thread.
     - WebRTC aiohttp server runs in the main thread's asyncio loop.
     """
-    print(banner("F.R.E.D. MAINFRAME"))
+    info_lines = ["[MAINFRAME] F.R.E.D. core intelligence systems ONLINE"]
+    print(startup_block("F.R.E.D. MAINFRAME", info_lines))
 
     # 1. Run the Flask/SocketIO server in its own thread
     # This is necessary because it uses its own blocking eventlet server.
     fred_thread = threading.Thread(target=run_fred_server, daemon=True)
     fred_thread.start()
-    print("[MAINFRAME] F.R.E.D. core intelligence systems ONLINE")
     
     # Give the main server a moment to start before the WebRTC server,
     # as the WebRTC server may try to connect to it.

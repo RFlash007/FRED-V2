@@ -13,7 +13,7 @@ import argparse
 import ssl
 import numpy as np
 from scipy.signal import resample_poly
-from ollietec_theme import apply_theme, banner
+from ollietec_theme import apply_theme, banner, startup_block
 
 # Import configuration
 from config import config
@@ -29,6 +29,9 @@ data_channels = set()  # Store data channels for sending responses back to Pi
 pi_clients = set()  # Track Pi clients for vision processing
 client_video_tracks = {}  # Store video tracks for on-demand frame requests
 connection_timestamps = {}  # Track connection times for rate limiting
+
+# Runner instance for graceful shutdown when running as a script
+runner = None
 
 async def request_frame_from_client(client_ip):
     """Request a fresh frame from a specific client"""
@@ -504,15 +507,18 @@ async def main():
     app.router.add_get("/", index)
     app.router.add_post("/offer", offer)
 
+    global runner
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, host=args.host, port=args.port, ssl_context=ssl_context)
     await site.start()
     
-    print(banner("WebRTC Server"))
-    print(f"🔐 Authentication: {'Enabled' if FRED_AUTH_TOKEN else 'Disabled'}")
-    print(f"🔢 Max connections: {MAX_CONNECTIONS}")
-    print(f"🚀 Listening on http://{args.host}:{args.port}")
+    info_lines = [
+        f"🔐 Authentication: {'Enabled' if FRED_AUTH_TOKEN else 'Disabled'}",
+        f"🔢 Max connections: {MAX_CONNECTIONS}",
+        f"🚀 Listening on http://{args.host}:{args.port}",
+    ]
+    print(startup_block("WebRTC Server", info_lines))
 
     # Keep server running until interrupted
     while True:
