@@ -4,8 +4,12 @@
  * and detailed memory interaction
  */
 function olliePrint(msg, level = 'info') {
-    const colors = {info: '\x1b[34m', success: '\x1b[32m', warning: '\x1b[33m', error: '\x1b[31m'};
-    const reset = '\x1b[0m';
+    const colors = {
+        info: 'color: blue',
+        success: 'color: green',
+        warning: 'color: orange',
+        error: 'color: red'
+    };
     const comments = {
         info: 'Systems green across the board.',
         success: 'Mission accomplished!',
@@ -15,7 +19,8 @@ function olliePrint(msg, level = 'info') {
     const ts = new Date().toISOString();
     const header = `BROWSER [${ts}] - Designed by Ollie-Tec`;
     const bar = '-'.repeat(header.length);
-    console.log(`${bar}\n${header}\n${bar}\n${colors[level] || ''}${msg}${reset} ${comments[level] || ''}`);
+    const style = colors[level] || colors.info;
+    console.log(`${bar}\n${header}\n${bar}\n%c${msg}%c ${comments[level] || ''}`, style, '');
 }
 
 class MemorySolarSystem {
