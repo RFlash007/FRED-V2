@@ -5,7 +5,6 @@ from flask_socketio import SocketIO, emit
 import json
 import requests
 import memory.librarian as lib
-import logging
 import re
 import playsound
 import uuid
@@ -54,7 +53,7 @@ class FREDState:
                 messages_to_remove = len(self.conversation_history) - config.MAX_CONVERSATION_MESSAGES
                 
                 # Log the cleanup action
-                logging.info(f"Conversation history cleanup: removing {messages_to_remove} old messages (keeping {config.MAX_CONVERSATION_MESSAGES})")
+                olliePrint(f"Conversation history cleanup: removing {messages_to_remove} old messages (keeping {config.MAX_CONVERSATION_MESSAGES})")
                 
                 # Remove oldest messages
                 self.conversation_history = self.conversation_history[messages_to_remove:]
@@ -62,7 +61,7 @@ class FREDState:
                 # Adjust STM tracking indices to account for removed messages
                 self.last_analyzed_message_index = max(0, self.last_analyzed_message_index - messages_to_remove)
                 
-                logging.info(f"Adjusted last_analyzed_message_index to {self.last_analyzed_message_index}")
+                olliePrint(f"Adjusted last_analyzed_message_index to {self.last_analyzed_message_index}")
             
             # Increment turn counter and check STM trigger
             if role == 'assistant':  # Complete turn (user + assistant)
@@ -118,10 +117,7 @@ app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['SECRET_KEY'] = config.SECRET_KEY
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# Configuration
-logging.basicConfig(level=getattr(logging, config.LOG_LEVEL), format=config.LOG_FORMAT)
-# Reduce verbosity of Flask's built-in request logs
-logging.getLogger('werkzeug').setLevel(logging.WARNING)
+# Configuration handled via olliePrint; reduce Flask request noise
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = config.get_db_path(APP_ROOT)
 lib.DB_FILE = DB_PATH
@@ -134,9 +130,9 @@ def initialize_tts():
             device = "cuda" if torch.cuda.is_available() else "cpu"
             tts_engine = TTS(config.XTTS_MODEL_NAME).to(device)
             fred_state.set_tts_engine(tts_engine)
-            logging.info(f"[ARC-MODE] Voice synthesis matrix loaded on {device.upper()}")
+            olliePrint(f"[ARC-MODE] Voice synthesis matrix loaded on {device.upper()}")
         except Exception as e:
-            logging.error(f"[CRITICAL] Voice synthesis initialization failed: {e}")
+            olliePrint(f"[CRITICAL] Voice synthesis initialization failed: {e}", level='error')
             fred_state.set_tts_engine(None)
 
 # Load System Prompt
@@ -145,7 +141,7 @@ try:
     with open(SYSTEM_PROMPT_FILE, 'r', encoding='utf-8') as f:
         SYSTEM_PROMPT = f.read()
 except Exception as e:
-    logging.error(f"Error loading system prompt: {e}")
+    olliePrint(f"Error loading system prompt: {e}", level='error')
     SYSTEM_PROMPT = "You are F.R.E.D., a helpful AI assistant."
 
 def extract_think_content(text):
@@ -190,7 +186,7 @@ Condensed reasoning (2-3 sentences only):"""
         return summary
     except Exception as e:
         olliePrint(f"[THINKING SUMMARY] Failed to summarize: {e}")
-        logging.warning(f"Failed to summarize thinking: {e}")
+        olliePrint(f"Failed to summarize thinking: {e}", level='warning')
         return thinking_content[:200] + "..." if len(thinking_content) > 200 else thinking_content
 
 def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
@@ -330,7 +326,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
     try:
         tts_engine = fred_state.get_tts_engine()
         if tts_engine is None:
-            logging.warning("TTS engine not initialized, skipping speech generation")
+            olliePrint("TTS engine not initialized, skipping speech generation", level='warning')
             return
 
         olliePrint(f"[ARC-MODE] Synthesizing neural voice patterns → {output_path}")
@@ -371,7 +367,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
         fred_state.last_played_wav = output_path
 
     except Exception as e:
-        logging.error(f"TTS error: {e}")
+        olliePrint(f"TTS error: {e}", level='error')
         olliePrint(f"[CRITICAL] Voice synthesis failure: {e}")
 
 def send_audio_to_pi(audio_file_path, text):
@@ -411,7 +407,7 @@ def send_audio_to_pi(audio_file_path, text):
         olliePrint(f"   → Payload: {len(audio_data)} bytes → '{text[:30]}...'")
         
     except Exception as e:
-        logging.error(f"Error sending audio to Pi: {e}")
+        olliePrint(f"Error sending audio to Pi: {e}", level='error')
         olliePrint(f"[CRITICAL] ArmLink transmission failure: {e}")
         import traceback
         traceback.print_exc()
@@ -430,7 +426,7 @@ try:
     lib.init_db()
     olliePrint(f"[INFO] Memory DB initialized at: {DB_PATH}")
 except Exception as e:
-    logging.error(f"Database initialization failed: {e}")
+    olliePrint(f"Database initialization failed: {e}", level='error')
 
 if not os.path.exists(app.static_folder):
     os.makedirs(app.static_folder)
@@ -489,7 +485,7 @@ def get_graph():
                 })
     
     except Exception as e:
-        logging.error(f"Graph generation error: {e}")
+        olliePrint(f"Graph generation error: {e}", level='error')
     
     return jsonify({"nodes": nodes, "edges": edges})
 
@@ -681,7 +677,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         })
     
     except Exception as e:
-        logging.error(f"Chat error: {e}")
+        olliePrint(f"Chat error: {e}", level='error')
         if fred_state.get_conversation_history() and fred_state.get_conversation_history()[-1].get('role') == 'user':
             fred_state.clear_conversation_history()
         return jsonify({'error': str(e)}), 500
@@ -769,7 +765,7 @@ def process_transcription(text, from_pi=False):
             else:
                 socketio.emit('error', {'message': 'Failed to process voice command'})
         except Exception as e:
-            logging.error(f"Voice processing error: {e}")
+            olliePrint(f"Voice processing error: {e}", level='error')
             socketio.emit('error', {'message': f'Error: {str(e)}'})
     
     threading.Thread(target=process_voice, daemon=True).start()
@@ -841,7 +837,7 @@ if __name__ == '__main__':
         requests.get(config.OLLAMA_BASE_URL, timeout=2)
         olliePrint(f"[NEURAL-NET] AI model interface connected")
     except:
-        logging.warning("[WARNING] AI model interface not responding")
+        olliePrint("[WARNING] AI model interface not responding", level='warning')
     
     # Initialize TTS
     initialize_tts()

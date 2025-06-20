@@ -5,7 +5,6 @@ import requests
 import json
 import time
 import os # For potential environment variables later
-import logging
 import threading
 from ollie_print import olliePrint
 from contextlib import contextmanager
@@ -54,7 +53,7 @@ VALID_REL_TYPES = [
 ]
 
 # --- Logging Setup ---
-logging.basicConfig(level=logging.ERROR, format='%(asctime)s - %(levelname)s - %(message)s')
+# (Replaced standard logging with olliePrint)
 
 # --- Database Initialization ---
 def init_db():
@@ -102,13 +101,13 @@ def init_db():
                     FOREIGN KEY (node_id_to_process) REFERENCES nodes(nodeid)
                 );
             """)
-        logging.info("Database initialized successfully.")
+        olliePrint("Database initialized successfully.")
     except ImportError:
-        logging.error("DuckDB library not found. Database operations will fail.")
+        olliePrint("DuckDB library not found. Database operations will fail.", level='error')
         # Depending on the use case, you might want to raise this error
         # raise ImportError("DuckDB library not found. Please install it.")
     except Exception as e:
-         logging.error(f"Failed to initialize database: {e}")
+         olliePrint(f"Failed to initialize database: {e}", level='error')
          raise
 
 # --- Ollama Interaction Functions ---
@@ -126,13 +125,13 @@ def get_embedding(text):
             raise ValueError(f"Embedding dimension mismatch: expected {EMBEDDING_DIM}, got {len(embedding)}")
         return embedding
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error contacting Ollama Embedding API: {e}")
+        olliePrint(f"Error contacting Ollama Embedding API: {e}", level='error')
         raise ConnectionError(f"Failed to get embedding from Ollama: {e}") from e
     except ValueError as e:
-        logging.error(f"Embedding processing error: {e}")
+        olliePrint(f"Embedding processing error: {e}", level='error')
         raise ValueError(f"Embedding data error: {e}") from e
     except Exception as e:
-        logging.error(f"An unexpected error occurred during embedding: {e}")
+        olliePrint(f"An unexpected error occurred during embedding: {e}", level='error')
         raise RuntimeError(f"Unexpected error getting embedding: {e}") from e
 
 
@@ -168,14 +167,14 @@ Respond with ONLY the JSON object.
             parsed_json = json.loads(json_string)
             return parsed_json
         except json.JSONDecodeError as json_e:
-            logging.error(f"Failed to parse JSON response from Ollama: {json_string}. Error: {json_e}")
+            olliePrint(f"Failed to parse JSON response from Ollama: {json_string}. Error: {json_e}", level='error')
             raise ValueError(f"LLM returned invalid JSON: {json_string}") from json_e
 
     except requests.exceptions.RequestException as e:
-        logging.error(f"Error contacting Ollama Generate API ({OLLAMA_GENERATE_URL}): {e}")
+        olliePrint(f"Error contacting Ollama Generate API ({OLLAMA_GENERATE_URL}, level='error'): {e}")
         raise ConnectionError(f"Failed to get decision from Ollama: {e}") from e
     except Exception as e:
-        logging.error(f"An unexpected error occurred during Ollama generation: {e}")
+        olliePrint(f"An unexpected error occurred during Ollama generation: {e}", level='error')
         raise RuntimeError(f"Unexpected error during LLM generation: {e}") from e
 
 
@@ -231,22 +230,22 @@ Return ONLY your chosen relationship type as a JSON object like this: {{"relatio
         if rel_type in VALID_REL_TYPES:
             return rel_type
         else:
-            logging.error(f"LLM returned invalid relationship type: {rel_type}. Valid types: {VALID_REL_TYPES}. Response: {response_json}")
+            olliePrint(f"LLM returned invalid relationship type: {rel_type}. Valid types: {VALID_REL_TYPES}. Response: {response_json}", level='error')
             raise ValueError(f"LLM returned invalid relationship type: {rel_type}")
     except (ConnectionError, ValueError, RuntimeError) as e:
-        logging.error(f"Failed to determine relationship type using LLM: {e}")
+        olliePrint(f"Failed to determine relationship type using LLM: {e}", level='error')
         raise # Re-raise the error as requested
 
 # --- Core Memory Functions ---
 
 def add_memory(label, text, memory_type, parent_id=None, target_date=None):
     """Adds a new memory node, classifies it, gets embedding, and attempts automatic edge creation."""
-    logging.info(f"Attempting to add memory with label: {label}")
+    olliePrint(f"Attempting to add memory with label: {label}")
     try:
         # 1. Get Embedding
-        logging.info("Generating embedding...")
+        olliePrint("Generating embedding...")
         embedding = get_embedding(text)
-        logging.info("Embedding generated.")
+        olliePrint("Embedding generated.")
 
         # 2. Add Node to DB
         # This block will fail if duckdb is not installed
@@ -267,7 +266,7 @@ def add_memory(label, text, memory_type, parent_id=None, target_date=None):
                      # This case should ideally not happen if INSERT is successful without error
                      raise RuntimeError("Failed to retrieve nodeid after insertion.")
                 new_nodeid = result[0]
-                logging.info(f"Memory node added successfully with ID: {new_nodeid}")
+                olliePrint(f"Memory node added successfully with ID: {new_nodeid}")
 
                 # Add task for edge creation
                 # Using epoch microseconds for task_id to ensure uniqueness and ordering if needed
@@ -279,26 +278,26 @@ def add_memory(label, text, memory_type, parent_id=None, target_date=None):
                     """,
                     [task_id, new_nodeid]
                 )
-                logging.info(f"Pending edge creation task added for node {new_nodeid} with task_id {task_id}")
+                olliePrint(f"Pending edge creation task added for node {new_nodeid} with task_id {task_id}")
 
             # End of 'with duckdb.connect...' block, transaction commits automatically on success
             return new_nodeid
 
         except ImportError:
-            logging.critical("DuckDB library not found. Cannot add memory node.")
+            olliePrint("DuckDB library not found. Cannot add memory node.", level='error')
             raise ImportError("DuckDB library not found. Cannot add memory node.")
         except duckdb.Error as db_e:
-             logging.error(f"Database error during node insertion: {db_e}")
+             olliePrint(f"Database error during node insertion: {db_e}", level='error')
              raise # Re-raise critical DB errors
 
 
     except (ConnectionError, ValueError, RuntimeError) as e:
         # Errors during classification or embedding are critical
-        logging.error(f"Failed to add memory due to pre-processing error: {e}")
+        olliePrint(f"Failed to add memory due to pre-processing error: {e}", level='error')
         # Don't return None, let the exception propagate as per requirement
         raise
     except Exception as e:
-         logging.error(f"Unexpected critical error in add_memory: {e}")
+         olliePrint(f"Unexpected critical error in add_memory: {e}", level='error')
          raise
 
 
@@ -318,7 +317,7 @@ def supersede_memory(old_nodeid, new_label, new_text, new_memory_type, target_da
         ConnectionError, RuntimeError: For issues during embedding or DB operations.
         duckdb.Error: For database errors.
     """
-    logging.info(f"Attempting to supersede node {old_nodeid} with label: {new_label}")
+    olliePrint(f"Attempting to supersede node {old_nodeid} with label: {new_label}")
 
     # Validate memory type
     if new_memory_type not in ('Semantic', 'Episodic', 'Procedural'):
@@ -333,10 +332,10 @@ def supersede_memory(old_nodeid, new_label, new_text, new_memory_type, target_da
                 if not old_node:
                     already_superseded = con.execute("SELECT 1 FROM nodes WHERE nodeid = ?", [old_nodeid]).fetchone()
                     if already_superseded:
-                         logging.error(f"Error: Node {old_nodeid} has already been superseded.")
+                         olliePrint(f"Error: Node {old_nodeid} has already been superseded.", level='error')
                          raise ValueError(f"Node {old_nodeid} has already been superseded.")
                     else:
-                         logging.error(f"Error: Node {old_nodeid} not found.")
+                         olliePrint(f"Error: Node {old_nodeid} not found.", level='error')
                          raise ValueError(f"Node {old_nodeid} not found.")
 
                 old_parent_id = old_node[0]
@@ -349,9 +348,9 @@ def supersede_memory(old_nodeid, new_label, new_text, new_memory_type, target_da
                 )
 
                 # Get embedding for the new memory (can raise errors)
-                logging.info("Generating embedding for new memory...")
+                olliePrint("Generating embedding for new memory...")
                 embedding = get_embedding(new_text)
-                logging.info("Embedding generated.")
+                olliePrint("Embedding generated.")
 
 
                 # Insert the new node using the provided new_memory_type
@@ -368,7 +367,7 @@ def supersede_memory(old_nodeid, new_label, new_text, new_memory_type, target_da
                 if not result:
                      raise RuntimeError("Failed to insert new node during supersede.")
                 new_nodeid = result[0]
-                logging.info(f"Added new node {new_nodeid} (type: {new_memory_type}) to supersede {old_nodeid}")
+                olliePrint(f"Added new node {new_nodeid} (type: {new_memory_type}) to supersede {old_nodeid}")
 
                 # Add 'updates' edge using the consolidated add_edge function
                 try:
@@ -380,30 +379,30 @@ def supersede_memory(old_nodeid, new_label, new_text, new_memory_type, target_da
                 except (ValueError, ConnectionError, RuntimeError, duckdb.Error) as edge_e:
                      # Log edge error but commit node changes if insertion was successful
                      # add_edge logs its own errors too.
-                     logging.error(f"Failed to add 'updates' edge during supersede (logged by supersede_memory): {edge_e}. Node changes will still be committed.")
+                     olliePrint(f"Failed to add 'updates' edge during supersede (logged by supersede_memory, level='error'): {edge_e}. Node changes will still be committed.")
                 except Exception as e:
                     # Catch unexpected errors from add_edge
-                    logging.error(f"Unexpected error adding 'updates' edge during supersede: {e}. Node changes will still be committed.")
+                    olliePrint(f"Unexpected error adding 'updates' edge during supersede: {e}. Node changes will still be committed.", level='error')
 
 
                 con.commit()
-                logging.info(f"Node {old_nodeid} successfully superseded by {new_nodeid}")
+                olliePrint(f"Node {old_nodeid} successfully superseded by {new_nodeid}")
                 return new_nodeid
 
             except (ConnectionError, ValueError, RuntimeError, duckdb.Error) as e:
-                logging.error(f"Error during supersede operation: {e}")
+                olliePrint(f"Error during supersede operation: {e}", level='error')
                 con.rollback()
                 raise # Re-raise the critical error
             except Exception as e:
-                 logging.error(f"Unexpected error during supersede: {e}")
+                 olliePrint(f"Unexpected error during supersede: {e}", level='error')
                  con.rollback()
                  raise RuntimeError(f"Unexpected error during supersede: {e}") from e
 
     except ImportError:
-        logging.critical("DuckDB library not found. Cannot supersede memory.")
+        olliePrint("DuckDB library not found. Cannot supersede memory.", level='error')
         raise ImportError("DuckDB library not found. Cannot supersede memory.")
     except Exception as e:
-         logging.error(f"Unexpected critical error in supersede_memory: {e}")
+         olliePrint(f"Unexpected critical error in supersede_memory: {e}", level='error')
          raise
 
 
@@ -458,17 +457,17 @@ def add_edge(sourceid: int, targetid: int, rel_type: str | None = None, con: duc
         # Determine relationship type if not provided
         determined_rel_type = rel_type # Use a different variable name
         if determined_rel_type is None:
-            logging.info(f"Relationship type not provided for edge {sourceid} -> {targetid}. Determining using LLM.")
+            olliePrint(f"Relationship type not provided for edge {sourceid} -> {targetid}. Determining using LLM.")
             # This call can raise errors (ConnectionError, ValueError, RuntimeError), which will propagate up
             determined_rel_type = determine_edge_type_llm(source_node_info, target_node_info)
-            logging.info(f"LLM determined relationship type: {determined_rel_type}")
+            olliePrint(f"LLM determined relationship type: {determined_rel_type}")
         elif determined_rel_type not in VALID_REL_TYPES:
              # Validate explicitly provided type
              raise ValueError(f"Provided relationship type '{determined_rel_type}' is not valid. Must be one of: {VALID_REL_TYPES}")
 
         # Check again if LLM failed to return a valid type (though determine_edge_type_llm should raise)
         if determined_rel_type not in VALID_REL_TYPES:
-             logging.error(f"Invalid relationship type determined or provided: {determined_rel_type}")
+             olliePrint(f"Invalid relationship type determined or provided: {determined_rel_type}", level='error')
              raise ValueError(f"Relationship type '{determined_rel_type}' is invalid.")
 
 
@@ -480,15 +479,15 @@ def add_edge(sourceid: int, targetid: int, rel_type: str | None = None, con: duc
         )
         # Update last_access for both nodes involved in the edge
         con.execute("UPDATE nodes SET last_access = ? WHERE nodeid IN (?, ?)", [now, sourceid, targetid])
-        logging.info(f"Successfully added edge ({determined_rel_type}) from {sourceid} to {targetid}")
+        olliePrint(f"Successfully added edge ({determined_rel_type}) from {sourceid} to {targetid}")
 
     except (ValueError, ConnectionError, RuntimeError, duckdb.Error) as e:
         # Log the error, but let the caller handle transaction rollback/commit based on this exception.
-        logging.error(f"Error adding edge from {sourceid} to {targetid} within provided transaction: {e}")
+        olliePrint(f"Error adding edge from {sourceid} to {targetid} within provided transaction: {e}", level='error')
         raise # Re-raise the error for the caller to handle
     except Exception as e:
          # Catch any other unexpected errors
-         logging.error(f"Unexpected error adding edge: {e}")
+         olliePrint(f"Unexpected error adding edge: {e}", level='error')
          raise RuntimeError(f"Unexpected error adding edge: {e}") from e
 
 
@@ -511,7 +510,7 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
     try:
         with duckdb.connect(DB_FILE) as con:
             if use_keyword_search:
-                logging.info("Performing keyword search.")
+                olliePrint("Performing keyword search.")
                 # Basic keyword tokenization (split by space)
                 keywords = query_text.lower().split()
                 if not keywords:
@@ -555,22 +554,22 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
                 try:
                     keyword_search_results = con.execute(keyword_query, params_keyword).fetchall()
                     results.extend(keyword_search_results)
-                    logging.info(f"Keyword search found {len(keyword_search_results)} nodes.")
+                    olliePrint(f"Keyword search found {len(keyword_search_results)} nodes.")
                 except duckdb.Error as db_err:
-                    logging.error(f"Database error during keyword search: {db_err}")
+                    olliePrint(f"Database error during keyword search: {db_err}", level='error')
                     return [] # Return empty list on DB error during keyword search
                 except Exception as e:
-                    logging.error(f"Unexpected error during keyword search: {e}")
+                    olliePrint(f"Unexpected error during keyword search: {e}", level='error')
                     return []
 
             else: # Semantic Search (default)
                 try:
                     query_embedding = get_embedding(query_text) # Can raise ConnectionError, ValueError
                 except (ConnectionError, ValueError) as e:
-                    logging.error(f"Failed to get embedding for search query: {e}")
+                    olliePrint(f"Failed to get embedding for search query: {e}", level='error')
                     return [] # If embedding fails for semantic search, we cannot search
 
-                logging.info("Performing embedding similarity search.")
+                olliePrint("Performing embedding similarity search.")
                 try:
                     base_query = """
                     SELECT nodeid, label, text, type, created_at, last_access, target_date, list_cosine_similarity(embedding, ?) AS similarity
@@ -595,13 +594,13 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
 
                     similarity_results = con.execute(base_query, params_semantic).fetchall()
                     results.extend(similarity_results)
-                    logging.info(f"Semantic search found {len(similarity_results)} nodes.")
+                    olliePrint(f"Semantic search found {len(similarity_results)} nodes.")
 
                 except duckdb.Error as db_err:
-                     logging.error(f"Database error during similarity search: {db_err}")
+                     olliePrint(f"Database error during similarity search: {db_err}", level='error')
                      return []
                 except Exception as e:
-                     logging.error(f"Unexpected error during similarity search: {e}")
+                     olliePrint(f"Unexpected error during similarity search: {e}", level='error')
                      return []
 
             # Update last_access for all retrieved nodes (from either search type)
@@ -611,7 +610,7 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
                     placeholders = ','.join(['?'] * len(node_ids))
                     con.execute(f"UPDATE nodes SET last_access = ? WHERE nodeid IN ({placeholders})", [now] + node_ids)
                     node_ids_updated.update(node_ids)
-                    logging.info(f"Updated last_access for {len(node_ids)} retrieved nodes.")
+                    olliePrint(f"Updated last_access for {len(node_ids)} retrieved nodes.")
 
             # Format results as dictionaries
             formatted_results = []
@@ -650,7 +649,7 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
                                 "target_type": edge[3]
                             })
                     except Exception as e:
-                        logging.error(f"Error fetching outgoing edges for node {nodeid}: {e}")
+                        olliePrint(f"Error fetching outgoing edges for node {nodeid}: {e}", level='error')
                     
                     # Get incoming edges for this node
                     try:
@@ -670,20 +669,20 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
                                 "source_type": edge[3]
                             })
                     except Exception as e:
-                        logging.error(f"Error fetching incoming edges for node {nodeid}: {e}")
+                        olliePrint(f"Error fetching incoming edges for node {nodeid}: {e}", level='error')
                     
                     node_data["connections"] = connections
                 
                 formatted_results.append(node_data)
 
     except ImportError:
-        logging.error("DuckDB library not found. Cannot perform memory search.")
+        olliePrint("DuckDB library not found. Cannot perform memory search.", level='error')
         return []
     except duckdb.Error as e:
-        logging.error(f"Failed to connect to database for memory search: {e}")
+        olliePrint(f"Failed to connect to database for memory search: {e}", level='error')
         return []
     except Exception as e:
-        logging.error(f"Unexpected critical error in search_memory: {e}")
+        olliePrint(f"Unexpected critical error in search_memory: {e}", level='error')
         return []
 
     return formatted_results
@@ -703,8 +702,10 @@ def get_graph_data(center_nodeid, depth=1):
 
             # --- Start of proposed addition ---
             if not center_nodeid:
-                logging.warning("get_graph_data called without a center_nodeid. "
-                                "The Flask /graph route should provide a default. Returning empty graph.")
+                olliePrint(
+                    "get_graph_data called without a center_nodeid. The Flask /graph route should provide a default. Returning empty graph.",
+                    level='warning'
+                )
                 return {"nodes": [], "edges": []}
 
             center_node_check = con.execute(
@@ -712,8 +713,10 @@ def get_graph_data(center_nodeid, depth=1):
                 [center_nodeid]
             ).fetchone()
             if not center_node_check:
-                logging.error(f"Provided center_nodeid {center_nodeid} for get_graph_data "
-                              "is not found or is superseded. Returning empty graph.")
+                olliePrint(
+                    f"Provided center_nodeid {center_nodeid} for get_graph_data is not found or is superseded. Returning empty graph.",
+                    level='error'
+                )
                 return {"nodes": [], "edges": []}
             
             nodes_to_fetch = {center_nodeid} # Initialize after validation
@@ -781,28 +784,28 @@ def get_graph_data(center_nodeid, depth=1):
                                edges.append({"source": sourceid, "target": targetid, "rel_type": rel_type})
 
                 except duckdb.Error as e:
-                     logging.error(f"Database error during graph data retrieval: {e}")
+                     olliePrint(f"Database error during graph data retrieval: {e}", level='error')
                      # Continue if possible, graph might be incomplete
                 except Exception as e:
-                     logging.error(f"Unexpected error during graph data retrieval: {e}")
+                     olliePrint(f"Unexpected error during graph data retrieval: {e}", level='error')
 
             if all_involved_nodes:
-                logging.info(f"Updating last_access for {len(all_involved_nodes)} nodes involved in graph data.")
+                olliePrint(f"Updating last_access for {len(all_involved_nodes)} nodes involved in graph data.")
                 node_ids_list = list(all_involved_nodes)
                 id_placeholders = ','.join(['?'] * len(node_ids_list))
                 try:
                      con.execute(f"UPDATE nodes SET last_access = ? WHERE nodeid IN ({id_placeholders})", [now] + node_ids_list)
                 except duckdb.Error as e:
-                     logging.error(f"Failed to update last_access for graph nodes: {e}")
+                     olliePrint(f"Failed to update last_access for graph nodes: {e}", level='error')
 
     except ImportError:
-        logging.error("DuckDB library not found. Cannot get graph data.")
+        olliePrint("DuckDB library not found. Cannot get graph data.", level='error')
         return {"nodes": [], "edges": []}
     except duckdb.Error as e:
-        logging.error(f"Failed to connect to database for graph data: {e}")
+        olliePrint(f"Failed to connect to database for graph data: {e}", level='error')
         return {"nodes": [], "edges": []} # Return empty graph on connection error
     except Exception as e:
-        logging.error(f"Unexpected critical error in get_graph_data: {e}")
+        olliePrint(f"Unexpected critical error in get_graph_data: {e}", level='error')
         return {"nodes": [], "edges": []}
 
 
@@ -812,7 +815,7 @@ def get_graph_data(center_nodeid, depth=1):
 def get_all_active_nodes_for_viz():
     """Retrieves all active nodes with their embeddings and total edge counts for visualization."""
     nodes_data = []
-    logging.info("Fetching all active nodes for visualization.")
+    olliePrint("Fetching all active nodes for visualization.")
     try:
         with duckdb.connect(DB_FILE) as con:
             # Fetch all active nodes with their basic details and embeddings
@@ -825,7 +828,7 @@ def get_all_active_nodes_for_viz():
             ).fetchall()
 
             if not active_nodes_res:
-                logging.info("No active nodes found for visualization.")
+                olliePrint("No active nodes found for visualization.")
                 return []
 
             for node_row in active_nodes_res:
@@ -856,7 +859,7 @@ def get_all_active_nodes_for_viz():
                         # Assuming embedding is a numpy array or similar that can be converted
                         processed_embedding = [float(e) for e in embedding]
                     except TypeError:
-                        logging.warning(f"Embedding for node {nodeid} is not iterable, setting to empty list.")
+                        olliePrint(f"Embedding for node {nodeid} is not iterable, setting to empty list.", level='warning')
                         processed_embedding = [] # Or handle as an error
                 elif embedding is None:
                     processed_embedding = []
@@ -872,17 +875,17 @@ def get_all_active_nodes_for_viz():
                     "total_edge_count": total_edge_count
                 })
             
-            logging.info(f"Successfully fetched and processed {len(nodes_data)} active nodes for visualization.")
+            olliePrint(f"Successfully fetched and processed {len(nodes_data)} active nodes for visualization.")
             return nodes_data
 
     except ImportError:
-        logging.error("DuckDB library not found. Cannot get_all_active_nodes_for_viz.")
+        olliePrint("DuckDB library not found. Cannot get_all_active_nodes_for_viz.", level='error')
         return []
     except duckdb.Error as e:
-        logging.error(f"Database error in get_all_active_nodes_for_viz: {e}")
+        olliePrint(f"Database error in get_all_active_nodes_for_viz: {e}", level='error')
         return []
     except Exception as e:
-        logging.error(f"Unexpected error in get_all_active_nodes_for_viz: {e}")
+        olliePrint(f"Unexpected error in get_all_active_nodes_for_viz: {e}", level='error')
         return []
 
 
@@ -890,7 +893,7 @@ def forget_old_memories(days_old=180):
     """Deletes nodes that were superseded long ago and haven't been accessed."""
     cutoff_date = datetime.datetime.now() - datetime.timedelta(days=days_old)
     deleted_count = 0
-    logging.info(f"Starting forgetting process for memories superseded and not accessed before {cutoff_date}...")
+    olliePrint(f"Starting forgetting process for memories superseded and not accessed before {cutoff_date}...")
 
     try:
         with duckdb.connect(DB_FILE) as con:
@@ -909,16 +912,16 @@ def forget_old_memories(days_old=180):
                 nodes_to_delete_ids = [row[0] for row in nodes_to_delete_result]
 
                 if not nodes_to_delete_ids:
-                    logging.info("No old memories found meeting the forgetting criteria.")
+                    olliePrint("No old memories found meeting the forgetting criteria.")
                     con.commit()
                     return 0
 
-                logging.info(f"Identified {len(nodes_to_delete_ids)} nodes to forget.")
+                olliePrint(f"Identified {len(nodes_to_delete_ids)} nodes to forget.")
 
                 id_placeholders = ",".join(['?'] * len(nodes_to_delete_ids))
                 delete_edges_query = f"DELETE FROM edges WHERE sourceid IN ({id_placeholders}) OR targetid IN ({id_placeholders})"
                 con.execute(delete_edges_query, nodes_to_delete_ids + nodes_to_delete_ids)
-                logging.info(f"Deleted associated edges for {len(nodes_to_delete_ids)} nodes.")
+                olliePrint(f"Deleted associated edges for {len(nodes_to_delete_ids)} nodes.")
 
                 delete_nodes_query = f"DELETE FROM nodes WHERE nodeid IN ({id_placeholders})"
                 cur = con.execute(delete_nodes_query, nodes_to_delete_ids)
@@ -927,30 +930,30 @@ def forget_old_memories(days_old=180):
                     deleted_count = cur.fetchall()[0][0] # DuckDB DELETE RETURNING COUNT(*) might work this way
                 except:
                      # If fetchall doesn't work as expected or returns nothing useful
-                     logging.warning("Could not get exact deleted row count from cursor, using initial count.")
+                     olliePrint("Could not get exact deleted row count from cursor, using initial count.", level='warning')
                      deleted_count = len(nodes_to_delete_ids)
 
                 con.commit()
-                logging.info(f"Finished forgetting old memories. Deleted {deleted_count} nodes.")
+                olliePrint(f"Finished forgetting old memories. Deleted {deleted_count} nodes.")
 
             except duckdb.Error as e:
                 con.rollback()
-                logging.error(f"Database error during forgetting old memories: {e}")
+                olliePrint(f"Database error during forgetting old memories: {e}", level='error')
                 # Do not return, let error propagate or be handled by outer block
                 raise
             except Exception as e:
                 con.rollback()
-                logging.error(f"Unexpected error during forgetting old memories: {e}")
+                olliePrint(f"Unexpected error during forgetting old memories: {e}", level='error')
                 raise RuntimeError(f"Unexpected error during forgetting: {e}") from e
 
     except ImportError:
-         logging.error("DuckDB library not found. Cannot forget old memories.")
+         olliePrint("DuckDB library not found. Cannot forget old memories.", level='error')
          return 0 # Indicate nothing was done
     except duckdb.Error as e:
-         logging.error(f"Failed to connect to database for forgetting memories: {e}")
+         olliePrint(f"Failed to connect to database for forgetting memories: {e}", level='error')
          return 0 # Indicate nothing was done
     except Exception as e:
-         logging.error(f"Unexpected critical error in forget_old_memories: {e}")
+         olliePrint(f"Unexpected critical error in forget_old_memories: {e}", level='error')
          return 0
 
 
@@ -988,14 +991,14 @@ def process_pending_edges(limit_per_run=5):
             ).fetchall()
 
             if not pending_tasks_res:
-                logging.info("No pending edge creation tasks found.")
+                olliePrint("No pending edge creation tasks found.")
                 # Query for total remaining to ensure accurate count
                 remaining_count_res = con.execute("SELECT COUNT(*) FROM pending_edge_creation_tasks WHERE status = 'pending';").fetchone()
                 summary["tasks_remaining_after_run"] = remaining_count_res[0] if remaining_count_res else 0
                 return summary
 
             for task_id, node_id_to_process in pending_tasks_res:
-                logging.info(f"Processing task {task_id} for node {node_id_to_process}")
+                olliePrint(f"Processing task {task_id} for node {node_id_to_process}")
                 summary["nodes_processed_this_run"] += 1
                 node_had_error = False
                 edges_added_for_this_node = 0
@@ -1020,7 +1023,7 @@ def process_pending_edges(limit_per_run=5):
                     ).fetchone()
 
                     if not source_node_details_res:
-                        logging.warning(f"Node {node_id_to_process} for task {task_id} not found or is superseded. Marking task as failed.")
+                        olliePrint(f"Node {node_id_to_process} for task {task_id} not found or is superseded. Marking task as failed.", level='warning')
                         con.execute(
                             "UPDATE pending_edge_creation_tasks SET status = 'failed', last_error = ?, updated_at = ? WHERE task_id = ?;",
                             ["Source node not found or superseded.", now_ts, task_id]
@@ -1037,7 +1040,7 @@ def process_pending_edges(limit_per_run=5):
                     non_self_similar_nodes = [node for node in similar_nodes if node['nodeid'] != node_id_to_process]
 
                     if not non_self_similar_nodes:
-                        logging.info(f"No similar nodes found (other than self) for node {node_id_to_process}. Task {task_id} completed.")
+                        olliePrint(f"No similar nodes found (other than self) for node {node_id_to_process}. Task {task_id} completed.")
                         con.execute(
                             "UPDATE pending_edge_creation_tasks SET status = 'completed', updated_at = ? WHERE task_id = ?;",
                             [now_ts, task_id]
@@ -1045,7 +1048,7 @@ def process_pending_edges(limit_per_run=5):
                         con.commit() # Commit status update
                         continue
 
-                    logging.info(f"Found {len(non_self_similar_nodes)} relevant similar nodes for edge creation for node {node_id_to_process}.")
+                    olliePrint(f"Found {len(non_self_similar_nodes)} relevant similar nodes for edge creation for node {node_id_to_process}.")
 
                     for similar_node in non_self_similar_nodes:
                         similar_nodeid = similar_node['nodeid']
@@ -1058,15 +1061,15 @@ def process_pending_edges(limit_per_run=5):
                         ).fetchone()
 
                         if not target_node_valid_res:
-                            logging.warning(f"Skipping auto-edge from {node_id_to_process} to {similar_nodeid} as target is missing or superseded.")
+                            olliePrint(f"Skipping auto-edge from {node_id_to_process} to {similar_nodeid} as target is missing or superseded.", level='warning')
                             continue
                         
                         target_node_info = {"label": target_node_valid_res[0], "text": target_node_valid_res[1], "type": target_node_valid_res[2]}
 
-                        logging.info(f"Checking relationship between node {node_id_to_process} and similar node {similar_nodeid}...")
+                        olliePrint(f"Checking relationship between node {node_id_to_process} and similar node {similar_nodeid}...")
                         
                         determined_rel_type = determine_edge_type_llm(source_node_info, target_node_info) # Can raise
-                        logging.info(f"LLM determined relationship from {node_id_to_process} to {similar_nodeid} as: {determined_rel_type}")
+                        olliePrint(f"LLM determined relationship from {node_id_to_process} to {similar_nodeid} as: {determined_rel_type}")
                         
                         summary["edges_attempted_this_run"] += 1
                         add_edge(sourceid=node_id_to_process,
@@ -1087,7 +1090,7 @@ def process_pending_edges(limit_per_run=5):
                     con.commit() # Commit successful processing of this task
 
                 except (ValueError, ConnectionError, RuntimeError, duckdb.Error) as e:
-                    logging.error(f"Error processing task {task_id} for node {node_id_to_process}: {e}")
+                    olliePrint(f"Error processing task {task_id} for node {node_id_to_process}: {e}", level='error')
                     if con.in_transaction: #.is_active for newer duckdb versions
                         con.rollback() # Rollback if error occurred mid-transaction for this task
                     
@@ -1101,12 +1104,12 @@ def process_pending_edges(limit_per_run=5):
                                 [str(e)[:1024], now_ts, task_id] # Limit error message length
                             ) # attempts already incremented when set to 'processing'
                     except Exception as update_err:
-                        logging.error(f"Critical: Failed to even mark task {task_id} as failed: {update_err}")
+                        olliePrint(f"Critical: Failed to even mark task {task_id} as failed: {update_err}", level='error')
 
                     summary["nodes_with_errors_this_run"] += 1
                     node_had_error = True # To prevent marking as completed outside
                 except Exception as e_unexpected: # Catch any other unexpected Python error
-                    logging.error(f"Unexpected Python error processing task {task_id} for node {node_id_to_process}: {e_unexpected}", exc_info=True)
+                    olliePrint(f"Unexpected Python error processing task {task_id} for node {node_id_to_process}: {e_unexpected}", level='error')
                     if con.in_transaction:
                         con.rollback()
                     try:
@@ -1116,7 +1119,7 @@ def process_pending_edges(limit_per_run=5):
                                 [f"Unexpected: {str(e_unexpected)[:1000]}", now_ts, task_id]
                             )
                     except Exception as update_err:
-                        logging.error(f"Critical: Failed to mark task {task_id} as failed after unexpected error: {update_err}")
+                        olliePrint(f"Critical: Failed to mark task {task_id} as failed after unexpected error: {update_err}", level='error')
                     summary["nodes_with_errors_this_run"] += 1
                     node_had_error = True
 
@@ -1126,14 +1129,14 @@ def process_pending_edges(limit_per_run=5):
             summary["tasks_remaining_after_run"] = remaining_count_res[0] if remaining_count_res else 0
 
     except ImportError:
-        logging.error("DuckDB library not found. Cannot process pending edges.")
+        olliePrint("DuckDB library not found. Cannot process pending edges.", level='error')
         # tasks_remaining_after_run will be 0, which is not ideal but reflects no processing happened.
     except duckdb.Error as e:
-        logging.error(f"Database connection/query error in process_pending_edges: {e}")
+        olliePrint(f"Database connection/query error in process_pending_edges: {e}", level='error')
     except Exception as e:
-        logging.error(f"Unexpected critical error in process_pending_edges: {e}", exc_info=True)
+        olliePrint(f"Unexpected critical error in process_pending_edges: {e}", level='error')
 
-    logging.info(f"Pending edge processing run summary: {summary}")
+    olliePrint(f"Pending edge processing run summary: {summary}")
     return summary
 
 
@@ -1153,47 +1156,47 @@ def clear_all_memory(force=False):
     if not force:
         env = os.getenv('FRED_ENV', 'production').lower()
         if env != 'development' and env != 'test':
-            logging.warning("Attempted to clear memory in non-development environment! Set force=True to override.")
+            olliePrint("Attempted to clear memory in non-development environment! Set force=True to override.", level='warning')
             return False
             
-    logging.warning("Attempting to clear ALL memory by dropping and re-initializing tables!")
+    olliePrint("Attempting to clear ALL memory by dropping and re-initializing tables!", level='warning')
     try:
         with duckdb.connect(DB_FILE) as con:
             con.begin() # Start transaction
             try:
-                logging.info("Dropping existing 'edges' table (if exists)...")
+                olliePrint("Dropping existing 'edges' table (if exists)...")
                 con.execute("DROP TABLE IF EXISTS edges;")
-                logging.info("Dropped 'edges' table.")
+                olliePrint("Dropped 'edges' table.")
                 
-                logging.info("Dropping existing 'nodes' table (if exists)...")
+                olliePrint("Dropping existing 'nodes' table (if exists)...")
                 con.execute("DROP TABLE IF EXISTS nodes;")
-                logging.info("Dropped 'nodes' table.")
+                olliePrint("Dropped 'nodes' table.")
                 
                 con.commit() # Commit drops
-                logging.info("Tables dropped. Now re-initializing schema...")
+                olliePrint("Tables dropped. Now re-initializing schema...")
                 
                 # Re-initialize the schema
                 init_db() # This will create the tables again
                 
-                logging.warning("Successfully cleared and re-initialized all memory.")
+                olliePrint("Successfully cleared and re-initialized all memory.", level='warning')
                 return True
             except duckdb.Error as e:
                 con.rollback() # Rollback on error
-                logging.error(f"Database error during memory clearing (drop/re-init): {e}")
+                olliePrint(f"Database error during memory clearing (drop/re-init, level='error'): {e}")
                 return False
             except Exception as e:
                 con.rollback()
-                logging.error(f"Unexpected error during memory clearing (drop/re-init): {e}")
+                olliePrint(f"Unexpected error during memory clearing (drop/re-init, level='error'): {e}")
                 return False
 
     except ImportError:
-         logging.error("DuckDB library not found. Cannot clear memory.")
+         olliePrint("DuckDB library not found. Cannot clear memory.", level='error')
          return False
     except duckdb.Error as e:
-         logging.error(f"Failed to connect to database for clearing memory: {e}")
+         olliePrint(f"Failed to connect to database for clearing memory: {e}", level='error')
          return False
     except Exception as e:
-         logging.error(f"Unexpected critical error in clear_all_memory: {e}")
+         olliePrint(f"Unexpected critical error in clear_all_memory: {e}", level='error')
          return False
 
 # --- Initialization ---
@@ -1206,6 +1209,6 @@ try:
         olliePrint("Database ready.")
         # Add test calls here if desired, wrapped in try/except ImportError
 except ImportError:
-    logging.warning("DuckDB not found during import. Database functionality is disabled.")
+    olliePrint("DuckDB not found during import. Database functionality is disabled.", level='warning')
     if __name__ == "__main__":
         olliePrint("Librarian script loaded, but DuckDB is missing. Database functionality disabled.")

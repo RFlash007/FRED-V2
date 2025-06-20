@@ -8,7 +8,6 @@ import socketio
 import json
 import hashlib
 import time
-import logging
 import argparse
 import ssl
 import numpy as np
@@ -90,12 +89,12 @@ async def offer(request):
     
     # Check rate limits
     if not check_rate_limit(client_ip):
-        logging.warning(f"Rate limit exceeded for {client_ip}")
+        olliePrint(f"Rate limit exceeded for {client_ip}", level='warning')
         return web.json_response({'error': 'Too many connections'}, status=429)
     
     # Authenticate request
     if not authenticate_request(request):
-        logging.warning(f"Unauthorized connection attempt from {client_ip}")
+        olliePrint(f"Unauthorized connection attempt from {client_ip}", level='warning')
         return web.json_response({'error': 'Unauthorized'}, status=401)
     
     try:
@@ -104,7 +103,7 @@ async def offer(request):
         pc = RTCPeerConnection()
         pcs.add(pc)
         
-        logging.info(f"[SHELTER-NET] New ArmLink connection from {client_ip}")
+        olliePrint(f"[SHELTER-NET] New ArmLink connection from {client_ip}")
 
         # Initialize media recorder (blackhole – we don't save media)
         recorder = MediaBlackhole()
@@ -112,7 +111,7 @@ async def offer(request):
         try:
             await recorder.start()
         except Exception as e:
-            logging.warning(f"Recorder failed to start: {e}")
+            olliePrint(f"Recorder failed to start: {e}", level='warning')
         
         # -------------------------------------------------------------
         #  STT SET-UP (run only once – on first connection)
@@ -126,7 +125,7 @@ async def offer(request):
                 if not text or not text.strip():
                     return
 
-                logging.info(f"[ARMLINK COMM] Field operative transmission → '{text}'")
+                olliePrint(f"[ARMLINK COMM] Field operative transmission → '{text}'")
 
                 # Prepare chat request for main server
                 payload = {
@@ -160,9 +159,9 @@ async def offer(request):
                                         except Exception:
                                             data_channels.discard(ch)
                         else:
-                            logging.error(f"Chat request failed: {resp.status_code}")
+                            olliePrint(f"Chat request failed: {resp.status_code}", level='error')
                     except Exception as exc:
-                        logging.error(f"Error relaying message to F.R.E.D.: {exc}")
+                        olliePrint(f"Error relaying message to F.R.E.D.: {exc}", level='error')
 
                 import threading as _threading
                 _threading.Thread(target=_call_fred, daemon=True).start()
@@ -170,9 +169,9 @@ async def offer(request):
             # Start STT processing – this will spin up the processing thread
             try:
                 stt_service.start_processing(process_pi_transcription)
-                logging.info("STT processing thread started for Pi audio")
+                olliePrint("STT processing thread started for Pi audio")
             except Exception as stt_err:
-                logging.error(f"Unable to start STT processing: {stt_err}")
+                olliePrint(f"Unable to start STT processing: {stt_err}", level='error')
         
         # Store data channel when created
         @pc.on('datachannel')
@@ -362,7 +361,7 @@ async def offer(request):
                 try:
                     recorder.addTrack(track)
                 except Exception as rec_err:
-                    logging.error(f"[WARNING] Track recording failed: {rec_err}")
+                    olliePrint(f"[WARNING] Track recording failed: {rec_err}", level='error')
 
         @pc.on('connectionstatechange')
         async def on_connectionstatechange():
@@ -385,7 +384,7 @@ async def offer(request):
                                   'type': pc.localDescription.type})
     
     except Exception as e:
-        logging.error(f"Error handling offer from {client_ip}: {e}")
+        olliePrint(f"Error handling offer from {client_ip}: {e}", level='error')
         return web.json_response({'error': 'Internal server error'}, status=500)
 
 # SocketIO event handlers for receiving responses from main F.R.E.D. server
@@ -494,7 +493,7 @@ async def main():
     args = parser.parse_args()
 
     if args.verbose:
-        logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+        olliePrint("Verbose logging enabled", level='info')
 
     if args.cert_file:
         ssl_context = ssl.SSLContext()

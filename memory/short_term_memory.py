@@ -2,7 +2,6 @@ import sqlite3
 import json
 import numpy as np
 import requests
-import logging
 import threading
 import os
 from datetime import datetime
@@ -49,9 +48,9 @@ def init_stm_db():
                     message_range TEXT NOT NULL
                 )
             """)
-        logging.info("STM database initialized successfully")
+        olliePrint("STM database initialized successfully")
     except Exception as e:
-        logging.error(f"Failed to initialize STM database: {e}")
+        olliePrint(f"Failed to initialize STM database: {e}", level='error')
         raise
 
 def get_embedding(text: str) -> Optional[np.ndarray]:
@@ -68,7 +67,7 @@ def get_embedding(text: str) -> Optional[np.ndarray]:
             raise ValueError(f"Embedding dimension mismatch: expected {config.EMBEDDING_DIM}, got {len(embedding)}")
         return np.array(embedding, dtype=np.float32)
     except Exception as e:
-        logging.error(f"Failed to get embedding: {e}")
+        olliePrint(f"Failed to get embedding: {e}", level='error')
         return None
 
 def analyze_conversation_segment(messages: List[Dict], focus_start: int, focus_end: int, context_start: int, context_end: int) -> Optional[str]:
@@ -118,7 +117,7 @@ Key learnings from ONLY the marked ">>>" messages:"""
         return result if result else None
         
     except Exception as e:
-        logging.error(f"Failed to analyze conversation segment: {e}")
+        olliePrint(f"Failed to analyze conversation segment: {e}", level='error')
         return None
 
 def check_similarity_and_store(content: str, source_messages: List[Dict], message_range: str) -> bool:
@@ -146,7 +145,7 @@ def check_similarity_and_store(content: str, source_messages: List[Dict], messag
             max_similarity = np.max(similarities)
             
             if max_similarity > config.STM_SIMILARITY_THRESHOLD:
-                logging.info(f"STM content too similar (similarity: {max_similarity:.3f}), skipping storage")
+                olliePrint(f"STM content too similar (similarity: {max_similarity:.3f}), skipping storage")
                 return False
         
         # Store the new memory
@@ -176,11 +175,11 @@ def check_similarity_and_store(content: str, source_messages: List[Dict], messag
                     (to_remove,)
                 )
         
-        logging.info(f"Stored new STM: {content[:100]}...")
+        olliePrint(f"Stored new STM: {content[:100]}...")
         return True
         
     except Exception as e:
-        logging.error(f"Failed to check similarity and store: {e}")
+        olliePrint(f"Failed to check similarity and store: {e}", level='error')
         return False
 
 def query_stm_context(user_message: str) -> str:
@@ -228,7 +227,7 @@ def query_stm_context(user_message: str) -> str:
 (END RECENTLY POSSIBLY RELATED CONTEXT)"""
         
     except Exception as e:
-        logging.error(f"Failed to query STM context: {e}")
+        olliePrint(f"Failed to query STM context: {e}", level='error')
         return ""
 
 def process_stm_analysis(conversation_history: List[Dict], last_analyzed_index: int, current_total: int):
@@ -258,7 +257,7 @@ def process_stm_analysis(conversation_history: List[Dict], last_analyzed_index: 
         message_range = f"focus {focus_start}-{focus_end} (context {context_start+1}-{context_end})"
         
         # Analyze the conversation segment
-        logging.info(f"Analyzing STM for {message_range}")
+        olliePrint(f"Analyzing STM for {message_range}")
         learnings = analyze_conversation_segment(
             context_messages, 
             focus_start, 
@@ -272,14 +271,14 @@ def process_stm_analysis(conversation_history: List[Dict], last_analyzed_index: 
             focus_messages = conversation_history[last_analyzed_index:current_total]
             success = check_similarity_and_store(learnings, focus_messages, message_range)
             if success:
-                logging.info(f"STM analysis complete for {message_range}")
+                olliePrint(f"STM analysis complete for {message_range}")
             else:
-                logging.info(f"STM analysis skipped (duplicate) for {message_range}")
+                olliePrint(f"STM analysis skipped (duplicate) for {message_range}")
         else:
-            logging.warning(f"STM analysis failed for {message_range}")
+            olliePrint(f"STM analysis failed for {message_range}", level='warning')
             
     except Exception as e:
-        logging.error(f"STM background processing failed: {e}")
+        olliePrint(f"STM background processing failed: {e}", level='error')
 
 # Initialize database on import
 init_stm_db() 
