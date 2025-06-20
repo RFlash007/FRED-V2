@@ -35,10 +35,11 @@ echo "🧠 Downloading tiny.en Whisper model..."
 python3 -c "
 import os
 from faster_whisper import WhisperModel
-print('Downloading tiny.en model with int8 quantization...')
+from ollie_print import olliePrint
+olliePrint('Downloading tiny.en model with int8 quantization...')
 model = WhisperModel('tiny.en', device='cpu', compute_type='int8')
-print('✅ Model downloaded successfully!')
-print('Model cached for offline use')
+olliePrint('✅ Model downloaded successfully!', level='success')
+olliePrint('Model cached for offline use')
 "
 
 # Test audio setup
@@ -46,19 +47,20 @@ echo "🎤 Testing audio setup..."
 python3 -c "
 import sounddevice as sd
 import numpy as np
-print('Available audio devices:')
-print(sd.query_devices())
-print()
-print('Testing audio capture...')
+from ollie_print import olliePrint
+olliePrint('Available audio devices:')
+olliePrint(sd.query_devices())
+olliePrint('')
+olliePrint('Testing audio capture...')
 try:
     # Test 1-second recording
     audio = sd.rec(int(1 * 16000), samplerate=16000, channels=1, dtype='float32')
     sd.wait()
     level = np.abs(audio).mean()
-    print(f'✅ Audio capture working! Level: {level:.4f}')
+    olliePrint(f'✅ Audio capture working! Level: {level:.4f}', level='success')
 except Exception as e:
-    print(f'❌ Audio test failed: {e}')
-    print('Check microphone permissions and connections')
+    olliePrint(f'❌ Audio test failed: {e}', level='error')
+    olliePrint('Check microphone permissions and connections', level='warning')
 "
 
 # Test the local STT service
@@ -66,16 +68,17 @@ echo "🧪 Testing local STT service..."
 python3 -c "
 try:
     from pi_stt_service import pi_stt_service
-    print('✅ Pi STT service import successful!')
+    from ollie_print import olliePrint
+    olliePrint('✅ Pi STT service import successful!', level='success')
     
     if pi_stt_service.initialize():
-        print('✅ Whisper model initialization successful!')
-        print('🎯 Ready for local speech recognition')
+        olliePrint('✅ Whisper model initialization successful!', level='success')
+        olliePrint('🎯 Ready for local speech recognition')
         pi_stt_service.stop_processing()
     else:
-        print('❌ STT initialization failed')
+        olliePrint('❌ STT initialization failed', level='error')
 except Exception as e:
-    print(f'❌ STT test failed: {e}')
+    olliePrint(f'❌ STT test failed: {e}', level='error')
 "
 
 echo

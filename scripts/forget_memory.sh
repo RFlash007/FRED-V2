@@ -26,6 +26,7 @@ PYTHON_CMD=$(command -v python3 || command -v python)
 cat << EOF > "$PYTHON_SCRIPT"
 import sys
 import os
+from ollie_print import olliePrint
 
 # Add the project root to the Python path to find the memory module
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
@@ -36,19 +37,19 @@ try:
     from memory import librarian
     db_path = os.path.join(project_root, 'memory', 'memory.db')
     if not os.path.exists(db_path):
-        print(f"Error: Database file not found at {db_path}")
+        olliePrint(f"Error: Database file not found at {db_path}", level='error')
         sys.exit(1)
     librarian.DB_FILE = db_path
-    print(f"Running forget_old_memories (cutoff: 180 days)... Database: {librarian.DB_FILE}")
+    olliePrint(f"Running forget_old_memories (cutoff: 180 days)... Database: {librarian.DB_FILE}")
     deleted_count = librarian.forget_old_memories(days_old=180)
-    print(f"Forget script finished. Deleted {deleted_count} nodes.")
+    olliePrint(f"Forget script finished. Deleted {deleted_count} nodes.", level='success')
     sys.exit(0)
 except ImportError as e:
-    print(f"Error importing librarian module: {e}")
-    print("Ensure the script is run from the project root or the Python path is set correctly.")
+    olliePrint(f"Error importing librarian module: {e}", level='error')
+    olliePrint("Ensure the script is run from the project root or the Python path is set correctly.", level='warning')
     sys.exit(1)
 except Exception as e:
-    print(f"An error occurred: {e}")
+    olliePrint(f"An error occurred: {e}", level='error')
     sys.exit(1)
 EOF
 

@@ -2,7 +2,6 @@ import asyncio
 import base64
 import io
 import time
-import logging
 from PIL import Image
 import ollama
 import numpy as np
@@ -12,7 +11,6 @@ from ollie_print import olliePrint
 
 apply_theme()
 
-logger = logging.getLogger(__name__)
 
 class VisionService:
     def __init__(self):

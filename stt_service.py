@@ -1,7 +1,6 @@
 import io
 import threading
 import time
-import logging
 import numpy as np
 import soundfile as sf
 from faster_whisper import WhisperModel
@@ -33,7 +32,6 @@ def print_transcription_to_terminal(text, source="TRANSCRIPTION"):
     )
     olliePrint("".join(message))
 
-logger = logging.getLogger(__name__)
 
 class STTService:
     def __init__(self):

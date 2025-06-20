@@ -28,7 +28,6 @@ import subprocess
 import threading
 import queue
 import numpy as np
-import logging
 from typing import Optional, Callable
 import vosk
 
@@ -42,7 +41,6 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, R
 # Apply theming to all prints
 apply_theme()
 
-logger = logging.getLogger(__name__)
 
 class FREDPiSTTService:
     """
