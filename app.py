@@ -130,9 +130,9 @@ def initialize_tts():
             device = "cuda" if torch.cuda.is_available() else "cpu"
             tts_engine = TTS(config.XTTS_MODEL_NAME).to(device)
             fred_state.set_tts_engine(tts_engine)
-            olliePrint(f"[ARC-MODE] Voice synthesis matrix loaded on {device.upper()}")
+            olliePrint(f"Voice synthesis matrix loaded on {device.upper()}", 'audio')
         except Exception as e:
-            olliePrint(f"[CRITICAL] Voice synthesis initialization failed: {e}", level='error')
+            olliePrint(f"Voice synthesis initialization failed: {e}", 'critical')
             fred_state.set_tts_engine(None)
 
 # Load System Prompt
@@ -141,7 +141,7 @@ try:
     with open(SYSTEM_PROMPT_FILE, 'r', encoding='utf-8') as f:
         SYSTEM_PROMPT = f.read()
 except Exception as e:
-    olliePrint(f"Error loading system prompt: {e}", level='error')
+    olliePrint(f"Error loading system prompt: {e}", 'error')
     SYSTEM_PROMPT = "You are F.R.E.D., a helpful AI assistant."
 
 def extract_think_content(text):
@@ -326,7 +326,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
     try:
         tts_engine = fred_state.get_tts_engine()
         if tts_engine is None:
-            olliePrint("TTS engine not initialized, skipping speech generation", level='warning')
+            olliePrint("TTS engine not initialized, skipping speech generation", 'warning', show_banner=False)
             return
 
         olliePrint(f"[ARC-MODE] Synthesizing neural voice patterns → {output_path}")

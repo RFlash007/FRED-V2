@@ -1,22 +1,246 @@
-function olliePrint(msg, level = 'info') {
+/**
+ * F.R.E.D. Enhanced Logging System - JavaScript Edition
+ * Designed by Ollie-Tec™ - Post-Apocalyptic Computing Division
+ * 
+ * Browser-compatible logging with Stark Industries meets Vault-Tec theming
+ */
+
+function olliePrint(msg, level = 'info', module = null, showBanner = true, showComment = true) {
+  // F.R.E.D. themed color scheme
   const colors = {
-    info: 'color: blue',
-    success: 'color: green',
-    warning: 'color: orange',
-    error: 'color: red'
+    info: 'color: #4FC3F7; font-weight: bold',        // Bright blue
+    success: 'color: #4CAF50; font-weight: bold',     // Bright green  
+    warning: 'color: #FFC107; font-weight: bold',     // Bright yellow
+    error: 'color: #F44336; font-weight: bold',       // Bright red
+    critical: 'color: white; background: #F44336; font-weight: bold', // White on red background
+    debug: 'color: #00BCD4; font-weight: bold',       // Cyan
+    audio: 'color: #E91E63; font-weight: bold',       // Bright magenta
+    network: 'color: #00E5FF; font-weight: bold',     // Bright cyan
+    optics: 'color: #00E5FF; font-weight: bold',      // Bright cyan
+    armlink: 'color: #4CAF50; font-weight: bold',     // Bright green
+    mainframe: 'color: #E91E63; font-weight: bold',   // Bright magenta
+    shelter: 'color: #00E5FF; font-weight: bold',     // Bright cyan
+    system: 'color: #FFFFFF; font-weight: normal'     // White
   };
+
+  // Enhanced F.R.E.D. personality comments
   const comments = {
-    info: 'Systems green across the board.',
-    success: 'Mission accomplished!',
-    warning: 'Caution: power conduit unstable.',
-    error: 'Critical failure detected!'
+    info: [
+      'Systems green across the board.',
+      'All diagnostics nominal.',
+      'Mainframe operating within parameters.',
+      'ShelterNet protocols active.',
+      'Data streams flowing smoothly.'
+    ],
+    success: [
+      'Mission accomplished!',
+      'Objective complete, field operative.',
+      'Another successful operation.',
+      'Target acquired and processed.',
+      'Victory is ours today.'
+    ],
+    warning: [
+      'Caution: power conduit unstable.',
+      'Warning: anomalous readings detected.',
+      'Attention: system irregularity observed.',
+      'Alert: potential hazard identified.',
+      'Advisory: proceed with enhanced vigilance.'
+    ],
+    error: [
+      'Critical failure detected!',
+      'System malfunction in progress.',
+      'Emergency protocols activated.',
+      'Catastrophic error encountered.',
+      'Immediate intervention required.'
+    ],
+    critical: [
+      '⚠️ VAULT BREACH IMMINENT ⚠️',
+      '🚨 DEFCON 1 ACTIVATED 🚨',
+      '💀 CORE MELTDOWN DETECTED 💀',
+      '⛔ SYSTEM INTEGRITY COMPROMISED ⛔',
+      '🔥 EMERGENCY SHUTDOWN REQUIRED 🔥'
+    ],
+    debug: [
+      'Diagnostic mode active.',
+      'Analyzing system matrices.',
+      'Debug protocols engaged.',
+      'Technical scan in progress.',
+      'Detailed analysis available.'
+    ],
+    audio: [
+      'Audio systems online.',
+      'Voice synthesis ready.',
+      'Communication channels clear.',
+      'Sound processing active.',
+      'Audio matrix stable.'
+    ],
+    network: [
+      'Network protocols established.',
+      'Communication links secured.',
+      'Data transmission successful.',
+      'Connection integrity verified.',
+      'Network topology stable.'
+    ],
+    optics: [
+      'Visual sensors calibrated.',
+      'Camera systems operational.',
+      'Image processing active.',
+      'Optical analysis complete.',
+      'Visual data acquired.'
+    ],
+    armlink: [
+      'Field operative connection secure.',
+      'ArmLink protocols established.',
+      'Remote interface active.',
+      'Field unit responding.',
+      'Mobile operations nominal.'
+    ],
+    mainframe: [
+      'Core intelligence systems online.',
+      'Central processing unit active.',
+      'Main server operational.',
+      'Primary systems engaged.',
+      'Control hub responding.'
+    ],
+    shelter: [
+      'ShelterNet security active.',
+      'Protected environment confirmed.',
+      'Safe zone protocols enabled.',
+      'Vault systems operational.',
+      'Secure facility status green.'
+    ]
   };
-  const ts = new Date().toISOString();
-  const header = `BROWSER [${ts}] - Designed by Ollie-Tec`;
-  const bar = '-'.repeat(header.length);
+
+  // Auto-detect module name if not provided
+  if (!module) {
+    try {
+      // Try to get calling function/file info from stack trace
+      const stack = new Error().stack;
+      const stackLines = stack.split('\n');
+      const callerLine = stackLines[2] || stackLines[1] || '';
+      const match = callerLine.match(/\/([^\/]+\.js)/);
+      module = match ? match[1].replace('.js', '').toUpperCase() : 'BROWSER';
+    } catch {
+      module = 'BROWSER';
+    }
+  }
+
+  // Get random comment for this level
+  function getRandomComment(level) {
+    const levelComments = comments[level] || comments.info;
+    return levelComments[Math.floor(Math.random() * levelComments.length)];
+  }
+
+  // Create enhanced banner
+  function createBanner(moduleName, level) {
+    const timestamp = new Date().toISOString().substr(11, 8); // HH:MM:SS
+    const ollieBrand = "OLLIE-TEC™";
+    const techDivision = "Advanced Computing Division";
+    const systemId = `Module: ${moduleName}`;
+    const timestampStr = `Timestamp: ${timestamp}`;
+    
+    // Banner styling based on level
+    let bannerStyle, accentStyle;
+    if (['error', 'critical'].includes(level)) {
+      bannerStyle = 'color: #F44336; font-weight: bold';
+      accentStyle = 'color: white; background: #F44336; font-weight: bold';
+    } else if (level === 'warning') {
+      bannerStyle = 'color: #FFC107; font-weight: bold';
+      accentStyle = 'color: #FFC107; font-weight: bold';
+    } else if (level === 'success') {
+      bannerStyle = 'color: #4CAF50; font-weight: bold';
+      accentStyle = 'color: #4CAF50; font-weight: bold';
+    } else {
+      bannerStyle = 'color: #4FC3F7; font-weight: bold';
+      accentStyle = 'color: #00E5FF; font-weight: bold';
+    }
+
+    // Build banner content
+    const bannerWidth = 60;
+    const borderLine = '═'.repeat(bannerWidth - 2);
+    
+    const banner = `
+╔${borderLine}╗
+║ ${ollieBrand.padStart((bannerWidth - 4 + ollieBrand.length) / 2).padEnd(bannerWidth - 4)} ║
+║ ${techDivision.padStart((bannerWidth - 4 + techDivision.length) / 2).padEnd(bannerWidth - 4)} ║
+║${'═'.repeat(bannerWidth - 2)}║
+║ ${systemId.padEnd(bannerWidth - 4)} ║
+║ ${timestampStr.padEnd(bannerWidth - 4)} ║
+╚${borderLine}╝`.trim();
+
+    console.log(`%c${banner}`, bannerStyle);
+  }
+
+  // Normalize level
+  level = level.toLowerCase().trim();
+  
+  // Show banner if requested
+  if (showBanner) {
+    createBanner(module, level);
+  }
+
+  // Get styling for this level
   const style = colors[level] || colors.info;
-  console.log(`${bar}\n${header}\n${bar}\n%c${msg}%c ${comments[level] || ''}`, style, '');
+  
+  // Build the message
+  let message = msg;
+  if (showComment) {
+    const comment = getRandomComment(level);
+    const systemStyle = colors.system;
+    console.log(`%c${message}%c → ${comment}`, style, systemStyle);
+  } else {
+    console.log(`%c${message}`, style);
+  }
+  
+  // Add spacing for readability
+  console.log('');
 }
+
+// === Specialized Logging Functions ===
+function olliePrint_info(message, module = null) {
+  olliePrint(message, 'info', module);
+}
+
+function olliePrint_success(message, module = null) {
+  olliePrint(message, 'success', module);
+}
+
+function olliePrint_warning(message, module = null) {
+  olliePrint(message, 'warning', module);
+}
+
+function olliePrint_error(message, module = null) {
+  olliePrint(message, 'error', module);
+}
+
+function olliePrint_critical(message, module = null) {
+  olliePrint(message, 'critical', module);
+}
+
+function olliePrint_debug(message, module = null) {
+  olliePrint(message, 'debug', module);
+}
+
+// === Banner-only Functions ===
+function olliePrint_simple(message, level = 'info') {
+  olliePrint(message, level, null, false);
+}
+
+function olliePrint_quiet(message, level = 'info') {
+  olliePrint(message, level, null, false, false);
+}
+
+// === Legacy Compatibility ===
+// Keep existing function signatures for backward compatibility
+window.olliePrint = olliePrint;
+window.olliePrint_info = olliePrint_info;
+window.olliePrint_success = olliePrint_success;
+window.olliePrint_warning = olliePrint_warning;
+window.olliePrint_error = olliePrint_error;
+window.olliePrint_critical = olliePrint_critical;
+window.olliePrint_debug = olliePrint_debug;
+window.olliePrint_simple = olliePrint_simple;
+window.olliePrint_quiet = olliePrint_quiet;
 
 const messageForm = document.getElementById('message-form');
 const messageInput = document.getElementById('message-input');

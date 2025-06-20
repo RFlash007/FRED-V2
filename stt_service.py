@@ -30,7 +30,7 @@ def print_transcription_to_terminal(text, source="TRANSCRIPTION"):
         f"📝 Text: '{text}'\n"
         f"{separator}\n"
     )
-    olliePrint("".join(message))
+    olliePrint("".join(message), level='audio', show_banner=False)
 
 
 class STTService:
@@ -111,15 +111,15 @@ class STTService:
             else:
                 compute_type = "int8"  # Always use quantized on CPU
             
-            olliePrint(f"[SHELTER-NET] Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM")
-            olliePrint(f"[NEURAL-NET] Initializing Whisper large-v3 (quantized) on {device.upper()}")
+            olliePrint(f"Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM", 'network')
+            olliePrint(f"Initializing Whisper large-v3 (quantized) on {device.upper()}", 'mainframe')
             
             # Optimize CPU threads - use most but not all cores to avoid blocking
             cpu_threads = max(1, cpu_cores - 1)
             
             # Use large-v3 model with quantization for best accuracy/speed balance
             model_size = config.STT_MODEL_SIZE
-            olliePrint(f"[ARC-MODE] Loading {model_size} model with {compute_type} quantization")
+            olliePrint(f"Loading {model_size} model with {compute_type} quantization", 'info')
             
             # Initialize with optimized settings for real-time accuracy
             self.model = WhisperModel(
@@ -139,16 +139,16 @@ class STTService:
                     current_process.nice(psutil.HIGH_PRIORITY_CLASS)
                 else:  # Linux/Mac
                     current_process.nice(-10)  # Higher priority
-                olliePrint("[SYSTEM] High priority mode enabled for real-time processing")
+                olliePrint("High priority mode enabled for real-time processing", 'success', show_banner=False)
             except Exception as e:
-                olliePrint(f"[WARNING] Could not set process priority: {e}")
+                olliePrint(f"Could not set process priority: {e}", 'warning', show_banner=False)
             
             self.is_initialized = True
-            olliePrint(f"[SUCCESS] Speech recognition online - {model_size} quantized model ready")
+            olliePrint(f"Speech recognition online - {model_size} quantized model ready", 'success')
             return True
             
         except Exception as e:
-            olliePrint(f"[CRITICAL] Speech recognition initialization failed: {e}")
+            olliePrint(f"Speech recognition initialization failed: {e}", 'critical')
             return False
     
     # ADD: Direct audio callback like old system

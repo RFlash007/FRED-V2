@@ -8,6 +8,7 @@ from datetime import datetime
 from typing import List, Dict, Optional, Tuple
 from sklearn.metrics.pairwise import cosine_similarity
 from config import config
+from ollie_print import olliePrint
 
 # STM Database path
 STM_DB_PATH = os.path.join("memory", "short_term_memory.db")

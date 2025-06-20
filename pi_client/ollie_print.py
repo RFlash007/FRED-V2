@@ -1,5 +1,5 @@
 """
-F.R.E.D. Enhanced Logging System
+F.R.E.D. Enhanced Logging System - Pi Client Edition
 Designed by Ollie-Tec™ - Post-Apocalyptic Computing Division
 
 A comprehensive logging solution that combines Stark Industries sophistication
@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any
 
 # === ANSI Color Codes & Styling ===
 class ANSIColors:
-    """ANSI escape sequences for terminal styling with Windows PowerShell support"""
+    """ANSI escape sequences for terminal styling with Raspberry Pi support"""
     
     # Reset
     RESET = '\033[0m'
@@ -71,94 +71,94 @@ FRED_COLORS = {
 # === F.R.E.D. Personality Comments ===
 FRED_COMMENTS = {
     'info': [
-        "Systems green across the board.",
-        "All diagnostics nominal.",
-        "Mainframe operating within parameters.",
-        "ShelterNet protocols active.",
-        "Data streams flowing smoothly."
+        "ArmLink systems operational.",
+        "Field diagnostics nominal.",
+        "Pi interface operating within parameters.",
+        "Mobile ShelterNet protocols active.",
+        "Field data streams flowing smoothly."
     ],
     'success': [
-        "Mission accomplished!",
-        "Objective complete, field operative.",
-        "Another successful operation.",
+        "Field mission accomplished!",
+        "Objective complete, returning to base.",
+        "Another successful field operation.",
         "Target acquired and processed.",
-        "Victory is ours today."
+        "Field victory confirmed."
     ],
     'warning': [
-        "Caution: power conduit unstable.",
-        "Warning: anomalous readings detected.",
-        "Attention: system irregularity observed.",
-        "Alert: potential hazard identified.",
-        "Advisory: proceed with enhanced vigilance."
+        "Caution: field hazard detected.",
+        "Warning: environmental anomaly observed.",
+        "Attention: field irregularity detected.",
+        "Alert: potential wasteland threat.",
+        "Advisory: proceed with tactical vigilance."
     ],
     'error': [
-        "Critical failure detected!",
-        "System malfunction in progress.",
-        "Emergency protocols activated.",
-        "Catastrophic error encountered.",
-        "Immediate intervention required."
+        "Field equipment malfunction!",
+        "ArmLink system failure detected.",
+        "Emergency field protocols activated.",
+        "Catastrophic field error encountered.",
+        "Immediate field intervention required."
     ],
     'critical': [
-        "⚠️ VAULT BREACH IMMINENT ⚠️",
-        "🚨 DEFCON 1 ACTIVATED 🚨",
-        "💀 CORE MELTDOWN DETECTED 💀",
-        "⛔ SYSTEM INTEGRITY COMPROMISED ⛔",
-        "🔥 EMERGENCY SHUTDOWN REQUIRED 🔥"
+        "⚠️ FIELD SHELTER BREACH ⚠️",
+        "🚨 FIELD DEFCON 1 ACTIVATED 🚨",
+        "💀 ARMLINK CORE FAILURE 💀",
+        "⛔ FIELD INTEGRITY COMPROMISED ⛔",
+        "🔥 EMERGENCY FIELD EVAC REQUIRED 🔥"
     ],
     'debug': [
-        "Diagnostic mode active.",
-        "Analyzing system matrices.",
-        "Debug protocols engaged.",
-        "Technical scan in progress.",
-        "Detailed analysis available."
+        "Field diagnostic mode active.",
+        "Analyzing ArmLink matrices.",
+        "Field debug protocols engaged.",
+        "Technical field scan in progress.",
+        "Detailed field analysis available."
     ],
     'audio': [
-        "Audio systems online.",
-        "Voice synthesis ready.",
-        "Communication channels clear.",
+        "Field audio systems online.",
+        "Voice communication ready.",
+        "Field communication channels clear.",
         "Sound processing active.",
-        "Audio matrix stable."
+        "Audio transmission stable."
     ],
     'network': [
-        "Network protocols established.",
-        "Communication links secured.",
-        "Data transmission successful.",
+        "Field network protocols established.",
+        "ArmLink communication secured.",
+        "Field data transmission successful.",
         "Connection integrity verified.",
-        "Network topology stable."
+        "Mobile network topology stable."
     ],
     'optics': [
-        "Visual sensors calibrated.",
-        "Camera systems operational.",
-        "Image processing active.",
-        "Optical analysis complete.",
-        "Visual data acquired."
+        "Field visual sensors calibrated.",
+        "Pi camera systems operational.",
+        "Field image processing active.",
+        "Optical field analysis complete.",
+        "Visual reconnaissance data acquired."
     ],
     'armlink': [
-        "Field operative connection secure.",
-        "ArmLink protocols established.",
-        "Remote interface active.",
-        "Field unit responding.",
-        "Mobile operations nominal."
+        "ArmLink field connection secure.",
+        "Field operative protocols established.",
+        "Mobile interface active.",
+        "Field unit responding to mainframe.",
+        "Mobile field operations nominal."
     ],
     'mainframe': [
-        "Core intelligence systems online.",
-        "Central processing unit active.",
-        "Main server operational.",
-        "Primary systems engaged.",
-        "Control hub responding."
+        "Connection to mainframe established.",
+        "Central command link active.",
+        "Primary server communication active.",
+        "Command hub responding.",
+        "Mainframe control link operational."
     ],
     'shelter': [
-        "ShelterNet security active.",
-        "Protected environment confirmed.",
-        "Safe zone protocols enabled.",
-        "Vault systems operational.",
-        "Secure facility status green."
+        "Field ShelterNet security active.",
+        "Mobile protected environment confirmed.",
+        "Field safe zone protocols enabled.",
+        "Portable vault systems operational.",
+        "Mobile secure facility status green."
     ]
 }
 
 # === Terminal Capability Detection ===
 def detect_terminal_capabilities() -> Dict[str, bool]:
-    """Detect terminal capabilities for optimal rendering"""
+    """Detect terminal capabilities for optimal rendering on Pi"""
     capabilities = {
         'ansi_colors': False,
         'unicode': False,
@@ -169,29 +169,8 @@ def detect_terminal_capabilities() -> Dict[str, bool]:
     if not (hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()):
         return capabilities
     
-    # Windows PowerShell ANSI support detection
-    if platform.system() == 'Windows':
-        try:
-            # Try to enable ANSI escape sequence processing on Windows
-            import subprocess
-            result = subprocess.run(['powershell', '-Command', '$Host.UI.RawUI.WindowSize'], 
-                                  capture_output=True, text=True, timeout=2)
-            if result.returncode == 0:
-                capabilities['ansi_colors'] = True
-                capabilities['unicode'] = True
-                # Check terminal width
-                try:
-                    width_info = result.stdout.strip()
-                    if 'Width' in width_info:
-                        capabilities['wide_terminal'] = True
-                except:
-                    pass
-        except:
-            # Fallback: assume basic ANSI support in modern Windows
-            if 'WT_SESSION' in os.environ or 'TERM_PROGRAM' in os.environ:
-                capabilities['ansi_colors'] = True
-    else:
-        # Unix-like systems
+    # Raspberry Pi typically runs Linux
+    if platform.system() == 'Linux':
         capabilities['ansi_colors'] = True
         capabilities['unicode'] = True
         try:
@@ -227,7 +206,7 @@ def colorize_text(text: str, color: str, bold: bool = False) -> str:
     return f"{style}{color_code}{text}{ANSIColors.RESET}"
 
 def create_banner(module_name: str, timestamp: str, level: str = 'info') -> str:
-    """Create an enhanced F.R.E.D./Vault-Tec themed banner"""
+    """Create an enhanced F.R.E.D./Vault-Tec themed banner for Pi"""
     
     # Vault-Tec inspired banner characters
     if _TERM_CAPS['unicode']:
@@ -246,15 +225,15 @@ def create_banner(module_name: str, timestamp: str, level: str = 'info') -> str:
         corner_br = '+'
     
     # Create header content
-    ollie_brand = "OLLIE-TEC™"
-    tech_division = "Advanced Computing Division"
+    ollie_brand = "OLLIE-TEC™ ARMLINK"
+    tech_division = "Field Operations Division"
     system_id = f"Module: {module_name.upper()}"
     timestamp_str = f"Timestamp: {timestamp}"
     
-    # Calculate banner width
+    # Calculate banner width (smaller for Pi terminals)
     content_lines = [ollie_brand, tech_division, system_id, timestamp_str]
     max_width = max(len(line) for line in content_lines) + 4
-    banner_width = max(max_width, 60)
+    banner_width = max(max_width, 50)  # Smaller default for Pi
     
     # Color scheme based on level
     if level in ['error', 'critical']:
@@ -268,7 +247,7 @@ def create_banner(module_name: str, timestamp: str, level: str = 'info') -> str:
         accent_color = 'success'
     else:
         banner_color = 'info'
-        accent_color = 'network'
+        accent_color = 'armlink'  # Use armlink color for Pi
     
     # Build banner
     line_fill = line_char * (banner_width - 2)
@@ -300,12 +279,12 @@ def create_banner(module_name: str, timestamp: str, level: str = 'info') -> str:
     
     banner_lines.append(bottom_line)
     
-    return '\n'.join(banner_lines) + '\n'
+    return '\n'.join(banner_lines)
 
 def olliePrint(message: Any, level: str = 'info', module: Optional[str] = None, 
                show_banner: bool = True, show_comment: bool = True) -> None:
     """
-    Enhanced F.R.E.D. logging function with Stark Industries meets Vault-Tec theming
+    Enhanced F.R.E.D. logging function for Pi Client with Stark Industries meets Vault-Tec theming
     
     Args:
         message: The message to log (any type, will be converted to string)
@@ -328,7 +307,7 @@ def olliePrint(message: Any, level: str = 'info', module: Optional[str] = None,
             filename = os.path.basename(frame.f_code.co_filename)
             module = os.path.splitext(filename)[0]
         except:
-            module = 'UNKNOWN'
+            module = 'PI_CLIENT'
     
     # Create timestamp
     timestamp = datetime.now().strftime('%H:%M:%S')
@@ -336,7 +315,7 @@ def olliePrint(message: Any, level: str = 'info', module: Optional[str] = None,
     # Create and print banner if requested
     if show_banner:
         banner = create_banner(module, timestamp, level)
-        print(banner, end='')  # Banner already contains newlines
+        print(banner)
     
     # Colorize main message
     colored_message = colorize_text(msg_str, level, bold=True)
@@ -349,7 +328,7 @@ def olliePrint(message: Any, level: str = 'info', module: Optional[str] = None,
     else:
         full_message = colored_message
     
-    # Print the message with proper line separation
+    # Print the message
     print(full_message)
     
     # Add spacing for readability
@@ -391,7 +370,7 @@ def olliePrint_quiet(message: Any, level: str = 'info') -> None:
 
 # === Startup Banner Function ===
 def startup_block(component: str, info_lines: list) -> str:
-    """Create a startup banner with system information"""
+    """Create a startup banner with system information for Pi"""
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     # Create enhanced startup banner
@@ -400,12 +379,12 @@ def startup_block(component: str, info_lines: list) -> str:
     else:
         border_chars = {'tl': '+', 'tr': '+', 'bl': '+', 'br': '+', 'h': '=', 'v': '|'}
     
-    # Calculate width
+    # Calculate width (smaller for Pi)
     all_lines = [f"🛰️  OLLIE-TEC™ {component} ONLINE  🛰️", 
-                 "Advanced Computing Division", 
+                 "Field Operations Division", 
                  f"Boot: {timestamp}"] + info_lines
     width = max(len(line) for line in all_lines) + 4
-    width = max(width, 70)
+    width = max(width, 60)  # Smaller default for Pi
     
     # Build banner
     lines = []
@@ -419,11 +398,11 @@ def startup_block(component: str, info_lines: list) -> str:
     
     # Title
     title = f"🛰️  OLLIE-TEC™ {component} ONLINE  🛰️"
-    title_line = f"{border_chars['v']} {colorize_text(title, 'mainframe', bold=True):^{width-4}} {border_chars['v']}"
+    title_line = f"{border_chars['v']} {colorize_text(title, 'armlink', bold=True):^{width-4}} {border_chars['v']}"
     lines.append(colorize_text(title_line, 'success'))
     
     # Subtitle
-    subtitle = "Advanced Computing Division"
+    subtitle = "Field Operations Division"
     subtitle_line = f"{border_chars['v']} {colorize_text(subtitle, 'network'):^{width-4}} {border_chars['v']}"
     lines.append(colorize_text(subtitle_line, 'success'))
     
@@ -457,7 +436,7 @@ def banner(component: str) -> str:
 
 # === Testing Function ===
 if __name__ == "__main__":
-    print("=== F.R.E.D. Enhanced Logging System Test ===\n")
+    print("=== F.R.E.D. Enhanced Logging System Test - Pi Client ===\n")
     
     # Test terminal capabilities
     print("Terminal Capabilities:")
@@ -469,11 +448,12 @@ if __name__ == "__main__":
     test_levels = ['info', 'success', 'warning', 'error', 'critical', 'debug']
     
     for level in test_levels:
-        olliePrint(f"This is a {level} message test", level, 'TEST_MODULE')
+        olliePrint(f"This is a {level} message test from Pi", level, 'PI_TEST')
     
     # Test startup banner
-    print("\n" + startup_block("TEST SYSTEM", [
-        "🔧 All systems nominal",
-        "🌐 Network connections established", 
-        "⚡ Power levels optimal"
-    ]))
+    print("\n" + startup_block("PI GLASSES", [
+        "🔧 ArmLink systems nominal",
+        "🌐 Field network connections established", 
+        "⚡ Mobile power levels optimal",
+        "📷 Pi camera systems ready"
+    ])) 

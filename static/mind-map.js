@@ -2,26 +2,8 @@
  * F.R.E.D. Enhanced 3D Solar System Memory Visualization
  * A physics-based 3D solar system with hierarchical orbital relationships
  * and detailed memory interaction
+ * Uses centralized olliePrint from script.js for consistent theming
  */
-function olliePrint(msg, level = 'info') {
-    const colors = {
-        info: 'color: blue',
-        success: 'color: green',
-        warning: 'color: orange',
-        error: 'color: red'
-    };
-    const comments = {
-        info: 'Systems green across the board.',
-        success: 'Mission accomplished!',
-        warning: 'Caution: power conduit unstable.',
-        error: 'Critical failure detected!'
-    };
-    const ts = new Date().toISOString();
-    const header = `BROWSER [${ts}] - Designed by Ollie-Tec`;
-    const bar = '-'.repeat(header.length);
-    const style = colors[level] || colors.info;
-    console.log(`${bar}\n${header}\n${bar}\n%c${msg}%c ${comments[level] || ''}`, style, '');
-}
 
 class MemorySolarSystem {
     constructor(container) {

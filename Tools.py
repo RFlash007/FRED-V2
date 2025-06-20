@@ -6,6 +6,7 @@ from duckduckgo_search import DDGS # Uncommented DuckDuckGo import
 # Import the librarian module
 import memory.librarian as lib
 from config import config
+from ollie_print import olliePrint
 
 # Change logging level to ERROR to reduce console clutter (handled by olliePrint)
 
