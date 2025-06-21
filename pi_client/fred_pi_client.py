@@ -33,7 +33,7 @@ import vosk
 
 # Import Ollie-Tec theming
 from ollietec_theme import apply_theme, banner
-from ollie_print import olliePrint
+from ollie_print import olliePrint, olliePrint_simple
 
 # WebRTC imports
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
@@ -90,8 +90,8 @@ class FREDPiSTTService:
             return True
             
         try:
-            olliePrint("[ARMLINK STT] Initializing voice recognition systems...")
-            olliePrint("🔧 Loading Vosk small English model...")
+            olliePrint_simple("[ARMLINK STT] Initializing voice recognition systems...")
+            olliePrint_simple("🔧 Loading Vosk small English model...")
             
             # Set Vosk log level to reduce noise
             vosk.SetLogLevel(-1)
@@ -111,25 +111,25 @@ class FREDPiSTTService:
                     break
             
             if not model_path:
-                olliePrint("❌ [CRITICAL] Vosk model not found!")
-                olliePrint("💡 [SOLUTION] Run: bash install_vosk_model.sh")
+                olliePrint_simple("❌ [CRITICAL] Vosk model not found!", 'error')
+                olliePrint_simple("💡 [SOLUTION] Run: bash install_vosk_model.sh", 'warning')
                 return False
             
             # Initialize Vosk model
             self.model = vosk.Model(model_path)
             self.recognizer = vosk.KaldiRecognizer(self.model, self.sample_rate)
             
-            olliePrint("✅ [ARMLINK STT] Voice recognition ONLINE")
-            olliePrint(f"📊 Model: Vosk small English (optimized for Pi)")
-            olliePrint(f"📍 Path: {model_path}")
+            olliePrint_simple("✅ [ARMLINK STT] Voice recognition ONLINE", 'success')
+            olliePrint_simple(f"📊 Model: Vosk small English (optimized for Pi)")
+            olliePrint_simple(f"📍 Path: {model_path}")
             
             self.is_initialized = True
             return True
             
         except Exception as e:
-            olliePrint(f"[CRITICAL] STT initialization failed: {e}")
-            olliePrint(f"❌ [ARMLINK STT] Voice recognition FAILED: {e}")
-            olliePrint("💡 [SOLUTION] Run: bash install_vosk_model.sh")
+            olliePrint_simple(f"[CRITICAL] STT initialization failed: {e}", 'error')
+            olliePrint_simple(f"❌ [ARMLINK STT] Voice recognition FAILED: {e}", 'error')
+            olliePrint_simple("💡 [SOLUTION] Run: bash install_vosk_model.sh", 'warning')
             return False
 
     def start_processing(self, callback: Callable):
@@ -138,7 +138,7 @@ class FREDPiSTTService:
             if not self.initialize():
                 return False
                 
-        olliePrint("🎤 [ARMLINK STT] Starting audio processing...")
+        olliePrint_simple("🎤 [ARMLINK STT] Starting audio processing...")
         self.transcription_callback = callback
         self.is_processing = True
         
@@ -149,7 +149,7 @@ class FREDPiSTTService:
         )
         self.processing_thread.start()
         
-        olliePrint("👂 [ARMLINK STT] Listening for wake word...")
+        olliePrint_simple("👂 [ARMLINK STT] Listening for wake word...")
         return True
     
     def stop_processing(self):
@@ -157,13 +157,13 @@ class FREDPiSTTService:
         self.is_processing = False
         if self.processing_thread:
             self.processing_thread.join(timeout=2.0)
-        olliePrint("🔇 [ARMLINK STT] Voice recognition offline")
+        olliePrint_simple("🔇 [ARMLINK STT] Voice recognition offline", 'warning')
     
     def _audio_capture_loop(self):
         """Audio capture and processing loop using sounddevice"""
         try:
             import sounddevice as sd
-            olliePrint("🎤 [AUDIO] Starting audio capture...")
+            olliePrint_simple("🎤 [AUDIO] Starting audio capture...")
             
             def audio_callback(indata, frames, time, status):
                 if self.is_processing:
@@ -180,7 +180,7 @@ class FREDPiSTTService:
                 callback=audio_callback,
                 dtype=np.float32
             ):
-                olliePrint("✅ [AUDIO] Audio capture ONLINE")
+                olliePrint_simple("✅ [AUDIO] Audio capture ONLINE", 'success')
                 
                 while self.is_processing:
                     try:
@@ -190,13 +190,13 @@ class FREDPiSTTService:
                         else:
                             time.sleep(0.01)
                     except Exception as e:
-                        olliePrint(f"Audio processing error: {e}")
+                        olliePrint_simple(f"Audio processing error: {e}", 'error')
                         time.sleep(0.1)
                         
         except ImportError:
-            olliePrint("❌ [AUDIO] sounddevice not available")
+            olliePrint_simple("❌ [AUDIO] sounddevice not available", 'error')
         except Exception as e:
-            olliePrint(f"❌ [AUDIO] Audio capture failed: {e}")
+            olliePrint_simple(f"❌ [AUDIO] Audio capture failed: {e}", 'error')
     
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
         """Process individual audio chunk"""
@@ -217,7 +217,7 @@ class FREDPiSTTService:
                 self._handle_transcribed_text(text.strip().lower())
                 
         except Exception as e:
-            olliePrint(f"Audio chunk processing error: {e}")
+            olliePrint_simple(f"Audio chunk processing error: {e}", 'error')
     
     def _transcribe_audio(self, audio_chunk: np.ndarray) -> str:
         """Transcribe audio using Vosk"""
@@ -249,22 +249,22 @@ class FREDPiSTTService:
             if self._transcription_count % 100 == 0:
                 elapsed = time.time() - self._start_time
                 avg_time = elapsed / self._transcription_count
-                olliePrint(f"📊 [PERFORMANCE] {self._transcription_count} transcriptions, avg: {avg_time:.3f}s")
+                olliePrint_simple(f"📊 [PERFORMANCE] {self._transcription_count} transcriptions, avg: {avg_time:.3f}s")
             
             return text.strip()
             
         except Exception as e:
-            olliePrint(f"Transcription error: {e}")
+            olliePrint_simple(f"Transcription error: {e}", 'error')
             return ""
     
     def _handle_transcribed_text(self, text: str):
         """Handle transcribed text with wake word detection"""
-        olliePrint(f"🎙️ [DETECTED] '{text}'")
+        olliePrint_simple(f"🎙️ [DETECTED] '{text}'")
         
         # Check for wake words when not listening
         if not self.is_listening:
             if any(wake_word in text for wake_word in self.wake_words):
-                olliePrint(f"👋 [WAKE] Wake word detected! Listening...")
+                olliePrint_simple(f"👋 [WAKE] Wake word detected! Listening...", 'success')
                 self.is_listening = True
                 self.speech_buffer = []
                 self.last_speech_time = time.time()
@@ -274,7 +274,7 @@ class FREDPiSTTService:
         if self.is_listening:
             # Check for stop words
             if any(stop_word in text for stop_word in self.stop_words):
-                olliePrint(f"💤 [SLEEP] Stop word detected")
+                olliePrint_simple(f"💤 [SLEEP] Stop word detected", 'warning')
                 if self.transcription_callback:
                     self.transcription_callback("goodbye")
                 self.is_listening = False
@@ -283,7 +283,7 @@ class FREDPiSTTService:
             
             # Add to speech buffer if meaningful
             if len(text.split()) > 1:  # More than one word
-                olliePrint(f"📝 [BUFFER] Adding: '{text}'")
+                olliePrint_simple(f"📝 [BUFFER] Adding: '{text}'")
                 self.last_speech_time = time.time()
                 self.speech_buffer.append(text)
     
@@ -293,7 +293,7 @@ class FREDPiSTTService:
             return
             
         complete_text = " ".join(self.speech_buffer)
-        olliePrint(f"🗣️ [COMPLETE] Processing: '{complete_text}'")
+        olliePrint_simple(f"🗣️ [COMPLETE] Processing: '{complete_text}'", 'success')
         
         # Clear buffer
         self.speech_buffer = []
@@ -303,7 +303,7 @@ class FREDPiSTTService:
             self.transcription_callback(complete_text)
         
         # Resume listening
-        olliePrint("👂 [READY] Listening for next command...")
+        olliePrint_simple("👂 [READY] Listening for next command...")
 
 
 class FREDPiClient:
@@ -325,7 +325,7 @@ class FREDPiClient:
     async def start(self):
         """Start the F.R.E.D. Pi client"""
         olliePrint(banner("F.R.E.D. Pi Glasses v2.0"))
-        olliePrint("[SHELTER-CORE] Booting field AI interface...")
+        olliePrint_simple("[SHELTER-CORE] Booting field AI interface...")
         
         # Store the event loop for thread-safe operations
         self.loop = asyncio.get_running_loop()
@@ -335,15 +335,15 @@ class FREDPiClient:
         
         # Start STT service
         if not self.stt_service.start_processing(self._handle_transcription):
-            olliePrint("❌ [CRITICAL] STT initialization failed")
+            olliePrint_simple("❌ [CRITICAL] STT initialization failed", 'error')
             return False
         
         # Setup WebRTC connection
         await self._setup_webrtc()
         
         self.is_running = True
-        olliePrint("[SHELTER-NET] F.R.E.D. Pi Glasses ONLINE!")
-        olliePrint("[ARMLINK] Ready for wasteland operations...")
+        olliePrint_simple("[SHELTER-NET] F.R.E.D. Pi Glasses ONLINE!", 'success')
+        olliePrint_simple("[ARMLINK] Ready for wasteland operations...", 'success')
         
         # Main loop
         await self._run_main_loop()
@@ -351,7 +351,7 @@ class FREDPiClient:
     async def _init_camera(self):
         """Initialize Picamera2 for vision"""
         try:
-            olliePrint("📸 [VISION] Initializing ArmLink camera systems...")
+            olliePrint_simple("📸 [VISION] Initializing ArmLink camera systems...")
             from picamera2 import Picamera2
             
             self.camera = Picamera2()
@@ -360,7 +360,7 @@ class FREDPiClient:
             sensor_modes = self.camera.sensor_modes
             max_mode = max(sensor_modes, key=lambda x: x['size'][0] * x['size'][1])
             max_res = max_mode['size']
-            olliePrint(f"🎯 [VISION] Using native resolution {max_res}")
+            olliePrint_simple(f"🎯 [VISION] Using native resolution {max_res}")
             
             config = self.camera.create_video_configuration(
                 main={"size": max_res, "format": "RGB888"},
@@ -375,10 +375,10 @@ class FREDPiClient:
             
             self.camera.configure(config)
             self.camera.start()
-            olliePrint("✅ [VISION] Camera systems ONLINE")
+            olliePrint_simple("✅ [VISION] Camera systems ONLINE", 'success')
             
         except Exception as e:
-            olliePrint(f"❌ [VISION] Camera initialization failed: {e}")
+            olliePrint_simple(f"❌ [VISION] Camera initialization failed: {e}", 'error')
             self.camera = None
 
     def create_local_tracks(self, video=True):
@@ -386,7 +386,7 @@ class FREDPiClient:
         tracks = []
         
         if video and self.camera:
-            olliePrint("🎥 Setting up video with Picamera2...")
+            olliePrint_simple("🎥 Setting up video with Picamera2...")
             try:
                 from aiortc import VideoStreamTrack
                 import av
@@ -398,7 +398,7 @@ class FREDPiClient:
                         self.camera = camera
                         self.frame_count = 0
                         self.start_time = time.time()
-                        olliePrint("✅ Picamera2 video track initialized")
+                        olliePrint_simple("✅ Picamera2 video track initialized", 'success')
 
                     async def recv(self):
                         """Receive video frames from the camera"""
@@ -407,7 +407,7 @@ class FREDPiClient:
                         try:
                             array = self.camera.capture_array("main")
                         except Exception as e:
-                            olliePrint(f"💥 Failed to capture frame from Picamera2: {e}")
+                            olliePrint_simple(f"💥 Failed to capture frame from Picamera2: {e}", 'error')
                             # Fallback black frame
                             array = np.zeros((2464, 3280, 3), dtype=np.uint8)
                         
@@ -418,27 +418,27 @@ class FREDPiClient:
 
                         self.frame_count += 1
                         if self.frame_count == 1:
-                            olliePrint(f"🚀 First frame sent! Size: {array.shape}")
+                            olliePrint_simple(f"🚀 First frame sent! Size: {array.shape}", 'success')
                         elif self.frame_count % 150 == 0:
                             elapsed = time.time() - self.start_time
                             if elapsed > 0:
                                 fps = self.frame_count / elapsed
-                                olliePrint(f"📊 Sent {self.frame_count} frames. Average FPS: {fps:.2f}")
+                                olliePrint_simple(f"📊 Sent {self.frame_count} frames. Average FPS: {fps:.2f}")
 
                         return frame
 
                 tracks.append(PiCamera2Track(self.camera))
-                olliePrint("✅ Picamera2 video track created successfully!")
+                olliePrint_simple("✅ Picamera2 video track created successfully!", 'success')
                 
             except Exception as e:
-                olliePrint(f"❌ Video track creation failed: {e}")
+                olliePrint_simple(f"❌ Video track creation failed: {e}", 'error')
         
         return tracks
 
     async def _setup_webrtc(self):
         """Setup WebRTC connection to F.R.E.D. server"""
         try:
-            olliePrint("🔗 [WEBRTC] Establishing secure link to F.R.E.D. mainframe...")
+            olliePrint_simple("🔗 [WEBRTC] Establishing secure link to F.R.E.D. mainframe...")
             
             # Configure ICE servers
             try:
@@ -449,7 +449,7 @@ class FREDPiClient:
                 config = RTCConfiguration(iceServers=ice_servers)
                 self.pc = RTCPeerConnection(configuration=config)
             except Exception:
-                olliePrint("🔧 Using legacy WebRTC configuration")
+                olliePrint_simple("🔧 Using legacy WebRTC configuration", 'warning')
                 self.pc = RTCPeerConnection()
             
             # Set up data channel for communication
@@ -457,8 +457,8 @@ class FREDPiClient:
             
             @self.data_channel.on('open')
             def on_open():
-                olliePrint('[SHELTER-NET] Secure connection established with F.R.E.D. mainframe!')
-                olliePrint('[ARMLINK] Audio/visual sensors ONLINE - ready for wasteland operations...')
+                olliePrint_simple('[SHELTER-NET] Secure connection established with F.R.E.D. mainframe!', 'success')
+                olliePrint_simple('[ARMLINK] Audio/visual sensors ONLINE - ready for wasteland operations...', 'success')
             
             @self.data_channel.on('message')
             def on_message(message):
@@ -467,7 +467,7 @@ class FREDPiClient:
                     pass
                 elif message.startswith('[ACK]'):
                     ack_text = message.replace('[ACK] ', '')
-                    olliePrint(f"[F.R.E.D.] {ack_text}")
+                    olliePrint_simple(f"[F.R.E.D.] {ack_text}")
                 elif message.startswith('[AUDIO_BASE64:'):
                     # Handle incoming audio from F.R.E.D.
                     try:
@@ -475,39 +475,39 @@ class FREDPiClient:
                         format_info = message[14:header_end]
                         audio_b64 = message[header_end + 1:]
                         
-                        olliePrint(f"[TRANSMISSION] Incoming voice data from F.R.E.D. ({format_info})")
+                        olliePrint_simple(f"[TRANSMISSION] Incoming voice data from F.R.E.D. ({format_info})")
                         self._play_audio_from_base64(audio_b64, format_info)
                         
                     except Exception as e:
-                        olliePrint(f"[ERROR] Audio processing failure: {e}")
+                        olliePrint_simple(f"[ERROR] Audio processing failure: {e}", 'error')
                 else:
-                    olliePrint(f'\n[F.R.E.D.] {message}')
+                    olliePrint_simple(f'\n[F.R.E.D.] {message}')
                 
                 if not message.startswith('[HEARTBEAT_ACK]'):
-                    olliePrint('[ARMLINK] Standing by for commands...')
+                    olliePrint_simple('[ARMLINK] Standing by for commands...')
             
             @self.data_channel.on('close')
             def on_close():
-                olliePrint('[CRITICAL] Connection to F.R.E.D. mainframe terminated')
+                olliePrint_simple('[CRITICAL] Connection to F.R.E.D. mainframe terminated', 'error')
                 raise Exception("Data channel closed")
             
             # Add video track. Audio is processed locally for STT and not streamed.
             tracks = self.create_local_tracks(video=True)
             
             if not tracks:
-                olliePrint("⚠️  No media tracks available - connecting with data channel only")
+                olliePrint_simple("⚠️  No media tracks available - connecting with data channel only", 'warning')
             
             for track in tracks:
                 self.pc.addTrack(track)
                 track_kind = getattr(track, 'kind', 'unknown')
                 track_type = type(track).__name__
-                olliePrint(f"📡 Added {track_kind} track ({track_type})")
+                olliePrint_simple(f"📡 Added {track_kind} track ({track_type})")
             
             # Create offer and connect
             offer = await self.pc.createOffer()
             await self.pc.setLocalDescription(offer)
             
-            olliePrint(f"🔗 Connecting to {self.server_url}/offer...")
+            olliePrint_simple(f"🔗 Connecting to {self.server_url}/offer...")
             
             headers = {
                 'Authorization': 'Bearer fred_pi_glasses_2024',
@@ -522,13 +522,13 @@ class FREDPiClient:
             if response.status_code == 200:
                 answer = RTCSessionDescription(**response.json())
                 await self.pc.setRemoteDescription(answer)
-                olliePrint("🚀 F.R.E.D. Pi Glasses connected and ready!")
+                olliePrint_simple("🚀 F.R.E.D. Pi Glasses connected and ready!", 'success')
             else:
-                olliePrint(f"❌ Server error: {response.status_code}")
+                olliePrint_simple(f"❌ Server error: {response.status_code}", 'error')
                 raise Exception(f"Server returned {response.status_code}")
                 
         except Exception as e:
-            olliePrint(f"❌ [WEBRTC] Connection failed: {e}")
+            olliePrint_simple(f"❌ [WEBRTC] Connection failed: {e}", 'error')
             raise
     
     async def _run_main_loop(self):
@@ -548,22 +548,22 @@ class FREDPiClient:
                         self.data_channel.send('[HEARTBEAT]')
                         last_heartbeat = current_time
                         if int(current_time) % 120 == 0:  # Every 2 minutes
-                            olliePrint("[VITAL-MONITOR] ArmLink status confirmed")
+                            olliePrint_simple("[VITAL-MONITOR] ArmLink status confirmed")
                     else:
                         raise Exception("Data channel not open")
                         
             except KeyboardInterrupt:
-                olliePrint("\n[SHUTDOWN] Field operative terminating connection")
+                olliePrint_simple("\n[SHUTDOWN] Field operative terminating connection", 'warning')
                 break
             except Exception as e:
-                olliePrint(f"[CRITICAL] Connection to mainframe lost: {e}")
+                olliePrint_simple(f"[CRITICAL] Connection to mainframe lost: {e}", 'error')
                 break
         
         await self._cleanup()
     
     def _handle_transcription(self, text: str):
         """Handle transcribed speech from STT service"""
-        olliePrint(f"🎤 [COMMAND] '{text}'")
+        olliePrint_simple(f"🎤 [COMMAND] '{text}'", 'success')
         
         # Send transcription via WebRTC data channel using thread-safe approach
         if self.data_channel and self.data_channel.readyState == 'open' and self.loop:
@@ -575,11 +575,11 @@ class FREDPiClient:
                 )
                 # Wait for completion with timeout
                 future.result(timeout=5.0)
-                olliePrint(f"📡 [TRANSMITTED] '{text}' sent to F.R.E.D. mainframe")
+                olliePrint_simple(f"📡 [TRANSMITTED] '{text}' sent to F.R.E.D. mainframe", 'success')
             except Exception as e:
-                olliePrint(f"❌ [COMM] Transmission failed: {e}")
+                olliePrint_simple(f"❌ [COMM] Transmission failed: {e}", 'error')
         else:
-            olliePrint("❌ [COMM] No data channel available")
+            olliePrint_simple("❌ [COMM] No data channel available", 'error')
     
     async def _send_transcription_async(self, text: str):
         """Async helper to send transcription via data channel"""
@@ -593,7 +593,7 @@ class FREDPiClient:
         """Play audio from base64 data"""
         try:
             audio_data = base64.b64decode(audio_b64)
-            olliePrint(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
+            olliePrint_simple(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
             
             with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
                 temp_file.write(audio_data)
@@ -601,13 +601,13 @@ class FREDPiClient:
             
             try:
                 subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
-                olliePrint("[SUCCESS] F.R.E.D. voice transmission complete")
+                olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete", 'success')
             except subprocess.CalledProcessError:
                 try:
                     subprocess.run(['paplay', temp_file_path], check=True, capture_output=True)
-                    olliePrint("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)")
+                    olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)", 'success')
                 except subprocess.CalledProcessError:
-                    olliePrint("[CRITICAL] Audio playback failed")
+                    olliePrint_simple("[CRITICAL] Audio playback failed", 'error')
             
             try:
                 os.unlink(temp_file_path)
@@ -615,26 +615,26 @@ class FREDPiClient:
                 pass
                 
         except Exception as e:
-            olliePrint(f"[CRITICAL] Audio playback system failure: {e}")
+            olliePrint_simple(f"[CRITICAL] Audio playback system failure: {e}", 'error')
     
     async def _cleanup(self):
         """Cleanup resources"""
-        olliePrint("[CLEANUP] Shutting down ArmLink systems...")
+        olliePrint_simple("[CLEANUP] Shutting down ArmLink systems...", 'warning')
         
         self.stt_service.stop_processing()
         
         if self.camera:
             try:
                 self.camera.stop()
-                olliePrint("📸 [VISION] Camera systems offline")
+                olliePrint_simple("📸 [VISION] Camera systems offline", 'warning')
             except Exception as e:
-                olliePrint(f"⚠️ [VISION] Camera cleanup error: {e}")
+                olliePrint_simple(f"⚠️ [VISION] Camera cleanup error: {e}", 'warning')
         
         if self.pc:
             await self.pc.close()
         
         self.is_running = False
-        olliePrint("[SHELTER-CORE] All systems offline. Stay safe out there!")
+        olliePrint_simple("[SHELTER-CORE] All systems offline. Stay safe out there!", 'warning')
 
 
 def get_server_url(provided_url=None):
@@ -642,10 +642,10 @@ def get_server_url(provided_url=None):
     if provided_url:
         if not provided_url.startswith(('http://', 'https://')):
             provided_url = f'http://{provided_url}'
-        olliePrint(f"🔗 Using provided F.R.E.D. server: {provided_url}")
+        olliePrint_simple(f"🔗 Using provided F.R.E.D. server: {provided_url}")
         return provided_url
     
-    olliePrint("🔍 Auto-discovering F.R.E.D. mainframe...")
+    olliePrint_simple("🔍 Auto-discovering F.R.E.D. mainframe...")
     
     # Try common local addresses
     local_addresses = [
@@ -659,7 +659,7 @@ def get_server_url(provided_url=None):
         try:
             response = requests.get(f'{url}/', timeout=2)
             if response.status_code == 200:
-                olliePrint(f"✅ Found F.R.E.D. mainframe at: {url}")
+                olliePrint_simple(f"✅ Found F.R.E.D. mainframe at: {url}", 'success')
                 return url
         except:
             continue
@@ -670,16 +670,16 @@ def get_server_url(provided_url=None):
             tunnel_info = json.load(f)
             tunnel_url = tunnel_info.get('webrtc_server')
             if tunnel_url:
-                olliePrint(f"🌐 Found tunnel URL: {tunnel_url}")
+                olliePrint_simple(f"🌐 Found tunnel URL: {tunnel_url}", 'success')
                 return tunnel_url
     except:
         pass
     
-    olliePrint("❌ [CRITICAL] No F.R.E.D. server found!")
-    olliePrint("\n[SHELTER-CORE] Troubleshooting protocols:")
-    olliePrint("1. Start F.R.E.D. WebRTC server: python start_fred_with_webrtc.py")
-    olliePrint("2. Use local URL: --server http://localhost:8080")
-    olliePrint("3. Use ngrok tunnel URL")
+    olliePrint_simple("❌ [CRITICAL] No F.R.E.D. server found!", 'error')
+    olliePrint_simple("\n[SHELTER-CORE] Troubleshooting protocols:", 'warning')
+    olliePrint_simple("1. Start F.R.E.D. WebRTC server: python start_fred_with_webrtc.py")
+    olliePrint_simple("2. Use local URL: --server http://localhost:8080")
+    olliePrint_simple("3. Use ngrok tunnel URL")
     
     raise Exception("❌ No F.R.E.D. server found. Please specify --server URL")
 
@@ -696,13 +696,13 @@ async def main():
         await client.start()
         
     except KeyboardInterrupt:
-        olliePrint("\n[SHUTDOWN] Field operative terminating connection")
+        olliePrint_simple("\n[SHUTDOWN] Field operative terminating connection", 'warning')
     except Exception as e:
-        olliePrint(f"\n[CRITICAL] System failure: {e}")
-        olliePrint("\n[SHELTER-CORE] Troubleshooting protocols:")
-        olliePrint("1. Verify F.R.E.D. mainframe is operational")
-        olliePrint("2. Check wasteland communication network")
-        olliePrint("3. Try manual server specification with --server")
+        olliePrint_simple(f"\n[CRITICAL] System failure: {e}", 'error')
+        olliePrint_simple("\n[SHELTER-CORE] Troubleshooting protocols:", 'warning')
+        olliePrint_simple("1. Verify F.R.E.D. mainframe is operational")
+        olliePrint_simple("2. Check wasteland communication network")
+        olliePrint_simple("3. Try manual server specification with --server")
         sys.exit(1)
 
 

@@ -13,8 +13,8 @@ import requests
 import time
 import aiohttp
 from config import config
-from ollietec_theme import apply_theme, banner, startup_block
-from ollie_print import olliePrint
+from ollietec_theme import apply_theme, banner
+from ollie_print import olliePrint, olliePrint_simple
 
 # Global variable to store tunnel info
 tunnel_info = {"webrtc_server": None, "main_url": None}
@@ -29,7 +29,7 @@ apply_theme()
 async def start_ngrok_tunnel():
     """Start ngrok tunnel asynchronously."""
     try:
-        olliePrint("[SHELTER-NET] Establishing external communication tunnel...")
+        olliePrint_simple("[SHELTER-NET] Establishing external communication tunnel...")
         ngrok_process = await asyncio.create_subprocess_exec(
             "ngrok", "http", str(config.WEBRTC_PORT),
             "--log", "stdout",
@@ -48,27 +48,23 @@ async def start_ngrok_tunnel():
                         if tunnel['config']['addr'].endswith(str(config.WEBRTC_PORT)):
                             public_url = tunnel['public_url']
                             tunnel_info["webrtc_server"] = public_url
-                            olliePrint(f"[SUCCESS] External tunnel established: {public_url}")
-                            olliePrint("╔" + "═" * 78 + "╗")
-                            olliePrint("║" + f"{'🌐 NGROK TUNNEL URL FOR PI GLASSES:':^78}" + "║")
-                            olliePrint("║" + f"{public_url:^78}" + "║")
-                            olliePrint("║" + f"{'Use this URL on your Pi: python client.py --server {url}':^78}".format(url=public_url) + "║")
-                            olliePrint("╚" + "═" * 78 + "╝")
+                            olliePrint_simple(f"[SUCCESS] External tunnel established: {public_url}", 'success')
+                            olliePrint_simple(f"📱 Pi Command: python client.py --server {public_url}")
                             # Save tunnel info for Pi client
                             with open('tunnel_info.json', 'w') as f:
                                 json.dump({"webrtc_server": public_url}, f)
                             return ngrok_process
             except Exception as e:
-                olliePrint(f"[WARNING] Tunnel status unavailable via API: {e}")
+                olliePrint_simple(f"[WARNING] Tunnel status unavailable via API: {e}", 'warning')
         
         return ngrok_process
     except Exception as e:
-        olliePrint(f"[ERROR] External tunnel establishment failed: {e}")
+        olliePrint_simple(f"[ERROR] External tunnel establishment failed: {e}", 'error')
         return None
 
 async def run_server(name, command):
     """Run a server command as a subprocess."""
-    olliePrint(f"🚀 Starting {name}...")
+    olliePrint_simple(f"🚀 Starting {name}...")
     process = await asyncio.create_subprocess_exec(
         sys.executable, command,
         stdout=sys.stdout,
@@ -82,27 +78,20 @@ async def run_with_ngrok():
     ngrok_process = None
     
     if config.NGROK_ENABLED:
-        olliePrint("[SHELTER-NET] External tunnel protocols enabled...")
+        olliePrint_simple("[SHELTER-NET] External tunnel protocols enabled...")
         ngrok_process = await start_ngrok_tunnel()
         if ngrok_process:
-            olliePrint("[SUCCESS] External communications link established")
-            # Display current tunnel info prominently
-            if tunnel_info.get("webrtc_server"):
-                olliePrint("\n" + "="*80)
-                olliePrint(f"🌐 CURRENT NGROK TUNNEL: {tunnel_info['webrtc_server']}")
-                olliePrint("="*80)
-                olliePrint(f"📱 Pi Command: python client.py --server {tunnel_info['webrtc_server']}")
-                olliePrint("="*80 + "\n")
+            olliePrint_simple("[SUCCESS] External communications link established", 'success')
         else:
-            olliePrint("[WARNING] External tunnel failed - operating in local mode only")
+            olliePrint_simple("[WARNING] External tunnel failed - operating in local mode only", 'warning')
     else:
-        olliePrint("[LOCAL] External tunnel disabled - shelter network access only")
+        olliePrint_simple("[LOCAL] External tunnel disabled - shelter network access only")
     
     try:
         await run_webrtc_server_async()
     finally:
         if ngrok_process:
-            olliePrint("[SHELTER-NET] Terminating external communication tunnel...")
+            olliePrint_simple("[SHELTER-NET] Terminating external communication tunnel...")
             ngrok_process.terminate()
             await ngrok_process.wait()
 
@@ -112,8 +101,9 @@ def main():
     - F.R.E.D. Flask server runs in a separate thread.
     - WebRTC aiohttp server runs in the main thread's asyncio loop.
     """
-    info_lines = ["[MAINFRAME] F.R.E.D. core intelligence systems ONLINE"]
-    olliePrint(startup_block("F.R.E.D. MAINFRAME", info_lines))
+    # Single clean startup banner
+    olliePrint(banner("F.R.E.D. Mainframe v2.0"))
+    olliePrint_simple("[MAINFRAME] F.R.E.D. core intelligence systems initializing...")
 
     # 1. Run the Flask/SocketIO server in its own thread
     # This is necessary because it uses its own blocking eventlet server.
@@ -126,13 +116,13 @@ def main():
 
     # 2. Run the aiohttp WebRTC server with ngrok tunnel in the main thread using asyncio
     try:
-        olliePrint("[NETWORK] Initializing wasteland communication protocols...")
+        olliePrint_simple("[NETWORK] Initializing wasteland communication protocols...")
         asyncio.run(run_with_ngrok())
     except KeyboardInterrupt:
-        olliePrint("\n[SHUTDOWN] F.R.E.D. mainframe shutting down...")
+        olliePrint_simple("\n[SHUTDOWN] F.R.E.D. mainframe shutting down...", 'warning')
     finally:
         # The servers are daemonized or will shut down on loop completion
-        olliePrint("[SHELTER-CORE] All systems offline. Stay safe out there.")
+        olliePrint_simple("[SHELTER-CORE] All systems offline. Stay safe out there.", 'warning')
         # Note: Proper cleanup of the WebRTC runner is handled within webrtc_server.py
         # on loop cancellation. The fred_thread is a daemon and will exit with the main thread.
 

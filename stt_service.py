@@ -15,7 +15,7 @@ import queue  # ADD: Proper queue for audio processing
 import sys  # ADD: For printing to stderr
 from config import config
 from ollietec_theme import apply_theme
-from ollie_print import olliePrint
+from ollie_print import olliePrint_simple
 
 apply_theme()
 
@@ -30,7 +30,7 @@ def print_transcription_to_terminal(text, source="TRANSCRIPTION"):
         f"📝 Text: '{text}'\n"
         f"{separator}\n"
     )
-    olliePrint("".join(message), level='audio', show_banner=False)
+    olliePrint_simple("".join(message))
 
 
 class STTService:
@@ -111,15 +111,15 @@ class STTService:
             else:
                 compute_type = "int8"  # Always use quantized on CPU
             
-            olliePrint(f"Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM", 'network')
-            olliePrint(f"Initializing Whisper large-v3 (quantized) on {device.upper()}", 'mainframe')
+            olliePrint_simple(f"Speech recognition matrix: {cpu_cores} cores, {available_memory:.1f}GB RAM")
+            olliePrint_simple(f"Initializing Whisper large-v3 (quantized) on {device.upper()}")
             
             # Optimize CPU threads - use most but not all cores to avoid blocking
             cpu_threads = max(1, cpu_cores - 1)
             
             # Use large-v3 model with quantization for best accuracy/speed balance
             model_size = config.STT_MODEL_SIZE
-            olliePrint(f"Loading {model_size} model with {compute_type} quantization", 'info')
+            olliePrint_simple(f"Loading {model_size} model with {compute_type} quantization")
             
             # Initialize with optimized settings for real-time accuracy
             self.model = WhisperModel(
@@ -139,23 +139,23 @@ class STTService:
                     current_process.nice(psutil.HIGH_PRIORITY_CLASS)
                 else:  # Linux/Mac
                     current_process.nice(-10)  # Higher priority
-                olliePrint("High priority mode enabled for real-time processing", 'success', show_banner=False)
+                olliePrint_simple("High priority mode enabled for real-time processing")
             except Exception as e:
-                olliePrint(f"Could not set process priority: {e}", 'warning', show_banner=False)
+                olliePrint_simple(f"Could not set process priority: {e}")
             
             self.is_initialized = True
-            olliePrint(f"Speech recognition online - {model_size} quantized model ready", 'success')
+            olliePrint_simple(f"Speech recognition online - {model_size} quantized model ready")
             return True
             
         except Exception as e:
-            olliePrint(f"Speech recognition initialization failed: {e}", 'critical')
+            olliePrint_simple(f"Speech recognition initialization failed: {e}")
             return False
     
     # ADD: Direct audio callback like old system
     def audio_callback(self, indata, frames, time_info, status):
         """Callback function for audio stream - EXACTLY like old system"""
         if status:
-            olliePrint(f"Status: {status}", file=sys.stderr)
+            olliePrint_simple(f"Status: {status}")
         self.audio_queue.put((indata.copy(), False))  # (audio_data, from_pi)
     
     def start_processing(self, callback):
@@ -164,7 +164,7 @@ class STTService:
             if not self.initialize():
                 return False
                 
-        olliePrint("🎤 Enhanced debugging enabled - Terminal transcription logging active")
+        olliePrint_simple("🎤 Enhanced debugging enabled - Terminal transcription logging active")
         self.transcription_callback = callback
         self.is_processing = True
         self.is_running = True
@@ -180,12 +180,12 @@ class STTService:
                 blocksize=self.blocksize
             )
             self.stream.start()
-            olliePrint("[ARMLINK AUDIO] Direct audio stream active")
+            olliePrint_simple("[ARMLINK AUDIO] Direct audio stream active")
         except Exception as e:
-            olliePrint(f"Failed to start local audio stream (this is normal if using Pi glasses): {e}")
+            olliePrint_simple(f"Failed to start local audio stream (this is normal if using Pi glasses): {e}")
             # Don't return False - Pi glasses audio will be handled via WebRTC
             self.stream = None
-            olliePrint("🍇 [ARMLINK AUDIO] Local capture off - using Pi glasses via WebRTC")
+            olliePrint_simple("🍇 [ARMLINK AUDIO] Local capture off - using Pi glasses via WebRTC")
         
         # Calibrate silence threshold like v1
         self.calibrate_silence_threshold()
@@ -193,8 +193,8 @@ class STTService:
         self.processing_thread = threading.Thread(target=self._process_audio_loop, daemon=True)
         self.processing_thread.start()
         
-        olliePrint("[ARMLINK STT] Processing thread active - awaiting wake word...")
-        olliePrint("STT processing started - waiting for wake word...")
+        olliePrint_simple("[ARMLINK STT] Processing thread active - awaiting wake word...")
+        olliePrint_simple("STT processing started - waiting for wake word...")
         return True
     
     def stop_processing(self):
@@ -210,16 +210,16 @@ class STTService:
         self.terminate_event.set()
         if self.processing_thread:
             self.processing_thread.join(timeout=2.0)
-        olliePrint("STT processing stopped")
+        olliePrint_simple("STT processing stopped")
     
     def calibrate_silence_threshold(self):
         """Calibrate the silence threshold based on ambient noise - EXACTLY like old system"""
         if self.stream is None:
             self.silence_threshold = self.pi_silence_threshold  # Use Pi default threshold
-            olliePrint(f"🍇 [ARMLINK AUDIO] Pi glasses mode - default threshold {self.silence_threshold:.6f}")
+            olliePrint_simple(f"🍇 [ARMLINK AUDIO] Pi glasses mode - default threshold {self.silence_threshold:.6f}")
             return
             
-        olliePrint("[AUDIO] Calibrating microphone... Please remain quiet.")
+        olliePrint_simple("[AUDIO] Calibrating microphone... Please remain quiet.")
         start_time = time.time()
         
         while time.time() - start_time < self.calibration_duration:
@@ -227,16 +227,16 @@ class STTService:
                 audio_data = self.audio_queue.get()
                 audio_level = np.abs(audio_data).mean()  # Simple amplitude like v1
                 self.calibration_samples.append(audio_level)
-                olliePrint(f"[DEBUG] Calibration sample: {audio_level:.6f}")
+                olliePrint_simple(f"[DEBUG] Calibration sample: {audio_level:.6f}")
             time.sleep(0.1)
         
         if self.calibration_samples:
             # Set threshold slightly above the average ambient noise like v1
             avg_noise = np.mean(self.calibration_samples)
             self.silence_threshold = avg_noise * 1.1  # Exact same formula as old system
-            olliePrint(f"[AUDIO] Silence threshold calibrated to: {self.silence_threshold:.6f}")
+            olliePrint_simple(f"[AUDIO] Silence threshold calibrated to: {self.silence_threshold:.6f}")
         else:
-            olliePrint("[WARNING] No calibration samples collected - using default silence threshold")
+            olliePrint_simple("[WARNING] No calibration samples collected - using default silence threshold")
     
     def _process_audio_loop(self):
         """Main audio processing loop - EXACTLY like old system"""
@@ -257,16 +257,16 @@ class STTService:
                     if from_pi and not self._pi_threshold_set:
                         self.silence_threshold = self.pi_silence_threshold
                         self._pi_threshold_set = True
-                        olliePrint(f"[DEBUG] Pi silence threshold set to {self.silence_threshold:.6f}")
+                        olliePrint_simple(f"[DEBUG] Pi silence threshold set to {self.silence_threshold:.6f}")
 
                     if from_pi:
                         # Throttle verbose logging to avoid console spam – print every 20th chunk (~10 s)
                         self._pi_chunk_counter += 1
                         if self._pi_chunk_counter % 20 == 0:
-                            olliePrint(f"[DEBUG] Processing Pi audio chunk #{self._pi_chunk_counter} ({len(audio_chunk)} samples)")
+                            olliePrint_simple(f"[DEBUG] Processing Pi audio chunk #{self._pi_chunk_counter} ({len(audio_chunk)} samples)")
                 else:
                     audio_chunk, from_pi = queue_item, False
-                    olliePrint(f"[DEBUG] Processing local audio chunk ({len(audio_chunk)} samples)")
+                    olliePrint_simple(f"[DEBUG] Processing local audio chunk ({len(audio_chunk)} samples)")
                 
                 # ENHANCED: Proper audio normalization (preserve quality from WebRTC)
                 if isinstance(audio_chunk, np.ndarray):
@@ -291,7 +291,7 @@ class STTService:
                 if self.is_listening:
                     now = time.time()
                     if now - self._last_level_log > 0.5:  # print at most twice per second
-                        olliePrint(f"\rAudio level: {audio_level:.6f} (Threshold: {self.silence_threshold:.6f})", end="")
+                        olliePrint_simple(f"\rAudio level: {audio_level:.6f} (Threshold: {self.silence_threshold:.6f})", end="")
                         self._last_level_log = now
                 
                 # Skip processing if F.R.E.D. is speaking to avoid feedback
@@ -303,7 +303,7 @@ class STTService:
                     # Concise processing indicator
                     self._debug_counter += 1
                     if self._debug_counter % 5 == 0:  # Every 5th detection
-                        olliePrint(f"[PROCESSING] Audio level: {audio_level:.6f}")
+                        olliePrint_simple(f"[PROCESSING] Audio level: {audio_level:.6f}")
                         
                     try:
                         # Optimized transcription settings for accuracy
@@ -325,7 +325,7 @@ class STTService:
                         # Convert generator to list for safe multiple passes
                         segments = list(segments_gen)
                         if from_pi and segments and self._debug_counter % 10 == 0:  # Concise Pi logging
-                            olliePrint(f"[ARMLINK] Processed {len(segments)} speech segments")
+                            olliePrint_simple(f"[ARMLINK] Processed {len(segments)} speech segments")
 
                         for segment in segments:
                             text = segment.text.strip().lower()
@@ -333,7 +333,7 @@ class STTService:
                             # Enhanced hallucination filtering
                             if any(phrase in text for phrase in self._ignore_phrases):
                                 if self._debug_counter % 20 == 0:  # Occasional hallucination logging
-                                    olliePrint(f"[FILTER] Blocked hallucination: '{text[:30]}...'")
+                                    olliePrint_simple(f"[FILTER] Blocked hallucination: '{text[:30]}...'")
                                 continue
                             
                             # Filter very short or repetitive text
@@ -342,7 +342,7 @@ class STTService:
                             
                             if text and len(text.split()) > 0:
                                 source_type = "Pi Glasses" if from_pi else "Local Computer"
-                                olliePrint(f"[RECOGNITION] {source_type}: {text}")
+                                olliePrint_simple(f"[RECOGNITION] {source_type}: {text}")
                                 
                                 # === TERMINAL LOGGING FOR TRANSCRIPTION ===
                                 print_transcription_to_terminal(f"[{source_type}] {text}", "SPEECH-TO-TEXT")
@@ -351,7 +351,7 @@ class STTService:
                                 if not self.is_listening:
                                     wake_word_found = any(wake_word in text for wake_word in self.wake_words)
                                     if wake_word_found:
-                                        olliePrint(f"[WAKE] F.R.E.D. activated - listening mode engaged")
+                                        olliePrint_simple(f"[WAKE] F.R.E.D. activated - listening mode engaged")
                                         print_transcription_to_terminal("F.R.E.D. ACTIVATED - Ready for commands", "WAKE WORD")
                                         
                                         self.is_listening = True
@@ -364,7 +364,7 @@ class STTService:
                                     # Check for stop words
                                     stop_word_found = any(stop_word in text for stop_word in self.stop_words)
                                     if stop_word_found:
-                                        olliePrint(f"[SLEEP] F.R.E.D. deactivated")
+                                        olliePrint_simple(f"[SLEEP] F.R.E.D. deactivated")
                                         print_transcription_to_terminal("F.R.E.D. DEACTIVATED", "STOP WORD")
                                         
                                         if self.transcription_callback:
@@ -378,19 +378,19 @@ class STTService:
                                     if len(words) > 1:  # More than one word
                                         self.last_speech_time = time.time()
                                         self.speech_buffer.append(text)
-                                        olliePrint(f"[BUFFER] Added: '{text}' ({len(self.speech_buffer)} segments)")
+                                        olliePrint_simple(f"[BUFFER] Added: '{text}' ({len(self.speech_buffer)} segments)")
                                         print_transcription_to_terminal(f"[COMMAND] {text} (Buffer: {len(self.speech_buffer)})", "VOICE COMMAND")
 
                     except Exception as e:
-                        olliePrint(f"[ERROR] Transcription failed: {str(e)}")
-                        olliePrint(f"Error during transcription: {str(e)}")
+                        olliePrint_simple(f"[ERROR] Transcription failed: {str(e)}")
+                        olliePrint_simple(f"Error during transcription: {str(e)}")
                 else:
                     # Check for complete utterance with improved logic
                     if (self.is_listening and self.speech_buffer and 
                         time.time() - self.last_speech_time > self.silence_duration):
                         
                         complete_utterance = " ".join(self.speech_buffer)
-                        olliePrint(f"[COMMAND] Processing: '{complete_utterance}'")
+                        olliePrint_simple(f"[COMMAND] Processing: '{complete_utterance}'")
                         print_transcription_to_terminal(f"FINAL COMMAND: '{complete_utterance}'", "FINAL TRANSCRIPTION")
                         
                         self.speech_buffer = []
@@ -399,20 +399,20 @@ class STTService:
                         try:
                             if self.transcription_callback:
                                 source_type = "Pi Glasses" if from_pi else "Local Computer"
-                                olliePrint(f"[RELAY] Sending to F.R.E.D. from {source_type}")
+                                olliePrint_simple(f"[RELAY] Sending to F.R.E.D. from {source_type}")
                                 self.transcription_callback(complete_utterance, from_pi)
                             
                             # Resume listening
                             self.is_listening = True
-                            olliePrint("[READY] Listening for next command")
+                            olliePrint_simple("[READY] Listening for next command")
                         except Exception as e:
-                            olliePrint(f"[ERROR] Command processing failed: {str(e)}")
-                            olliePrint(f"Error in callback processing: {str(e)}")
+                            olliePrint_simple(f"[ERROR] Command processing failed: {str(e)}")
+                            olliePrint_simple(f"Error in callback processing: {str(e)}")
                             self.is_listening = True
 
             except Exception as e:
-                olliePrint(f"Error in audio processing loop: {e}")
-                olliePrint(f"[DEBUG] Audio processing loop error: {e}")
+                olliePrint_simple(f"Error in audio processing loop: {e}")
+                olliePrint_simple(f"[DEBUG] Audio processing loop error: {e}")
                 time.sleep(0.5)
             
             # ADD: Same timing as old system
@@ -447,7 +447,7 @@ class STTService:
             return text.strip()
             
         except Exception as e:
-            olliePrint(f"Error transcribing audio: {e}")
+            olliePrint_simple(f"Error transcribing audio: {e}")
             return ""
     
     def transcribe_file(self, audio_file_path):
@@ -470,7 +470,7 @@ class STTService:
             return text.strip()
             
         except Exception as e:
-            olliePrint(f"Error transcribing file: {e}")
+            olliePrint_simple(f"Error transcribing file: {e}")
             return ""
 
     def set_speaking_state(self, speaking: bool):

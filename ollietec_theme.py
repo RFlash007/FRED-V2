@@ -49,8 +49,3 @@ def banner(component: str) -> str:
         '\033[92m' + '═' * 60 + '\033[0m',
     ]
     return '\n'.join(lines)
-
-
-def startup_block(component: str, info_lines: list[str]) -> str:
-    """Return a banner joined with additional startup info lines."""
-    return '\n'.join([banner(component), *info_lines])
