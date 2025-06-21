@@ -149,7 +149,7 @@ async def offer(request):
                 def _call_fred():
                     try:
                         import requests, json as _json
-                        resp = requests.post("http://localhost:5000/chat", json=payload, stream=True, timeout=60)
+                        resp = requests.post("http://localhost:5000/chat", json=payload, stream=True, timeout=None)
                         if resp.status_code == 200:
                             buffer = ""
                             total_fragments = 0
