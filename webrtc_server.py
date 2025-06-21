@@ -188,16 +188,23 @@ async def offer(request):
             client_type = params.get('client_type', 'unknown')
             is_local_stt = 'local_stt' in client_type
             
+            # Debug logging for client type detection
+            olliePrint_simple(f"🔍 [DEBUG] Client type: '{client_type}', is_local_stt: {is_local_stt}")
+            
             if is_local_stt:
                 olliePrint_simple(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
             
             @channel.on('message')
             def on_message(message):
+                # Debug logging for message handling
+                olliePrint_simple(f"🔍 [DEBUG] Message received: '{message}' | is_local_stt: {is_local_stt}")
+                
                 # Handle heartbeat messages
                 if message == '[HEARTBEAT]':
                     olliePrint_simple(f"[VITAL-MONITOR] ArmLink heartbeat confirmed from {client_ip}")
                     channel.send('[HEARTBEAT_ACK]')
                 elif is_local_stt:
+                    olliePrint_simple(f"🔀 [DEBUG] Taking LOCAL STT path")
                     # Handle transcribed text from Pi
                     try:
                         import json
@@ -218,6 +225,7 @@ async def offer(request):
                             process_pi_transcription(message.strip(), from_pi=True)
                             olliePrint_simple(f"✅ [SERVER-PROCESSED] Plain text sent to F.R.E.D.: '{message.strip()}'")
                 else:
+                    olliePrint_simple(f"🔀 [DEBUG] Taking ELSE path (not local STT)")
                     olliePrint_simple(f"[ARMLINK COMM] Field operative message: {message}")
             
             @channel.on('close')
