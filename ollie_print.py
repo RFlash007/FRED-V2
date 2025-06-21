@@ -51,32 +51,38 @@ class ANSIColors:
     UNDERLINE = '\033[4m'
     BLINK = '\033[5m'
 
-# === Anthropic-inspired Color Scheme ===
+# === Dark Purple + Anthropic-inspired Color Scheme ===
 FRED_COLORS = {
-    # Core system messages - Anthropic's signature orange
-    'info': '\033[38;2;241;122;83m',           # Anthropic orange: #F17A53
-    'debug': '\033[38;2;241;122;83m',          # Anthropic orange: #F17A53
-    'network': '\033[38;2;241;122;83m',        # Anthropic orange: #F17A53
-    'mainframe': '\033[38;2;241;122;83m',      # Anthropic orange: #F17A53
+    # Primary: Deep Purple (main system messages) - core identity
+    'info': '\033[38;2;139;69;235m',           # Deep purple: #8B45EB
+    'debug': '\033[38;2;139;69;235m',          # Deep purple: #8B45EB  
+    'network': '\033[38;2;139;69;235m',        # Deep purple: #8B45EB
+    'mainframe': '\033[38;2;139;69;235m',      # Deep purple: #8B45EB
     
-    # Success states - muted green
-    'success': '\033[38;2;52;168;83m',         # Clean green: #34A853
-    'armlink': '\033[38;2;52;168;83m',         # Clean green: #34A853
-    'shelter': '\033[38;2;52;168;83m',         # Clean green: #34A853
+    # Success: Anthropic Green (harmonizes with purple)
+    'success': '\033[38;2;52;168;83m',         # Anthropic green: #34A853
+    'armlink': '\033[38;2;52;168;83m',         # Anthropic green: #34A853
+    'shelter': '\033[38;2;52;168;83m',         # Anthropic green: #34A853
     
-    # Media/Audio - warm secondary orange
-    'audio': '\033[38;2;255;159;67m',          # Warm orange: #FF9F43
-    'optics': '\033[38;2;255;159;67m',         # Warm orange: #FF9F43
+    # Media: Warm Purple (lighter purple for accent)
+    'audio': '\033[38;2;183;110;255m',         # Warm purple: #B76EFF
+    'optics': '\033[38;2;183;110;255m',        # Warm purple: #B76EFF
+    'vision': '\033[38;2;183;110;255m',        # Warm purple: #B76EFF
     
-    # Warnings - amber
-    'warning': '\033[38;2;255;193;7m',         # Amber warning: #FFC107
+    # Neutral: Muted Purple-Gray (professional, readable)
+    'warning': '\033[38;2;156;139;192m',       # Muted purple-gray: #9C8BC0
+    'timestamp': '\033[38;2;156;139;192m',     # Muted purple-gray: #9C8BC0
     
-    # Errors - keep red but use Anthropic's red tone
-    'error': '\033[38;2;220;53;69m',           # Clean red: #DC3545
-    'critical': '\033[48;2;220;53;69m\033[38;2;255;255;255m',  # Red background, white text
+    # Error: Keep Anthropic's clean red (as requested)
+    'error': '\033[38;2;220;53;69m',           # Anthropic red: #DC3545
+    'critical': '\033[38;2;220;53;69m',        # Anthropic red: #DC3545
+    'arctec': '\033[38;2;220;53;69m',          # Anthropic red: #DC3545
     
-    # System text - neutral gray
-    'system': '\033[38;2;108;117;125m',        # Clean gray: #6C757D
+    # OLLIE-TEC branding: Signature Purple
+    'ollie-tec': '\033[38;2;139;69;235m',      # Deep purple: #8B45EB
+    'vault-tec': '\033[38;2;139;69;235m',      # Deep purple: #8B45EB
+    
+    'reset': '\033[0m'
 }
 
 # === F.R.E.D. Personality Comments ===

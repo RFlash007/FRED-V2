@@ -3,30 +3,34 @@ import builtins as _b
 
 _RESET = '\033[0m'
 
-# Anthropic-inspired Color Scheme
+# Dark Purple + Anthropic-inspired Color Scheme
 _COLOR_MAP = {
-    # Errors - clean red tone  
-    'CRITICAL': '\033[38;2;220;53;69m',        # Clean red: #DC3545
-    'ERROR': '\033[38;2;220;53;69m',           # Clean red: #DC3545
-    'ARCTEC': '\033[38;2;220;53;69m',          # Clean red: #DC3545
+    # Errors - clean red (as requested)
+    'CRITICAL': '\033[38;2;220;53;69m',        # Anthropic red: #DC3545
+    'ERROR': '\033[38;2;220;53;69m',           # Anthropic red: #DC3545
+    'ARCTEC': '\033[38;2;220;53;69m',          # Anthropic red: #DC3545
     
-    # Warnings - amber
-    'WARNING': '\033[38;2;255;193;7m',         # Amber warning: #FFC107
+    # Warnings - muted purple-gray
+    'WARNING': '\033[38;2;156;139;192m',       # Muted purple-gray: #9C8BC0
     
-    # Success states - clean green
-    'SUCCESS': '\033[38;2;52;168;83m',         # Clean green: #34A853
-    'ARMLINK': '\033[38;2;52;168;83m',         # Clean green: #34A853
-    'SHELTER': '\033[38;2;52;168;83m',         # Clean green: #34A853
+    # Success states - Anthropic green (harmonizes with purple)
+    'SUCCESS': '\033[38;2;52;168;83m',         # Anthropic green: #34A853
+    'ARMLINK': '\033[38;2;52;168;83m',         # Anthropic green: #34A853
+    'SHELTER': '\033[38;2;52;168;83m',         # Anthropic green: #34A853
     
-    # Media/Audio - warm orange
-    'AUDIO': '\033[38;2;255;159;67m',          # Warm orange: #FF9F43
-    'OPTICS': '\033[38;2;255;159;67m',         # Warm orange: #FF9F43
+    # Media/Audio - warm purple
+    'AUDIO': '\033[38;2;183;110;255m',         # Warm purple: #B76EFF
+    'OPTICS': '\033[38;2;183;110;255m',        # Warm purple: #B76EFF
+    'VISION': '\033[38;2;183;110;255m',        # Warm purple: #B76EFF
     
-    # Core systems - Anthropic signature orange
-    'NETWORK': '\033[38;2;241;122;83m',        # Anthropic orange: #F17A53
-    'MAINFRAME': '\033[38;2;241;122;83m',      # Anthropic orange: #F17A53
-    'OLLIE-TEC': '\033[38;2;241;122;83m',      # Anthropic orange: #F17A53
-    'DEBUG': '\033[38;2;241;122;83m',          # Anthropic orange: #F17A53
+    # Network/System - deep purple (main identity color)
+    'NETWORK': '\033[38;2;139;69;235m',        # Deep purple: #8B45EB
+    'MAINFRAME': '\033[38;2;139;69;235m',      # Deep purple: #8B45EB
+    'DEBUG': '\033[38;2;139;69;235m',          # Deep purple: #8B45EB
+    
+    # Branding - signature purple
+    'OLLIE-TEC': '\033[38;2;139;69;235m',      # Deep purple: #8B45EB
+    'VAULT-TEC': '\033[38;2;139;69;235m',      # Deep purple: #8B45EB
 }
 
 _orig_print = _b.print
