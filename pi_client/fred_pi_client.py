@@ -149,7 +149,7 @@ class FREDPiSTTService:
         self.speech_buffer = []
         self.partial_buffer = ""  # Track partial results separately
         self.last_speech_time = 0
-        self.silence_duration = 1.2  # Slightly longer for better sentence completion
+        self.silence_duration = 0.8  # Reduced from 1.2 for faster processing
         self.silence_threshold = 0.002
         
         # Processing control
@@ -369,6 +369,15 @@ class FREDPiSTTService:
         if not is_final or not text or len(text.strip()) == 0:
             return
         
+        # Special enrollment command (bypass speaker verification)
+        if "enroll my voice" in text.lower() or "voice enrollment" in text.lower():
+            olliePrint_simple("🎤 [ENROLLMENT] Voice enrollment command detected!", 'success')
+            # Run enrollment in a separate thread to avoid blocking
+            import threading
+            enrollment_thread = threading.Thread(target=self.enroll_user_voice, daemon=True)
+            enrollment_thread.start()
+            return
+        
         # Speaker verification for final results
         is_user, speaker_confidence = self.speaker_verifier.verify_speaker(audio_chunk)
         
@@ -405,6 +414,20 @@ class FREDPiSTTService:
                 olliePrint_simple(f"📝 [BUFFER] Adding: '{text}' (conf: {confidence:.2f})")
                 self.last_speech_time = time.time()
                 self.speech_buffer.append(text)
+                
+                # Show current buffer status
+                buffer_text = " ".join(self.speech_buffer)
+                olliePrint_simple(f"🗂️ [BUFFER-STATUS] Current: '{buffer_text}' ({len(self.speech_buffer)} parts)")
+                
+                # Also check for immediate processing if we detect sentence endings
+                if text.strip().endswith(('.', '?', '!')) or len(self.speech_buffer) >= 3:
+                    olliePrint_simple("🔄 [TRIGGER] Processing utterance (sentence end detected)")
+                    self._process_complete_utterance()
+                
+                # Timeout mechanism - process if buffer has been sitting too long
+                elif len(self.speech_buffer) > 0 and time.time() - self.last_speech_time > 3.0:
+                    olliePrint_simple("⏰ [TIMEOUT] Processing utterance (timeout)")
+                    self._process_complete_utterance()
     
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
         """Enhanced audio chunk processing"""
@@ -415,7 +438,9 @@ class FREDPiSTTService:
             # Skip if too quiet
             if audio_level < self.silence_threshold:
                 if self.is_listening and self.speech_buffer:
-                    if time.time() - self.last_speech_time > self.silence_duration:
+                    silence_duration = time.time() - self.last_speech_time
+                    if silence_duration > self.silence_duration:
+                        olliePrint_simple(f"🔇 [SILENCE] {silence_duration:.1f}s detected - processing utterance")
                         self._process_complete_utterance()
                 return
             

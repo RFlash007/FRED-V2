@@ -156,7 +156,8 @@ class VisionService:
             olliePrint_simple(f"📊 {self.current_scene_description}")
             olliePrint_simple("[OPTICS] ===============================")
             
-            olliePrint_simple(f"Vision update: {self.current_scene_description[:100]}...")
+            # Show full description, not truncated
+            olliePrint_simple(f"Vision update: {self.current_scene_description}")
             
         except ollama.ResponseError as e:
             olliePrint_simple(f"[ERROR] Ollama vision model error: {e}")
