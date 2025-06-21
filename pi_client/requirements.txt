@@ -86,3 +86,7 @@ urllib3==2.5.0
     # via requests
 vosk>=0.3.45
     # replacing faster-whisper for local STT
+
+# Enhanced STT processing
+librosa>=0.8.0
+scipy>=1.7.0

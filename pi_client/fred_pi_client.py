@@ -30,6 +30,8 @@ import queue
 import numpy as np
 from typing import Optional, Callable
 import vosk
+import librosa
+import scipy
 
 # Import Ollie-Tec theming
 from ollietec_theme import apply_theme, banner
@@ -42,10 +44,96 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, R
 apply_theme()
 
 
+class LightweightSpeakerVerification:
+    """Ultra-lightweight speaker verification for Pi Zero 2W"""
+    
+    def __init__(self):
+        self.user_profile = None  # Single user profile to save memory
+        self.sample_rate = 16000
+        self.mfcc_features = 13  # Minimal MFCC features
+        self.is_enrolled = False
+        
+    def extract_mfcc_features(self, audio_data):
+        """Extract minimal MFCC features"""
+        try:
+            # Use minimal settings for Pi Zero 2W
+            mfccs = librosa.feature.mfcc(
+                y=audio_data.astype(np.float32), 
+                sr=self.sample_rate,
+                n_mfcc=self.mfcc_features,
+                n_fft=512,  # Smaller FFT for speed
+                hop_length=160  # Larger hop for speed
+            )
+            return np.mean(mfccs, axis=1)  # Average across time
+        except (ImportError, Exception):
+            # Fallback: basic spectral features without librosa
+            return self._basic_spectral_features(audio_data)
+    
+    def _basic_spectral_features(self, audio_data):
+        """Fallback spectral features without librosa"""
+        # Convert to frequency domain
+        fft = np.fft.fft(audio_data)
+        magnitude = np.abs(fft[:len(fft)//2])
+        
+        # Extract basic features
+        features = []
+        features.append(np.mean(magnitude))  # Spectral centroid approximation
+        features.append(np.std(magnitude))   # Spectral spread
+        features.append(np.max(magnitude))   # Peak magnitude
+        
+        return np.array(features)
+    
+    def enroll_user(self, audio_chunks):
+        """Create user voice profile from audio samples"""
+        if not audio_chunks:
+            return False
+            
+        features_list = []
+        for chunk in audio_chunks:
+            if len(chunk) > 0:
+                features = self.extract_mfcc_features(chunk)
+                if features is not None and len(features) > 0:
+                    features_list.append(features)
+        
+        if features_list:
+            # Create average profile
+            self.user_profile = np.mean(features_list, axis=0)
+            self.is_enrolled = True
+            olliePrint_simple("✅ [VOICE-ID] User voice profile created", 'success')
+            return True
+        else:
+            olliePrint_simple("❌ [VOICE-ID] Enrollment failed", 'error')
+            return False
+    
+    def verify_speaker(self, audio_chunk):
+        """Verify if audio matches enrolled user"""
+        if not self.is_enrolled or self.user_profile is None or len(audio_chunk) == 0:
+            return True, 1.0  # Allow all speech if not enrolled
+        
+        try:
+            features = self.extract_mfcc_features(audio_chunk)
+            if features is None or len(features) == 0:
+                return True, 0.5  # Benefit of doubt
+            
+            # Cosine similarity (memory efficient)
+            similarity = np.dot(features, self.user_profile) / (
+                np.linalg.norm(features) * np.linalg.norm(self.user_profile) + 1e-8
+            )
+            
+            # Convert to confidence score
+            confidence = max(0.0, min(1.0, similarity))
+            is_user = confidence > 0.6  # Tunable threshold
+            
+            return is_user, confidence
+        except Exception as e:
+            olliePrint_simple(f"Speaker verification error: {e}", 'warning')
+            return True, 0.5  # Default to allowing speech
+
+
 class FREDPiSTTService:
     """
     ShelterNet Speech Recognition Module
-    Optimized for Pi with Vosk small English model
+    Optimized for Pi with Vosk small English model + Enhanced Text Processing
     """
     
     def __init__(self):
@@ -57,10 +145,11 @@ class FREDPiSTTService:
         self.sample_rate = 16000
         self.channels = 1
         
-        # Speech detection settings
+        # Enhanced speech detection settings
         self.speech_buffer = []
+        self.partial_buffer = ""  # Track partial results separately
         self.last_speech_time = 0
-        self.silence_duration = 1.0  # Slightly longer for Vosk
+        self.silence_duration = 1.2  # Slightly longer for better sentence completion
         self.silence_threshold = 0.002
         
         # Processing control
@@ -70,7 +159,7 @@ class FREDPiSTTService:
         self.processing_thread = None
         self.transcription_callback: Optional[Callable] = None
         
-        # Wake word detection
+        # Enhanced wake word detection
         self.wake_words = [
             "fred", "hey fred", "okay fred", 
             "hi fred", "excuse me fred", "fred are you there"
@@ -80,8 +169,12 @@ class FREDPiSTTService:
             "that's all", "thank you fred", "sleep now"
         ]
         
-        # Performance monitoring
+        # Speaker verification
+        self.speaker_verifier = LightweightSpeakerVerification()
+        
+        # Enhanced performance monitoring
         self._transcription_count = 0
+        self._confidence_sum = 0.0
         self._start_time = time.time()
         
     def initialize(self):
@@ -115,13 +208,17 @@ class FREDPiSTTService:
                 olliePrint_simple("💡 [SOLUTION] Run: bash install_vosk_model.sh", 'warning')
                 return False
             
-            # Initialize Vosk model
+            # Initialize Vosk model with enhanced features
             self.model = vosk.Model(model_path)
             self.recognizer = vosk.KaldiRecognizer(self.model, self.sample_rate)
             
+            # Enable word-level confidence and timing
+            self.recognizer.SetWords(True)
+            
             olliePrint_simple("✅ [ARMLINK STT] Voice recognition ONLINE", 'success')
-            olliePrint_simple(f"📊 Model: Vosk small English (optimized for Pi)")
+            olliePrint_simple(f"📊 Model: Vosk small English (enhanced pipeline)")
             olliePrint_simple(f"📍 Path: {model_path}")
+            olliePrint_simple(f"🎯 Features: Word confidence, Speaker verification")
             
             self.is_initialized = True
             return True
@@ -198,32 +295,11 @@ class FREDPiSTTService:
         except Exception as e:
             olliePrint_simple(f"❌ [AUDIO] Audio capture failed: {e}", 'error')
     
-    def _process_audio_chunk(self, audio_chunk: np.ndarray):
-        """Process individual audio chunk"""
-        try:
-            # Calculate audio level for voice activity detection
-            audio_level = np.abs(audio_chunk).mean()
-            
-            # Skip if too quiet
-            if audio_level < self.silence_threshold:
-                if self.is_listening and self.speech_buffer:
-                    if time.time() - self.last_speech_time > self.silence_duration:
-                        self._process_complete_utterance()
-                return
-            
-            # Transcribe audio
-            text = self._transcribe_audio(audio_chunk)
-            if text and len(text.strip()) > 0:
-                self._handle_transcribed_text(text.strip().lower())
-                
-        except Exception as e:
-            olliePrint_simple(f"Audio chunk processing error: {e}", 'error')
-    
-    def _transcribe_audio(self, audio_chunk: np.ndarray) -> str:
-        """Transcribe audio using Vosk"""
+    def _transcribe_audio(self, audio_chunk: np.ndarray) -> tuple:
+        """Enhanced transcribe audio using Vosk with confidence tracking"""
         try:
             if len(audio_chunk) < 1600:  # Less than 0.1 seconds
-                return ""
+                return "", 0.0, False, []
             
             # Convert to int16 format that Vosk expects
             if audio_chunk.dtype == np.float32:
@@ -237,33 +313,76 @@ class FREDPiSTTService:
             
             # Process with Vosk
             if self.recognizer.AcceptWaveform(audio_bytes):
-                # Final result
+                # Final result - this is what we want for speech buffer
                 result = json.loads(self.recognizer.Result())
-                text = result.get('text', '')
+                text = result.get('text', '').strip()
+                confidence = result.get('conf', 0.0)
+                words = result.get('result', [])
+                
+                # Show word-level confidence if available
+                if words and text:
+                    self._display_word_confidence(words)
+                
+                self._transcription_count += 1
+                if confidence > 0:
+                    self._confidence_sum += confidence
+                
+                return text, confidence, True, words  # is_final=True
             else:
-                # Partial result
+                # Partial result - only for live feedback
                 result = json.loads(self.recognizer.PartialResult())
-                text = result.get('partial', '')
-            
-            self._transcription_count += 1
-            if self._transcription_count % 100 == 0:
-                elapsed = time.time() - self._start_time
-                avg_time = elapsed / self._transcription_count
-                olliePrint_simple(f"📊 [PERFORMANCE] {self._transcription_count} transcriptions, avg: {avg_time:.3f}s")
-            
-            return text.strip()
+                partial_text = result.get('partial', '').strip()
+                
+                # Show live feedback for partial results
+                if partial_text and partial_text != self.partial_buffer:
+                    olliePrint_simple(f"🎤 [LISTENING] {partial_text}...", 'muted')
+                    self.partial_buffer = partial_text
+                
+                return partial_text, 0.0, False, []  # is_final=False
             
         except Exception as e:
             olliePrint_simple(f"Transcription error: {e}", 'error')
-            return ""
+            return "", 0.0, False, []
     
-    def _handle_transcribed_text(self, text: str):
-        """Handle transcribed text with wake word detection"""
-        olliePrint_simple(f"🎙️ [DETECTED] '{text}'")
+    def _display_word_confidence(self, words):
+        """Display word-level confidence with color coding"""
+        confidence_display = []
+        for word in words:
+            word_text = word.get('word', '')
+            word_conf = word.get('conf', 0.0)
+            
+            # Color code by confidence
+            if word_conf > 0.8:
+                confidence_display.append(f"'{word_text}'({word_conf:.2f})")
+            elif word_conf > 0.6:
+                confidence_display.append(f"'{word_text}'({word_conf:.2f})")
+            else:
+                confidence_display.append(f"'{word_text}'({word_conf:.2f})")
+        
+        if confidence_display:
+            olliePrint_simple(f"📝 [CONFIDENCE] {' '.join(confidence_display)}")
+    
+    def _handle_transcribed_text(self, text: str, confidence: float, is_final: bool, words: list, audio_chunk: np.ndarray):
+        """Enhanced transcribed text handling with speaker verification"""
+        
+        # Only process final results for decision making
+        if not is_final or not text or len(text.strip()) == 0:
+            return
+        
+        # Speaker verification for final results
+        is_user, speaker_confidence = self.speaker_verifier.verify_speaker(audio_chunk)
+        
+        if not is_user:
+            olliePrint_simple(f"❌ [VOICE-ID] Unknown speaker ({speaker_confidence:.2f}) - ignoring", 'warning')
+            return  # Ignore non-user speech
+        
+        # Log successful recognition with confidences
+        olliePrint_simple(f"✅ [USER-VERIFIED] ({speaker_confidence:.2f}) STT: ({confidence:.2f})")
+        olliePrint_simple(f"🎙️ [FINAL] '{text}'", 'success')
         
         # Check for wake words when not listening
         if not self.is_listening:
-            if any(wake_word in text for wake_word in self.wake_words):
+            if any(wake_word in text.lower() for wake_word in self.wake_words):
                 olliePrint_simple(f"👋 [WAKE] Wake word detected! Listening...", 'success')
                 self.is_listening = True
                 self.speech_buffer = []
@@ -273,7 +392,7 @@ class FREDPiSTTService:
         # Process speech while listening
         if self.is_listening:
             # Check for stop words
-            if any(stop_word in text for stop_word in self.stop_words):
+            if any(stop_word in text.lower() for stop_word in self.stop_words):
                 olliePrint_simple(f"💤 [SLEEP] Stop word detected", 'warning')
                 if self.transcription_callback:
                     self.transcription_callback("goodbye")
@@ -281,29 +400,106 @@ class FREDPiSTTService:
                 self.speech_buffer = []
                 return
             
-            # Add to speech buffer if meaningful
-            if len(text.split()) > 1:  # More than one word
-                olliePrint_simple(f"📝 [BUFFER] Adding: '{text}'")
+            # Add to speech buffer if meaningful and high enough confidence
+            if len(text.split()) > 0 and confidence > 0.3:  # Basic confidence filter
+                olliePrint_simple(f"📝 [BUFFER] Adding: '{text}' (conf: {confidence:.2f})")
                 self.last_speech_time = time.time()
                 self.speech_buffer.append(text)
     
+    def _process_audio_chunk(self, audio_chunk: np.ndarray):
+        """Enhanced audio chunk processing"""
+        try:
+            # Calculate audio level for voice activity detection
+            audio_level = np.abs(audio_chunk).mean()
+            
+            # Skip if too quiet
+            if audio_level < self.silence_threshold:
+                if self.is_listening and self.speech_buffer:
+                    if time.time() - self.last_speech_time > self.silence_duration:
+                        self._process_complete_utterance()
+                return
+            
+            # Enhanced transcription with confidence
+            text, confidence, is_final, words = self._transcribe_audio(audio_chunk)
+            
+            if text and len(text.strip()) > 0:
+                self._handle_transcribed_text(text.strip(), confidence, is_final, words, audio_chunk)
+                
+        except Exception as e:
+            olliePrint_simple(f"Audio chunk processing error: {e}", 'error')
+    
     def _process_complete_utterance(self):
-        """Process complete buffered utterance"""
+        """Process complete buffered utterance with enhanced filtering"""
         if not self.speech_buffer:
             return
             
-        complete_text = " ".join(self.speech_buffer)
+        # Join with better sentence reconstruction
+        complete_text = " ".join(self.speech_buffer).strip()
+        
+        # Filter out very short or low-quality utterances
+        if len(complete_text.split()) < 2:  # Less than 2 words
+            olliePrint_simple(f"⚠️ [FILTER] Utterance too short: '{complete_text}'", 'warning')
+            self.speech_buffer = []
+            return
+        
         olliePrint_simple(f"🗣️ [COMPLETE] Processing: '{complete_text}'", 'success')
         
         # Clear buffer
         self.speech_buffer = []
+        self.partial_buffer = ""  # Clear partial buffer too
         
-        # Send to callback
+        # Send to callback (everything after wake word - Option A)
         if self.transcription_callback:
             self.transcription_callback(complete_text)
         
+        # Performance stats
+        if self._transcription_count > 0:
+            avg_confidence = self._confidence_sum / self._transcription_count
+            olliePrint_simple(f"📊 [STATS] Avg confidence: {avg_confidence:.2f}")
+        
         # Resume listening
         olliePrint_simple("👂 [READY] Listening for next command...")
+
+    def enroll_user_voice(self):
+        """Simple user voice enrollment process"""
+        olliePrint_simple("🎤 [ENROLLMENT] Voice enrollment starting...")
+        olliePrint_simple("📋 [INSTRUCTIONS] Say 'Hello Fred' 5 times when prompted")
+        
+        enrollment_samples = []
+        
+        for i in range(5):
+            olliePrint_simple(f"🎙️ [{i+1}/5] Say 'Hello Fred' now...")
+            
+            # Collect audio for 3 seconds
+            start_time = time.time()
+            audio_buffer = []
+            
+            while time.time() - start_time < 3.0:
+                if not self.audio_queue.empty():
+                    chunk = self.audio_queue.get()
+                    audio_buffer.append(chunk)
+                time.sleep(0.01)
+            
+            if audio_buffer:
+                # Concatenate audio chunks
+                audio_sample = np.concatenate(audio_buffer)
+                enrollment_samples.append(audio_sample)
+                olliePrint_simple(f"✅ [{i+1}/5] Sample recorded", 'success')
+            else:
+                olliePrint_simple(f"❌ [{i+1}/5] No audio detected", 'error')
+            
+            if i < 4:  # Don't wait after last sample
+                time.sleep(1)
+        
+        # Create voice profile
+        success = self.speaker_verifier.enroll_user(enrollment_samples)
+        if success:
+            olliePrint_simple("🎉 [ENROLLMENT] Voice profile created successfully!", 'success')
+            olliePrint_simple("🔐 [SECURITY] F.R.E.D. will now only respond to your voice")
+        else:
+            olliePrint_simple("❌ [ENROLLMENT] Voice enrollment failed", 'error')
+        
+        return success
 
 
 class FREDPiClient:

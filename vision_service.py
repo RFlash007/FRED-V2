@@ -123,14 +123,12 @@ class VisionService:
             return
         
         try:
-            olliePrint_simple("[OPTICS] Converting frame to base64...")
             # Convert frame to base64
             image_b64 = self._frame_to_base64(self.current_frame)
-            olliePrint_simple(f"[SUCCESS] Frame converted, base64 length: {len(image_b64)} chars")
+            olliePrint_simple("[SUCCESS] Frame converted to base64")
             
             # Create detailed prompt with change detection
             prompt = self._create_vision_prompt()
-            olliePrint_simple(f"[OPTICS] Vision prompt created: {len(prompt)} chars")
             
             olliePrint_simple("[NETWORK] Sending to Ollama for vision analysis...")
             # Call Qwen 2.5-VL 7B
