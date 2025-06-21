@@ -87,14 +87,14 @@ async def offer(request):
     # Get client IP for rate limiting
     client_ip = request.remote
     
-    # Check rate limits
+    # Rate limiting check
     if not check_rate_limit(client_ip):
-        olliePrint_simple(f"Rate limit exceeded for {client_ip}", level='warning')
-        return web.json_response({'error': 'Too many connections'}, status=429)
+        olliePrint_simple(f"[RATE-LIMIT] Too many requests from {client_ip}")
+        return web.json_response({'error': 'Rate limit exceeded'}, status=429)
     
-    # Authenticate request
+    # Authentication check
     if not authenticate_request(request):
-        olliePrint_simple(f"Unauthorized connection attempt from {client_ip}", level='warning')
+        olliePrint_simple(f"[AUTH-FAIL] Unauthorized access attempt from {client_ip}")
         return web.json_response({'error': 'Unauthorized'}, status=401)
     
     try:
@@ -105,6 +105,9 @@ async def offer(request):
         # Get JSON body for WebRTC offer
         params = await request.json()
         params['client_type'] = client_type_param  # Add client_type to params for later use
+        
+        # Store the main event loop for background threads
+        main_event_loop = asyncio.get_running_loop()
         
         offer = RTCSessionDescription(sdp=params['sdp'], type=params['type'])
         pc = RTCPeerConnection()
@@ -192,11 +195,10 @@ async def offer(request):
                 def _send_to_pi_safe(message):
                     """Thread-safe method to send messages to Pi clients"""
                     try:
-                        # Get the current event loop from the main thread
-                        loop = asyncio.get_event_loop()
-                        if loop and not loop.is_closed():
+                        # Use the stored main event loop
+                        if main_event_loop and not main_event_loop.is_closed():
                             # Schedule the send operation on the main event loop
-                            future = asyncio.run_coroutine_threadsafe(_send_to_pi_async(message), loop)
+                            future = asyncio.run_coroutine_threadsafe(_send_to_pi_async(message), main_event_loop)
                             future.result(timeout=5.0)  # Wait for completion
                         else:
                             olliePrint_simple("⚠️ [WARNING] No event loop available for Pi communication")

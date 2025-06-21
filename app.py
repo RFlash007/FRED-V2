@@ -326,7 +326,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
     try:
         tts_engine = fred_state.get_tts_engine()
         if tts_engine is None:
-            olliePrint_simple("TTS engine not initialized, skipping speech generation", 'warning', show_banner=False)
+            olliePrint_simple("TTS engine not initialized, skipping speech generation", 'warning')
             return
 
         olliePrint_simple(f"[ARC-MODE] Synthesizing neural voice patterns: {output_path}")
