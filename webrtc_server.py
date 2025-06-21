@@ -206,13 +206,17 @@ async def offer(request):
                             text = data.get('text', '').strip()
                             if text:
                                 olliePrint_simple(f"🗣️ [PI TRANSCRIPTION] '{text}' from {client_ip}")
+                                olliePrint_simple(f"📨 [SERVER-RECEIVED] Processing transcription: '{text}'")
                                 # Process the transcribed text (same as old audio processing)
                                 process_pi_transcription(text, from_pi=True)
+                                olliePrint_simple(f"✅ [SERVER-PROCESSED] Transcription sent to F.R.E.D.: '{text}'")
                     except json.JSONDecodeError:
                         # Handle plain text messages
                         if message.strip():
                             olliePrint_simple(f"🗣️ [PI TRANSCRIPTION] '{message.strip()}' from {client_ip}")
+                            olliePrint_simple(f"📨 [SERVER-RECEIVED] Processing plain text: '{message.strip()}'")
                             process_pi_transcription(message.strip(), from_pi=True)
+                            olliePrint_simple(f"✅ [SERVER-PROCESSED] Plain text sent to F.R.E.D.: '{message.strip()}'")
                 else:
                     olliePrint_simple(f"[ARMLINK COMM] Field operative message: {message}")
             

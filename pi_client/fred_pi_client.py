@@ -279,6 +279,8 @@ class FREDPiSTTService:
             ):
                 olliePrint_simple("✅ [AUDIO] Audio capture ONLINE", 'success')
                 
+                last_buffer_check = time.time()
+                
                 while self.is_processing:
                     try:
                         if not self.audio_queue.empty():
@@ -286,6 +288,17 @@ class FREDPiSTTService:
                             self._process_audio_chunk(audio_chunk)
                         else:
                             time.sleep(0.01)
+                        
+                        # Periodic buffer check - ensure speech doesn't get stuck
+                        current_time = time.time()
+                        if current_time - last_buffer_check > 2.0:  # Check every 2 seconds
+                            if self.is_listening and self.speech_buffer:
+                                time_since_speech = current_time - self.last_speech_time
+                                if time_since_speech > 2.0:  # Force processing if > 2 seconds old
+                                    olliePrint_simple(f"⏰ [FORCED] Processing stuck buffer after {time_since_speech:.1f}s")
+                                    self._process_complete_utterance()
+                            last_buffer_check = current_time
+                            
                     except Exception as e:
                         olliePrint_simple(f"Audio processing error: {e}", 'error')
                         time.sleep(0.1)
@@ -410,8 +423,17 @@ class FREDPiSTTService:
                 return
             
             # Add to speech buffer if meaningful and high enough confidence
-            if len(text.split()) > 0 and confidence > 0.3:  # Basic confidence filter
-                olliePrint_simple(f"📝 [BUFFER] Adding: '{text}' (conf: {confidence:.2f})")
+            # Calculate effective confidence - use word average if overall is missing
+            effective_confidence = confidence
+            if confidence == 0.0 and words:
+                # Calculate average word confidence
+                word_confidences = [w.get('conf', 0.0) for w in words if 'conf' in w]
+                if word_confidences:
+                    effective_confidence = sum(word_confidences) / len(word_confidences)
+                    olliePrint_simple(f"📊 [CONFIDENCE-FIX] Using avg word confidence: {effective_confidence:.2f}")
+            
+            if len(text.split()) > 0 and effective_confidence > 0.1:  # Lower threshold
+                olliePrint_simple(f"📝 [BUFFER] Adding: '{text}' (eff-conf: {effective_confidence:.2f})")
                 self.last_speech_time = time.time()
                 self.speech_buffer.append(text)
                 
@@ -428,6 +450,8 @@ class FREDPiSTTService:
                 elif len(self.speech_buffer) > 0 and time.time() - self.last_speech_time > 3.0:
                     olliePrint_simple("⏰ [TIMEOUT] Processing utterance (timeout)")
                     self._process_complete_utterance()
+            else:
+                olliePrint_simple(f"⚠️ [FILTER] Rejecting low confidence: '{text}' (eff-conf: {effective_confidence:.2f})")
     
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
         """Enhanced audio chunk processing"""
