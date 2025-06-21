@@ -98,12 +98,20 @@ async def offer(request):
         return web.json_response({'error': 'Unauthorized'}, status=401)
     
     try:
+        # Get URL query parameters for client_type
+        query_params = request.query
+        client_type_param = query_params.get('client_type', 'unknown')
+        
+        # Get JSON body for WebRTC offer
         params = await request.json()
+        params['client_type'] = client_type_param  # Add client_type to params for later use
+        
         offer = RTCSessionDescription(sdp=params['sdp'], type=params['type'])
         pc = RTCPeerConnection()
         pcs.add(pc)
         
         olliePrint_simple(f"[SHELTER-NET] New ArmLink connection from {client_ip}")
+        olliePrint_simple(f"🔍 [DEBUG] URL client_type: '{client_type_param}'")
 
         # Initialize media recorder (blackhole – we don't save media)
         recorder = MediaBlackhole()
@@ -141,27 +149,69 @@ async def offer(request):
                         resp = requests.post("http://localhost:5000/chat", json=payload, stream=True, timeout=60)
                         if resp.status_code == 200:
                             buffer = ""
+                            total_fragments = 0
+                            
                             for line in resp.iter_lines():
                                 if not line:
                                     continue
                                 try:
                                     data = _json.loads(line.decode("utf-8"))
-                                except Exception:
+                                    olliePrint_simple(f"🔍 [DEBUG] F.R.E.D. response data: {data}")
+                                except Exception as e:
+                                    olliePrint_simple(f"🔍 [DEBUG] Failed to parse response line: {line.decode('utf-8')}")
                                     continue
 
                                 if "response" in data:
                                     # incremental content from server – buffer and forward
                                     fragment = data["response"]
                                     buffer += fragment
-                                    for ch in data_channels.copy():
-                                        try:
-                                            ch.send(fragment)
-                                        except Exception:
-                                            data_channels.discard(ch)
+                                    total_fragments += 1
+                                    
+                                    olliePrint_simple(f"📤 [RESPONSE] Sending fragment to Pi: '{fragment}'")
+                                    # Send via thread-safe method
+                                    _send_to_pi_safe(fragment)
+                                
+                                # Also check for complete response or final message
+                                elif "final_response" in data or "message" in data:
+                                    final_text = data.get("final_response") or data.get("message", "")
+                                    if final_text:
+                                        olliePrint_simple(f"📤 [FINAL] Sending complete response to Pi: '{final_text}'")
+                                        _send_to_pi_safe(final_text)
+                            
+                            # If we have a complete buffer at the end, send it
+                            if buffer and total_fragments > 0:
+                                olliePrint_simple(f"📤 [BUFFER] Sending buffered response to Pi: '{buffer}'")
+                                _send_to_pi_safe(f"[ACK] {buffer}")
+                            else:
+                                olliePrint_simple(f"⚠️ [WARNING] No response fragments received from F.R.E.D. (buffer: '{buffer}', fragments: {total_fragments})")
                         else:
                             olliePrint_simple(f"Chat request failed: {resp.status_code}", level='error')
                     except Exception as exc:
                         olliePrint_simple(f"Error relaying message to F.R.E.D.: {exc}", level='error')
+
+                def _send_to_pi_safe(message):
+                    """Thread-safe method to send messages to Pi clients"""
+                    try:
+                        # Get the current event loop from the main thread
+                        loop = asyncio.get_event_loop()
+                        if loop and not loop.is_closed():
+                            # Schedule the send operation on the main event loop
+                            future = asyncio.run_coroutine_threadsafe(_send_to_pi_async(message), loop)
+                            future.result(timeout=5.0)  # Wait for completion
+                        else:
+                            olliePrint_simple("⚠️ [WARNING] No event loop available for Pi communication")
+                    except Exception as e:
+                        olliePrint_simple(f"❌ [SEND-ERROR] Failed to send to Pi: {e}")
+
+                async def _send_to_pi_async(message):
+                    """Async method to actually send messages to Pi"""
+                    for ch in data_channels.copy():
+                        try:
+                            ch.send(message)
+                            olliePrint_simple(f"✅ [SENT] Message sent to Pi successfully")
+                        except Exception as e:
+                            olliePrint_simple(f"❌ [CHANNEL-ERROR] Failed to send to channel: {e}")
+                            data_channels.discard(ch)
 
                 import threading as _threading
                 _threading.Thread(target=_call_fred, daemon=True).start()
@@ -185,11 +235,10 @@ async def offer(request):
             olliePrint_simple(f"[OPTICS] ArmLink visual sensors ONLINE - initiating reconnaissance protocols")
             
             # Check if this is a local STT client
-            client_type = params.get('client_type', 'unknown')
-            is_local_stt = 'local_stt' in client_type
+            is_local_stt = 'local_stt' in client_type_param
             
             # Debug logging for client type detection
-            olliePrint_simple(f"🔍 [DEBUG] Client type: '{client_type}', is_local_stt: {is_local_stt}")
+            olliePrint_simple(f"🔍 [DEBUG] Client type: '{client_type_param}', is_local_stt: {is_local_stt}")
             
             if is_local_stt:
                 olliePrint_simple(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
@@ -245,8 +294,7 @@ async def offer(request):
             
             if track.kind == 'audio':
                 # Check if this is a local STT client
-                client_type = params.get('client_type', 'unknown')
-                is_local_stt = 'local_stt' in client_type
+                is_local_stt = 'local_stt' in client_type_param
                 
                 if is_local_stt:
                     olliePrint_simple("[AUDIO] Client uses local STT - skipping server audio processing")

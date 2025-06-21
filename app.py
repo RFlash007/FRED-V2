@@ -125,15 +125,19 @@ FRED_CORE_NODE_ID = "FRED_CORE"
 
 def initialize_tts():
     """Initialize TTS engine once during startup."""
-    if os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-        try:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            tts_engine = TTS(config.XTTS_MODEL_NAME).to(device)
-            fred_state.set_tts_engine(tts_engine)
-            olliePrint_simple(f"Voice synthesis matrix loaded on {device.upper()}", 'audio')
-        except Exception as e:
-            olliePrint_simple(f"Voice synthesis initialization failed: {e}", 'critical')
-            fred_state.set_tts_engine(None)
+    try:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        tts_engine = TTS(config.XTTS_MODEL_NAME).to(device)
+        fred_state.set_tts_engine(tts_engine)
+        
+        if os.path.exists(config.FRED_SPEAKER_WAV_PATH):
+            olliePrint_simple(f"Voice synthesis matrix loaded on {device.upper()} with custom voice sample", 'audio')
+        else:
+            olliePrint_simple(f"Voice synthesis matrix loaded on {device.upper()} with default voice", 'audio')
+            
+    except Exception as e:
+        olliePrint_simple(f"Voice synthesis initialization failed: {e}", 'critical')
+        fred_state.set_tts_engine(None)
 
 # Load System Prompt
 SYSTEM_PROMPT_FILE = os.path.join(APP_ROOT, 'system_prompt.txt')
@@ -305,10 +309,6 @@ def fred_speak(text, mute_fred=False, target_device='local'):
     if not text.strip():
         olliePrint_simple("[SHELTER-NET] Warning: Empty transmission detected - aborting voice synthesis")
         return
-        
-    if not os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-        olliePrint_simple(f"[CRITICAL] Voice matrix file missing: {config.FRED_SPEAKER_WAV_PATH}")
-        return
 
     olliePrint_simple(f"[F.R.E.D.] Initializing voice synthesis - Target: {target_device.upper()} | '{text[:50]}...'")
 
@@ -330,12 +330,26 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             return
 
         olliePrint_simple(f"[ARC-MODE] Synthesizing neural voice patterns: {output_path}")
-        tts_engine.tts_to_file(
-            text=text,
-            speaker_wav=config.FRED_SPEAKER_WAV_PATH,
-            language=config.FRED_LANGUAGE,
-            file_path=output_path
-        )
+        
+        # Check if we have a voice sample for cloning
+        if os.path.exists(config.FRED_SPEAKER_WAV_PATH):
+            olliePrint_simple(f"[VOICE-CLONE] Using custom voice sample: {config.FRED_SPEAKER_WAV_PATH}")
+            tts_engine.tts_to_file(
+                text=text,
+                speaker_wav=config.FRED_SPEAKER_WAV_PATH,
+                language=config.FRED_LANGUAGE,
+                file_path=output_path
+            )
+        else:
+            olliePrint_simple(f"[VOICE-DEFAULT] No voice sample found - using default XTTS voice")
+            # Use default XTTS speaker instead of voice cloning
+            tts_engine.tts_to_file(
+                text=text,
+                speaker="Ana Florence",  # Default XTTS speaker
+                language=config.FRED_LANGUAGE,
+                file_path=output_path
+            )
+        
         olliePrint_simple(f"[SUCCESS] Voice synthesis complete - audio matrix ready")
 
         # Route audio based on target device
