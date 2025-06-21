@@ -329,7 +329,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             olliePrint_simple("TTS engine not initialized, skipping speech generation", 'warning', show_banner=False)
             return
 
-        olliePrint_simple(f"[ARC-MODE] Synthesizing neural voice patterns → {output_path}")
+        olliePrint_simple(f"[ARC-MODE] Synthesizing neural voice patterns: {output_path}")
         tts_engine.tts_to_file(
             text=text,
             speaker_wav=config.FRED_SPEAKER_WAV_PATH,
@@ -376,8 +376,8 @@ def send_audio_to_pi(audio_file_path, text):
         import base64
         
         olliePrint_simple(f"[ARMLINK] Initiating field comm protocol...")
-        olliePrint_simple(f"   → Audio matrix: {audio_file_path}")
-        olliePrint_simple(f"   → Message: '{text[:50]}...'")
+        olliePrint_simple(f"   Audio matrix: {audio_file_path}")
+        olliePrint_simple(f"   Message: '{text[:50]}...'")
         
         # Check if file exists
         if not os.path.exists(audio_file_path):
@@ -388,10 +388,10 @@ def send_audio_to_pi(audio_file_path, text):
         with open(audio_file_path, 'rb') as f:
             audio_data = f.read()
         
-        olliePrint_simple(f"   → Data size: {len(audio_data)} bytes")
+        olliePrint_simple(f"   Data size: {len(audio_data)} bytes")
         
         audio_b64 = base64.b64encode(audio_data).decode('utf-8')
-        olliePrint_simple(f"   → Encoded for transmission: {len(audio_b64)} chars")
+        olliePrint_simple(f"   Encoded for transmission: {len(audio_b64)} chars")
         
         # Send via SocketIO to WebRTC server
         payload = {
@@ -400,11 +400,11 @@ def send_audio_to_pi(audio_file_path, text):
             'format': 'wav'
         }
         
-        olliePrint_simple(f"   → Broadcasting via secure channel...")
+        olliePrint_simple(f"   Broadcasting via secure channel...")
         socketio.emit('fred_audio', payload)
         
         olliePrint_simple(f"[SUCCESS] Transmission complete - audio routed to field operative")
-        olliePrint_simple(f"   → Payload: {len(audio_data)} bytes → '{text[:30]}...'")
+        olliePrint_simple(f"   Payload: {len(audio_data)} bytes for '{text[:30]}...')")
         
     except Exception as e:
         olliePrint_simple(f"Error sending audio to Pi: {e}", level='error')

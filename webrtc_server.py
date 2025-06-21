@@ -125,7 +125,7 @@ async def offer(request):
                 if not text or not text.strip():
                     return
 
-                olliePrint_simple(f"[ARMLINK COMM] Field operative transmission → '{text}'")
+                olliePrint_simple(f"[ARMLINK COMM] Field operative transmission: '{text}'")
 
                 # Prepare chat request for main server
                 payload = {
@@ -429,7 +429,7 @@ async def fred_audio(data):
     audio_format = data.get('format', 'wav')
     
     if audio_b64:
-        olliePrint_simple(f"[TRANSMISSION] Audio matrix received from F.R.E.D. ({len(audio_b64)} chars) → '{text[:50]}...'")
+        olliePrint_simple(f"[TRANSMISSION] Audio matrix received from F.R.E.D. ({len(audio_b64)} chars) for '{text[:50]}...'")
         olliePrint_simple(f"[NETWORK] {len(data_channels)} ArmLink device(s) in communication range")
         
         # Send audio to all connected Pi clients
@@ -439,7 +439,7 @@ async def fred_audio(data):
                 message = f"[AUDIO_BASE64:{audio_format}]{audio_b64}"
                 channel.send(message)
                 sent_count += 1
-                olliePrint_simple(f"[RELAY] Voice data transmitted to ArmLink #{sent_count} → '{text[:50]}...'")
+                olliePrint_simple(f"[RELAY] Voice data transmitted to ArmLink #{sent_count} for '{text[:50]}...'")
             except Exception as e:
                 olliePrint_simple(f"[ERROR] ArmLink #{sent_count+1} transmission failure: {e}")
                 data_channels.discard(channel)
@@ -447,7 +447,7 @@ async def fred_audio(data):
         if sent_count == 0:
             olliePrint_simple("[WARNING] No ArmLink devices available - audio transmission failed")
         else:
-            olliePrint_simple(f"[SUCCESS] Voice transmission complete → {sent_count} field operative(s) reached")
+            olliePrint_simple(f"[SUCCESS] Voice transmission complete - {sent_count} field operative(s) reached")
         
         # Inform STT to pause listening during playback
         estimated_bytes = int(len(audio_b64) * 3 / 4)  # rough base64 decode
@@ -461,7 +461,7 @@ async def fred_audio(data):
 
 async def cleanup(app):
     # This is still valuable for graceful shutdown
-    olliePrint_simple("�� Cleaning up server resources...")
+    olliePrint_simple("Cleaning up server resources...")
     for pc in pcs:
         if pc.connectionState != "closed":
             await pc.close()

@@ -51,21 +51,32 @@ class ANSIColors:
     UNDERLINE = '\033[4m'
     BLINK = '\033[5m'
 
-# === FRED-themed Color Scheme ===
+# === Anthropic-inspired Color Scheme ===
 FRED_COLORS = {
-    'info': ANSIColors.BRIGHT_BLUE,
-    'success': ANSIColors.BRIGHT_GREEN,
-    'warning': ANSIColors.BRIGHT_YELLOW,
-    'error': ANSIColors.BRIGHT_RED,
-    'critical': ANSIColors.BG_RED + ANSIColors.BRIGHT_WHITE,
-    'debug': ANSIColors.CYAN,
-    'audio': ANSIColors.BRIGHT_MAGENTA,
-    'network': ANSIColors.BRIGHT_CYAN,
-    'optics': ANSIColors.BRIGHT_CYAN,
-    'armlink': ANSIColors.BRIGHT_GREEN,
-    'mainframe': ANSIColors.BRIGHT_MAGENTA,
-    'shelter': ANSIColors.BRIGHT_CYAN,
-    'system': ANSIColors.WHITE
+    # Core system messages - Anthropic's signature orange
+    'info': '\033[38;2;241;122;83m',           # Anthropic orange: #F17A53
+    'debug': '\033[38;2;241;122;83m',          # Anthropic orange: #F17A53
+    'network': '\033[38;2;241;122;83m',        # Anthropic orange: #F17A53
+    'mainframe': '\033[38;2;241;122;83m',      # Anthropic orange: #F17A53
+    
+    # Success states - muted green
+    'success': '\033[38;2;52;168;83m',         # Clean green: #34A853
+    'armlink': '\033[38;2;52;168;83m',         # Clean green: #34A853
+    'shelter': '\033[38;2;52;168;83m',         # Clean green: #34A853
+    
+    # Media/Audio - warm secondary orange
+    'audio': '\033[38;2;255;159;67m',          # Warm orange: #FF9F43
+    'optics': '\033[38;2;255;159;67m',         # Warm orange: #FF9F43
+    
+    # Warnings - amber
+    'warning': '\033[38;2;255;193;7m',         # Amber warning: #FFC107
+    
+    # Errors - keep red but use Anthropic's red tone
+    'error': '\033[38;2;220;53;69m',           # Clean red: #DC3545
+    'critical': '\033[48;2;220;53;69m\033[38;2;255;255;255m',  # Red background, white text
+    
+    # System text - neutral gray
+    'system': '\033[38;2;108;117;125m',        # Clean gray: #6C757D
 }
 
 # === F.R.E.D. Personality Comments ===
@@ -382,8 +393,8 @@ def olliePrint_debug(message: Any, module: Optional[str] = None) -> None:
 
 # === Banner-only Functions ===
 def olliePrint_simple(message: Any, level: str = 'info') -> None:
-    """Print a simple colored message without banner"""
-    olliePrint(message, level, show_banner=False)
+    """Print a simple colored message without banner or thematic comments"""
+    olliePrint(message, level, show_banner=False, show_comment=False)
 
 def olliePrint_quiet(message: Any, level: str = 'info') -> None:
     """Print a message without banner or comment"""

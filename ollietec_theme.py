@@ -2,20 +2,31 @@ import time
 import builtins as _b
 
 _RESET = '\033[0m'
+
+# Anthropic-inspired Color Scheme
 _COLOR_MAP = {
-    'CRITICAL': '\033[91m',
-    'ERROR': '\033[91m',
-    'WARNING': '\033[93m',
-    'SUCCESS': '\033[92m',
-    'DEBUG': '\033[90m',
-    'AUDIO': '\033[95m',
-    'NETWORK': '\033[96m',
-    'OPTICS': '\033[96m',
-    'ARMLINK': '\033[92m',
-    'MAINFRAME': '\033[95m',
-    'SHELTER': '\033[96m',
-    'OLLIE-TEC': '\033[95m',
-    'ARCTEC': '\033[91m',
+    # Errors - clean red tone  
+    'CRITICAL': '\033[38;2;220;53;69m',        # Clean red: #DC3545
+    'ERROR': '\033[38;2;220;53;69m',           # Clean red: #DC3545
+    'ARCTEC': '\033[38;2;220;53;69m',          # Clean red: #DC3545
+    
+    # Warnings - amber
+    'WARNING': '\033[38;2;255;193;7m',         # Amber warning: #FFC107
+    
+    # Success states - clean green
+    'SUCCESS': '\033[38;2;52;168;83m',         # Clean green: #34A853
+    'ARMLINK': '\033[38;2;52;168;83m',         # Clean green: #34A853
+    'SHELTER': '\033[38;2;52;168;83m',         # Clean green: #34A853
+    
+    # Media/Audio - warm orange
+    'AUDIO': '\033[38;2;255;159;67m',          # Warm orange: #FF9F43
+    'OPTICS': '\033[38;2;255;159;67m',         # Warm orange: #FF9F43
+    
+    # Core systems - Anthropic signature orange
+    'NETWORK': '\033[38;2;241;122;83m',        # Anthropic orange: #F17A53
+    'MAINFRAME': '\033[38;2;241;122;83m',      # Anthropic orange: #F17A53
+    'OLLIE-TEC': '\033[38;2;241;122;83m',      # Anthropic orange: #F17A53
+    'DEBUG': '\033[38;2;241;122;83m',          # Anthropic orange: #F17A53
 }
 
 _orig_print = _b.print
@@ -40,12 +51,18 @@ def apply_theme():
 
 
 def banner(component: str) -> str:
-    """Return a formatted banner string for the given component."""
+    """Return a formatted banner string for the given component with Anthropic colors."""
+    # Use Anthropic-inspired colors
+    anthropic_orange = '\033[38;2;241;122;83m'  # Anthropic orange: #F17A53
+    warm_orange = '\033[38;2;255;159;67m'       # Warm orange: #FF9F43
+    clean_green = '\033[38;2;52;168;83m'        # Clean green: #34A853
+    neutral_gray = '\033[38;2;108;117;125m'     # Clean gray: #6C757D
+    
     lines = [
-        '\033[92m' + '═' * 60 + '\033[0m',
-        f'\033[95m  🛰️  OLLIE-TEC™ {component} ONLINE  🛰️\033[0m',
-        '\033[96m  ArcTec Labs x ShelterNet Interface\033[0m',
-        f'\033[93m  Boot: {time.strftime("%Y-%m-%d %H:%M:%S")}\033[0m',
-        '\033[92m' + '═' * 60 + '\033[0m',
+        clean_green + '═' * 60 + _RESET,
+        f'{anthropic_orange}  🛰️  OLLIE-TEC™ {component} ONLINE  🛰️{_RESET}',
+        f'{warm_orange}  ArcTec Labs x ShelterNet Interface{_RESET}',
+        f'{neutral_gray}  Boot: {time.strftime("%Y-%m-%d %H:%M:%S")}{_RESET}',
+        clean_green + '═' * 60 + _RESET,
     ]
     return '\n'.join(lines)
