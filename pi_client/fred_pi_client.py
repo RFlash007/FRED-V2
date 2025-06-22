@@ -799,12 +799,8 @@ class FREDPiClient:
     
     async def _send_transcription_async(self, text: str):
         """Async helper to send transcription via data channel"""
-        # Send as JSON format as expected by WebRTC server
-        message = json.dumps({
-            'type': 'transcription',
-            'text': text
-        })
-        self.data_channel.send(message)
+        # Send as plain text - revert to original working format
+        self.data_channel.send(text)
     
     def _play_audio_from_base64(self, audio_b64, format_type='wav'):
         """Play audio from base64 data"""

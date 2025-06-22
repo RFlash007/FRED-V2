@@ -216,28 +216,17 @@ async def offer(request):
                     return
                 
                 if is_local_stt:
-                    # Handle pre-transcribed text from Pi STT
-                    try:
-                        # Try to parse as JSON first (new format)
-                        message_data = json.loads(message)
-                        if message_data.get('type') == 'transcription':
-                            text = message_data.get('text', '').strip()
-                            if text:
-                                olliePrint_simple(f"Pi text (JSON): '{text}'")
-                                process_pi_transcription(text, from_pi=True)
-                        return
-                    except json.JSONDecodeError:
-                        # Fallback to old format handling
-                        if message.startswith("TRANSCRIPTION:"):
-                            text = message.replace("TRANSCRIPTION:", "").strip()
-                            olliePrint_simple(f"Pi text (legacy): '{text}'")
+                    # Handle pre-transcribed text from Pi STT - Keep original simple format
+                    if message.startswith("TRANSCRIPTION:"):
+                        text = message.replace("TRANSCRIPTION:", "").strip()
+                        olliePrint_simple(f"Pi text: '{text}'")
+                        process_pi_transcription(text, from_pi=True)
+                    else:
+                        # Plain text - this is the main working path
+                        text = message.strip()
+                        if text and len(text) > 2:  # Ignore very short messages
+                            olliePrint_simple(f"Pi message: '{text}'")
                             process_pi_transcription(text, from_pi=True)
-                        else:
-                            # Plain text fallback
-                            text = message.strip()
-                            if text and len(text) > 2:  # Ignore very short messages
-                                olliePrint_simple(f"Pi message (plain): '{text}'")
-                                process_pi_transcription(text, from_pi=True)
                 else:
                     # Server-side STT processing
                     if hasattr(stt_service, 'process_audio_from_webrtc'):
