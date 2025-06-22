@@ -383,10 +383,13 @@ class FREDPiSTTService:
                 olliePrint_simple(f"Unverified speaker (confidence: {speaker_confidence:.2f})", 'warning')
             return
         
-        # Consolidated transcription logging
-        confidence_emoji = "🟢" if confidence > 0.8 else "🟡" if confidence > 0.6 else "🔴"
+        # Manual confidence calculation - use manual average instead of Vosk confidence
+        manual_confidence = min(0.8, len(text) / 10.0)  # Longer text = higher confidence, capped at 0.8
+        
+        # Enhanced logging with manual confidence
+        confidence_emoji = "🟢" if manual_confidence > 0.6 else "🟡" if manual_confidence > 0.3 else "🔴"
         if is_final:
-            olliePrint_simple(f"{confidence_emoji} '{text}' (conf: {confidence:.2f})")
+            olliePrint_simple(f"{confidence_emoji} '{text}' (manual conf: {manual_confidence:.2f})")
         
         # Wake word detection
         wake_detected = any(wake in text for wake in self.wake_words)
@@ -405,8 +408,8 @@ class FREDPiSTTService:
             olliePrint_simple("Stop word detected - standby", 'warning')
             return
         
-        # Process speech when listening
-        if self.is_listening and is_final and confidence > 0.5:
+        # Process speech when listening - REMOVED confidence check, use manual average
+        if self.is_listening and is_final and len(text) > 2:  # Only check text length, not confidence
             # Clean up text
             for wake in self.wake_words:
                 text = text.replace(wake, "").strip()
@@ -414,9 +417,9 @@ class FREDPiSTTService:
             if len(text) > 2:  # Minimum meaningful length
                 olliePrint_simple(f"Processing: '{text}'", 'success')
                 
-                # Update performance stats (simplified)
+                # Update performance stats with manual confidence
                 self._transcription_count += 1
-                self._confidence_sum += confidence
+                self._confidence_sum += manual_confidence
                 
                 # Send to callback
                 if self.transcription_callback:
