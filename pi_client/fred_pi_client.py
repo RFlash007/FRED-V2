@@ -183,8 +183,7 @@ class FREDPiSTTService:
             return True
             
         try:
-            olliePrint_simple("[ARMLINK STT] Initializing voice recognition systems...")
-            olliePrint_simple("🔧 Loading Vosk small English model...")
+            olliePrint_simple("Voice recognition initializing...")
             
             # Set Vosk log level to reduce noise
             vosk.SetLogLevel(-1)
@@ -204,29 +203,19 @@ class FREDPiSTTService:
                     break
             
             if not model_path:
-                olliePrint_simple("❌ [CRITICAL] Vosk model not found!", 'error')
-                olliePrint_simple("💡 [SOLUTION] Run: bash install_vosk_model.sh", 'warning')
+                olliePrint_simple("Vosk model not found. Please run install_vosk_model.sh", level='error')
                 return False
             
-            # Initialize Vosk model with enhanced features
+            olliePrint_simple(f"Loading model: {os.path.basename(model_path)}")
             self.model = vosk.Model(model_path)
             self.recognizer = vosk.KaldiRecognizer(self.model, self.sample_rate)
             
-            # Enable word-level confidence and timing
-            self.recognizer.SetWords(True)
-            
-            olliePrint_simple("✅ [ARMLINK STT] Voice recognition ONLINE", 'success')
-            olliePrint_simple(f"📊 Model: Vosk small English (enhanced pipeline)")
-            olliePrint_simple(f"📍 Path: {model_path}")
-            olliePrint_simple(f"🎯 Features: Word confidence, Speaker verification")
-            
             self.is_initialized = True
+            olliePrint_simple("Voice recognition ready", 'success')
             return True
             
         except Exception as e:
-            olliePrint_simple(f"[CRITICAL] STT initialization failed: {e}", 'error')
-            olliePrint_simple(f"❌ [ARMLINK STT] Voice recognition FAILED: {e}", 'error')
-            olliePrint_simple("💡 [SOLUTION] Run: bash install_vosk_model.sh", 'warning')
+            olliePrint_simple(f"Voice recognition failed: {e}", level='error')
             return False
 
     def start_processing(self, callback: Callable):
@@ -376,82 +365,62 @@ class FREDPiSTTService:
             olliePrint_simple(f"📝 [CONFIDENCE] {' '.join(confidence_display)}")
     
     def _handle_transcribed_text(self, text: str, confidence: float, is_final: bool, words: list, audio_chunk: np.ndarray):
-        """Enhanced transcribed text handling with speaker verification"""
+        """Process transcribed text with wake word detection and speaker verification"""
+        if not text or len(text.strip()) < 2:
+            return
+            
+        text = text.strip().lower()
         
-        # Only process final results for decision making
-        if not is_final or not text or len(text.strip()) == 0:
+        # Skip common Vosk artifacts
+        if text in ["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"]:
             return
         
-        # Special enrollment command (bypass speaker verification)
-        if "enroll my voice" in text.lower() or "voice enrollment" in text.lower():
-            olliePrint_simple("🎤 [ENROLLMENT] Voice enrollment command detected!", 'success')
-            # Run enrollment in a separate thread to avoid blocking
-            import threading
-            enrollment_thread = threading.Thread(target=self.enroll_user_voice, daemon=True)
-            enrollment_thread.start()
+        # Speaker verification (simplified logging)
+        is_authorized_user, speaker_confidence = self.speaker_verifier.verify_speaker(audio_chunk)
+        
+        if not is_authorized_user:
+            if speaker_confidence < 0.3:  # Only log very low confidence
+                olliePrint_simple(f"Unverified speaker (confidence: {speaker_confidence:.2f})", 'warning')
             return
         
-        # Speaker verification for final results
-        is_user, speaker_confidence = self.speaker_verifier.verify_speaker(audio_chunk)
+        # Consolidated transcription logging
+        confidence_emoji = "🟢" if confidence > 0.8 else "🟡" if confidence > 0.6 else "🔴"
+        if is_final:
+            olliePrint_simple(f"{confidence_emoji} '{text}' (conf: {confidence:.2f})")
         
-        if not is_user:
-            olliePrint_simple(f"❌ [VOICE-ID] Unknown speaker ({speaker_confidence:.2f}) - ignoring", 'warning')
-            return  # Ignore non-user speech
+        # Wake word detection
+        wake_detected = any(wake in text for wake in self.wake_words)
+        stop_detected = any(stop in text for stop in self.stop_words)
         
-        # Log successful recognition with confidences
-        olliePrint_simple(f"✅ [USER-VERIFIED] ({speaker_confidence:.2f}) STT: ({confidence:.2f})")
-        olliePrint_simple(f"🎙️ [FINAL] '{text}'", 'success')
+        if not self.is_listening and wake_detected:
+            self.is_listening = True
+            olliePrint_simple("Wake word detected - listening", 'success')
+            # Send acknowledgment
+            if is_final and self.transcription_callback:
+                self.transcription_callback("Wake word confirmed")
+            return
         
-        # Check for wake words when not listening
-        if not self.is_listening:
-            if any(wake_word in text.lower() for wake_word in self.wake_words):
-                olliePrint_simple(f"👋 [WAKE] Wake word detected! Listening...", 'success')
-                self.is_listening = True
-                self.speech_buffer = []
-                self.last_speech_time = time.time()
-                return
+        if self.is_listening and stop_detected:
+            self.is_listening = False
+            olliePrint_simple("Stop word detected - standby", 'warning')
+            return
         
-        # Process speech while listening
-        if self.is_listening:
-            # Check for stop words
-            if any(stop_word in text.lower() for stop_word in self.stop_words):
-                olliePrint_simple(f"💤 [SLEEP] Stop word detected", 'warning')
+        # Process speech when listening
+        if self.is_listening and is_final and confidence > 0.5:
+            # Clean up text
+            for wake in self.wake_words:
+                text = text.replace(wake, "").strip()
+            
+            if len(text) > 2:  # Minimum meaningful length
+                olliePrint_simple(f"Processing: '{text}'", 'success')
+                
+                # Update performance stats (simplified)
+                self._transcription_count += 1
+                self._confidence_sum += confidence
+                
+                # Send to callback
                 if self.transcription_callback:
-                    self.transcription_callback("goodbye")
-                self.is_listening = False
-                self.speech_buffer = []
-                return
-            
-            # Add to speech buffer if meaningful and high enough confidence
-            # Calculate effective confidence - use word average if overall is missing
-            effective_confidence = confidence
-            if confidence == 0.0 and words:
-                # Calculate average word confidence
-                word_confidences = [w.get('conf', 0.0) for w in words if 'conf' in w]
-                if word_confidences:
-                    effective_confidence = sum(word_confidences) / len(word_confidences)
-                    olliePrint_simple(f"📊 [CONFIDENCE-FIX] Using avg word confidence: {effective_confidence:.2f}")
-            
-            if len(text.split()) > 0 and effective_confidence > 0.1:  # Lower threshold
-                olliePrint_simple(f"📝 [BUFFER] Adding: '{text}' (eff-conf: {effective_confidence:.2f})")
-                self.last_speech_time = time.time()
-                self.speech_buffer.append(text)
-                
-                # Show current buffer status
-                buffer_text = " ".join(self.speech_buffer)
-                olliePrint_simple(f"🗂️ [BUFFER-STATUS] Current: '{buffer_text}' ({len(self.speech_buffer)} parts)")
-                
-                # Also check for immediate processing if we detect sentence endings
-                if text.strip().endswith(('.', '?', '!')) or len(self.speech_buffer) >= 3:
-                    olliePrint_simple("🔄 [TRIGGER] Processing utterance (sentence end detected)")
-                    self._process_complete_utterance()
-                
-                # Timeout mechanism - process if buffer has been sitting too long
-                elif len(self.speech_buffer) > 0 and time.time() - self.last_speech_time > 3.0:
-                    olliePrint_simple("⏰ [TIMEOUT] Processing utterance (timeout)")
-                    self._process_complete_utterance()
-            else:
-                olliePrint_simple(f"⚠️ [FILTER] Rejecting low confidence: '{text}' (eff-conf: {effective_confidence:.2f})")
+                    self.transcription_callback(text)
     
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
         """Enhanced audio chunk processing"""
@@ -726,7 +695,9 @@ class FREDPiClient:
                     except Exception as e:
                         olliePrint_simple(f"[ERROR] Audio processing failure: {e}", 'error')
                 else:
-                    olliePrint_simple(f'\n[F.R.E.D.] {message}')
+                    # Handle F.R.E.D.'s text responses - display them prominently on Pi terminal
+                    if len(message.strip()) > 0:
+                        olliePrint_simple(f'\n[F.R.E.D.] {message}', 'success')
                 
                 if not message.startswith('[HEARTBEAT_ACK]'):
                     olliePrint_simple('[ARMLINK] Standing by for commands...')
@@ -828,6 +799,7 @@ class FREDPiClient:
     
     async def _send_transcription_async(self, text: str):
         """Async helper to send transcription via data channel"""
+        # Send as JSON format as expected by WebRTC server
         message = json.dumps({
             'type': 'transcription',
             'text': text

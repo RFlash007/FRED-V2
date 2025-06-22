@@ -472,6 +472,21 @@ def banner(component: str) -> str:
     """Legacy banner function - redirects to startup_block"""
     return startup_block(component, [])
 
+def olliePrint_concise(message: Any, level: str = 'info', module: Optional[str] = None) -> None:
+    """Ultra-concise logging - single line, no banner, minimal formatting"""
+    if not detect_terminal_capabilities()['ansi_colors']:
+        print(f"[{level.upper()}] {message}")
+        return
+    
+    color = FRED_COLORS.get(level, FRED_COLORS['info'])
+    timestamp = datetime.now().strftime('%H:%M:%S')
+    
+    # Ultra-minimal format: timestamp + module + message
+    if module:
+        print(f"{FRED_COLORS['timestamp']}{timestamp}{FRED_COLORS['reset']} {color}[{module}]{FRED_COLORS['reset']} {message}")
+    else:
+        print(f"{FRED_COLORS['timestamp']}{timestamp}{FRED_COLORS['reset']} {color}{message}{FRED_COLORS['reset']}")
+
 # === Testing Function ===
 if __name__ == "__main__":
     print("=== F.R.E.D. Enhanced Logging System Test ===\n")

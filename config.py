@@ -53,6 +53,25 @@ class Config:
     FRED_LANGUAGE = "en"
     TTS_CLEANUP_DELAY = 2  # seconds
     
+    # Voice Cloning Configuration for Stewie
+    STEWIE_VOICE_ENABLED = True
+    STEWIE_VOICE_SAMPLES_DIR = "voice_samples/stewie"  # Directory containing Stewie voice clips
+    STEWIE_VOICE_SAMPLES = [
+        "stewie_sample_1.wav",
+        "stewie_sample_2.wav", 
+        "stewie_sample_3.wav",
+        "stewie_sample_4.wav",
+        "stewie_sample_5.wav"
+    ]
+    STEWIE_VOICE_CLONE_TEMP_DIR = "voice_cloning_temp"  # Temporary directory for processing
+    STEWIE_VOICE_CLONE_MODEL_CACHE = "voice_cloning_cache"  # Cache directory for voice model
+    STEWIE_VOICE_CLONE_QUALITY = "premium"  # Higher quality synthesis (options: ultra_fast, fast, standard, high, premium)
+    STEWIE_VOICE_CLONE_SPEED = 0.9  # Slightly slower for natural pacing
+    STEWIE_VOICE_CLONE_TEMPERATURE = 0.3  # Balanced variation for naturalness
+    STEWIE_VOICE_CLONE_REPETITION_PENALTY = 1.2  # Prevents robotic repetition
+    STEWIE_VOICE_CLONE_TOP_K = 50  # Broader sampling for prosody
+    STEWIE_VOICE_CLONE_TOP_P = 0.8  # More diverse sampling
+    
     # STT Configuration
     STT_SAMPLE_RATE = 16000
     STT_CHANNELS = 1

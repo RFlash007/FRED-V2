@@ -38,6 +38,7 @@ class FREDState:
         self.stt_enabled = True
         self.total_conversation_turns = 0  # Track conversation turns for STM
         self.last_analyzed_message_index = 0  # Track last analyzed message for STM
+        self.stewie_voice_available = False  # Track if Stewie voice cloning is available
         self._lock = threading.Lock()
     
     def add_conversation_turn(self, role, content, thinking=None):
@@ -126,18 +127,45 @@ FRED_CORE_NODE_ID = "FRED_CORE"
 def initialize_tts():
     """Initialize TTS engine once during startup."""
     try:
+        olliePrint_simple("Voice synthesis initializing...", 'audio')
+        
         device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        # Initialize Stewie voice cloning if enabled
+        if config.STEWIE_VOICE_ENABLED:
+            from stewie_voice_clone import initialize_stewie_voice, validate_stewie_samples
+            
+            stewie_success = initialize_stewie_voice()
+            if stewie_success:
+                # Validate voice samples
+                sample_stats = validate_stewie_samples()
+                olliePrint_simple(f"[STEWIE-CLONE] Found {sample_stats['total_samples']} voice samples", 'audio')
+                olliePrint_simple(f"[STEWIE-CLONE] Total duration: {sample_stats['total_duration']:.1f}s", 'audio')
+                olliePrint_simple(f"[STEWIE-CLONE] Stewie voice cloning ACTIVE!", 'success')
+                
+                # Set a flag to indicate Stewie voice is available
+                fred_state.stewie_voice_available = True
+            else:
+                olliePrint_simple("[STEWIE-CLONE] Failed to initialize - falling back to standard TTS", 'warning')
+                fred_state.stewie_voice_available = False
+        else:
+            fred_state.stewie_voice_available = False
+        
+        # Initialize standard TTS as fallback
         tts_engine = TTS(config.XTTS_MODEL_NAME).to(device)
         fred_state.set_tts_engine(tts_engine)
         
-        if os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-            olliePrint_simple(f"Voice synthesis matrix loaded on {device.upper()} with custom voice sample", 'audio')
+        if config.STEWIE_VOICE_ENABLED and fred_state.stewie_voice_available:
+            olliePrint_simple(f"Voice synthesis ready on {device.upper()} with STEWIE VOICE CLONING", 'success')
+        elif os.path.exists(config.FRED_SPEAKER_WAV_PATH):
+            olliePrint_simple(f"Voice synthesis ready on {device.upper()} with custom voice", 'audio')
         else:
-            olliePrint_simple(f"Voice synthesis matrix loaded on {device.upper()} with default voice", 'audio')
+            olliePrint_simple(f"Voice synthesis ready on {device.upper()} with default voice", 'audio')
             
     except Exception as e:
-        olliePrint_simple(f"Voice synthesis initialization failed: {e}", 'critical')
+        olliePrint_simple(f"Voice synthesis failed: {e}", 'critical')
         fred_state.set_tts_engine(None)
+        fred_state.stewie_voice_available = False
 
 # Load System Prompt
 SYSTEM_PROMPT_FILE = os.path.join(APP_ROOT, 'system_prompt.txt')
@@ -173,25 +201,23 @@ def summarize_thinking(thinking_content, ollama_client):
 
 Condensed reasoning (2-3 sentences only):"""
 
-        olliePrint_simple(f"\n[THINKING SUMMARY] Summarizing {len(thinking_content)} chars of thinking...")
+        # Remove verbose logging - just show result
         response = ollama_client.chat(
             model="hf.co/unsloth/Qwen3-4B-GGUF:Q4_K_M",
             messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0.5, "max_tokens": 150}  # Lower temp + token limit
+            options={"temperature": 0.5, "max_tokens": 150}
         )
         raw_summary_response = response.get('message', {}).get('content', '').strip()
-        
-        # Extract only the summary content, not the 4B model's thinking
         summary = strip_think_tags(raw_summary_response).strip()
         
-        olliePrint_simple(f"[THINKING SUMMARY] Raw 4B response ({len(raw_summary_response)} chars):")
-        olliePrint_simple(f"[THINKING SUMMARY] {raw_summary_response[:200]}{'...' if len(raw_summary_response) > 200 else ''}")
-        olliePrint_simple(f"[THINKING SUMMARY] Extracted summary ({len(summary)} chars): {summary}")
+        # Only log if there's an actual summary generated
+        if summary and len(summary) > 10:
+            olliePrint_simple(f"Thinking condensed: {summary[:100]}{'...' if len(summary) > 100 else ''}")
+        
         return summary
     except Exception as e:
-        olliePrint_simple(f"[THINKING SUMMARY] Failed to summarize: {e}")
-        olliePrint_simple(f"Failed to summarize thinking: {e}", level='warning')
-        return thinking_content[:200] + "..." if len(thinking_content) > 200 else thinking_content
+        olliePrint_simple(f"Thinking summary failed: {e}", 'warning')
+        return ""
 
 def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
     """Prepare messages with appropriate thinking context based on recency."""
@@ -312,6 +338,11 @@ def fred_speak(text, mute_fred=False, target_device='local'):
 
     olliePrint_simple(f"[F.R.E.D.] Initializing voice synthesis - Target: {target_device.upper()} | '{text[:50]}...'")
 
+    # Send text response to Pi terminal first (as per user memory preference)
+    if target_device in ['pi', 'all']:
+        olliePrint_simple(f"[TEXT-RELAY] Sending text to Pi terminal: '{text[:50]}...'")
+        socketio.emit('fred_text_response', {'text': text})
+
     # Cleanup previous file
     if fred_state.last_played_wav and os.path.exists(fred_state.last_played_wav):
         try:
@@ -324,31 +355,49 @@ def fred_speak(text, mute_fred=False, target_device='local'):
     output_path = os.path.join(APP_ROOT, f"fred_speech_output_{unique_id}.wav")
 
     try:
-        tts_engine = fred_state.get_tts_engine()
-        if tts_engine is None:
-            olliePrint_simple("TTS engine not initialized, skipping speech generation", 'warning')
-            return
-
         olliePrint_simple(f"[ARC-MODE] Synthesizing neural voice patterns: {output_path}")
         
-        # Check if we have a voice sample for cloning
-        if os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-            olliePrint_simple(f"[VOICE-CLONE] Using custom voice sample: {config.FRED_SPEAKER_WAV_PATH}")
-            tts_engine.tts_to_file(
-                text=text,
-                speaker_wav=config.FRED_SPEAKER_WAV_PATH,
-                language=config.FRED_LANGUAGE,
-                file_path=output_path
-            )
+        # Priority 1: Use Stewie voice cloning if available
+        if config.STEWIE_VOICE_ENABLED and hasattr(fred_state, 'stewie_voice_available') and fred_state.stewie_voice_available:
+            from stewie_voice_clone import generate_stewie_speech
+            
+            olliePrint_simple(f"[STEWIE-CLONE] Generating speech with Stewie's voice", 'audio')
+            stewie_success = generate_stewie_speech(text, output_path)
+            
+            if stewie_success:
+                olliePrint_simple(f"[STEWIE-CLONE] ✅ Voice generation successful!", 'success')
+            else:
+                olliePrint_simple(f"[STEWIE-CLONE] ❌ Failed - falling back to standard TTS", 'warning')
+                # Fall through to standard TTS
+                stewie_success = False
         else:
-            olliePrint_simple(f"[VOICE-DEFAULT] No voice sample found - using default XTTS voice")
-            # Use default XTTS speaker instead of voice cloning
-            tts_engine.tts_to_file(
-                text=text,
-                speaker="Ana Florence",  # Default XTTS speaker
-                language=config.FRED_LANGUAGE,
-                file_path=output_path
-            )
+            stewie_success = False
+        
+        # Fallback: Use standard TTS if Stewie cloning failed or is disabled
+        if not stewie_success:
+            tts_engine = fred_state.get_tts_engine()
+            if tts_engine is None:
+                olliePrint_simple("TTS engine not initialized, skipping speech generation", 'warning')
+                return
+
+            # Check if we have a voice sample for cloning
+            if os.path.exists(config.FRED_SPEAKER_WAV_PATH):
+                olliePrint_simple(f"[VOICE-CLONE] Using custom voice sample: {config.FRED_SPEAKER_WAV_PATH}")
+                tts_engine.tts_to_file(
+                    text=text,
+                    speaker_wav=config.FRED_SPEAKER_WAV_PATH,
+                    language=config.FRED_LANGUAGE,
+                    file_path=output_path
+                )
+            else:
+                olliePrint_simple(f"[VOICE-DEFAULT] No voice sample found - using default XTTS voice")
+                # Use default XTTS speaker instead of voice cloning
+                tts_engine.tts_to_file(
+                    text=text,
+                    speaker="Ana Florence",  # Default XTTS speaker
+                    language=config.FRED_LANGUAGE,
+                    file_path=output_path
+                )
         
         olliePrint_simple(f"[SUCCESS] Voice synthesis complete - audio matrix ready")
 

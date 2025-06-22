@@ -1,0 +1,20 @@
+# Additional requirements for Stewie Voice Cloning with Coqui XTTS-v2
+# Add these to your main requirements.txt
+
+# Core TTS and voice cloning
+TTS>=0.22.0
+coqui-tts>=0.22.0
+
+# Audio processing for voice cloning
+librosa>=0.10.0
+soundfile>=0.12.1
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# Audio enhancement and processing
+scipy>=1.10.0
+numpy>=1.24.0
+
+# Optional: For better audio quality preprocessing
+noisereduce>=3.0.0
+pydub>=0.25.1 

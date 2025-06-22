@@ -36,17 +36,15 @@ runner = None
 async def request_frame_from_client(client_ip):
     """Request a fresh frame from a specific client"""
     if client_ip not in client_video_tracks:
-        olliePrint_simple(f"⚠️ No video track available for {client_ip}")
         return None
     
     try:
         track = client_video_tracks[client_ip]
-        olliePrint_simple(f"📸 Requesting fresh frame from {client_ip}")
         frame = await track.recv()
-        olliePrint_simple(f"✅ Fresh frame received from {client_ip} (size: {frame.width}x{frame.height})")
+        olliePrint_simple(f"Frame received from {client_ip} ({frame.width}x{frame.height})")
         return frame
     except Exception as e:
-        olliePrint_simple(f"❌ Failed to request frame from {client_ip}: {e}")
+        olliePrint_simple(f"Frame request failed: {e}")
         return None
 
 # SocketIO client to connect to main F.R.E.D. server
@@ -89,12 +87,12 @@ async def offer(request):
     
     # Rate limiting check
     if not check_rate_limit(client_ip):
-        olliePrint_simple(f"[RATE-LIMIT] Too many requests from {client_ip}")
+        olliePrint_simple(f"Rate limit exceeded: {client_ip}")
         return web.json_response({'error': 'Rate limit exceeded'}, status=429)
     
     # Authentication check
     if not authenticate_request(request):
-        olliePrint_simple(f"[AUTH-FAIL] Unauthorized access attempt from {client_ip}")
+        olliePrint_simple(f"Unauthorized access: {client_ip}")
         return web.json_response({'error': 'Unauthorized'}, status=401)
     
     try:
@@ -104,7 +102,7 @@ async def offer(request):
         
         # Get JSON body for WebRTC offer
         params = await request.json()
-        params['client_type'] = client_type_param  # Add client_type to params for later use
+        params['client_type'] = client_type_param
         
         # Store the main event loop for background threads
         main_event_loop = asyncio.get_running_loop()
@@ -113,36 +111,29 @@ async def offer(request):
         pc = RTCPeerConnection()
         pcs.add(pc)
         
-        olliePrint_simple(f"[SHELTER-NET] New ArmLink connection from {client_ip}")
-        olliePrint_simple(f"🔍 [DEBUG] URL client_type: '{client_type_param}'")
-
-        # Initialize media recorder (blackhole – we don't save media)
+        olliePrint_simple(f"ArmLink connected: {client_ip}")
+        
+        # Initialize media recorder
         recorder = MediaBlackhole()
-        # Start the recorder (MediaBlackhole.start is *not* a coroutine)
         try:
             await recorder.start()
         except Exception as e:
-            olliePrint_simple(f"Recorder failed to start: {e}", level='warning')
+            olliePrint_simple(f"Recorder start failed: {e}", level='warning')
         
-        # -------------------------------------------------------------
-        #  STT SET-UP (run only once – on first connection)
-        # -------------------------------------------------------------
+        # STT setup - consolidated
         if not getattr(stt_service, "is_processing", False):
-            # Define a synchronous callback that will forward the final
-            # transcription to the main F.R.E.D. server and relay the
-            # response back to all connected Pi clients.
             def process_pi_transcription(text, from_pi=False):
                 """Handle text recognised from Pi audio."""
                 if not text or not text.strip():
                     return
 
-                olliePrint_simple(f"[ARMLINK COMM] Field operative transmission: '{text}'")
+                olliePrint_simple(f"Pi transmission: '{text}'")
 
                 # Prepare chat request for main server
                 payload = {
                     "message": text,
                     "model": config.DEFAULT_MODEL,
-                    "mute_fred": False,  # Enable TTS for Pi glasses - F.R.E.D. speaks through the glasses
+                    "mute_fred": False,
                     "from_pi_glasses": True,
                 }
 
@@ -152,301 +143,225 @@ async def offer(request):
                         resp = requests.post("http://localhost:5000/chat", json=payload, stream=True, timeout=None)
                         if resp.status_code == 200:
                             buffer = ""
-                            total_fragments = 0
                             
                             for line in resp.iter_lines():
                                 if not line:
                                     continue
                                 try:
                                     data = _json.loads(line.decode("utf-8"))
-                                    olliePrint_simple(f"🔍 [DEBUG] F.R.E.D. response data: {data}")
-                                except Exception as e:
-                                    olliePrint_simple(f"🔍 [DEBUG] Failed to parse response line: {line.decode('utf-8')}")
+                                except:
                                     continue
 
                                 if "response" in data:
-                                    # incremental content from server – buffer and forward
-                                    fragment = data["response"]
-                                    buffer += fragment
-                                    total_fragments += 1
-                                    
-                                    olliePrint_simple(f"📤 [RESPONSE] Sending fragment to Pi: '{fragment}'")
-                                    # Send via thread-safe method
-                                    _send_to_pi_safe(fragment)
-                                
-                                # Also check for complete response or final message
+                                    buffer += data["response"]
                                 elif "final_response" in data or "message" in data:
                                     final_text = data.get("final_response") or data.get("message", "")
                                     if final_text:
-                                        olliePrint_simple(f"📤 [FINAL] Sending complete response to Pi: '{final_text}'")
                                         _send_to_pi_safe(final_text)
                             
-                            # If we have a complete buffer at the end, send it
-                            if buffer and total_fragments > 0:
-                                olliePrint_simple(f"📤 [BUFFER] Sending buffered response to Pi: '{buffer}'")
-                                _send_to_pi_safe(f"[ACK] {buffer}")
-                            else:
-                                olliePrint_simple(f"⚠️ [WARNING] No response fragments received from F.R.E.D. (buffer: '{buffer}', fragments: {total_fragments})")
+                            # Send complete response
+                            if buffer:
+                                olliePrint_simple(f"Response to Pi: '{buffer[:50]}...'")
+                                _send_to_pi_safe(buffer)
                         else:
                             olliePrint_simple(f"Chat request failed: {resp.status_code}", level='error')
                     except Exception as exc:
-                        olliePrint_simple(f"Error relaying message to F.R.E.D.: {exc}", level='error')
+                        olliePrint_simple(f"Error relaying to F.R.E.D.: {exc}", level='error')
 
                 def _send_to_pi_safe(message):
                     """Thread-safe method to send messages to Pi clients"""
                     try:
-                        # Use the stored main event loop
                         if main_event_loop and not main_event_loop.is_closed():
-                            # Schedule the send operation on the main event loop
                             future = asyncio.run_coroutine_threadsafe(_send_to_pi_async(message), main_event_loop)
-                            future.result(timeout=5.0)  # Wait for completion
-                        else:
-                            olliePrint_simple("⚠️ [WARNING] No event loop available for Pi communication")
+                            try:
+                                future.result(timeout=5)
+                            except Exception as e:
+                                olliePrint_simple(f"Send to Pi failed: {e}")
+                    
                     except Exception as e:
-                        olliePrint_simple(f"❌ [SEND-ERROR] Failed to send to Pi: {e}")
+                        olliePrint_simple(f"Pi communication error: {e}")
 
                 async def _send_to_pi_async(message):
-                    """Async method to actually send messages to Pi"""
-                    for ch in data_channels.copy():
+                    """Send message to all connected Pi clients via data channels"""
+                    if not data_channels:
+                        return
+                    
+                    for channel in list(data_channels):
                         try:
-                            ch.send(message)
-                            olliePrint_simple(f"✅ [SENT] Message sent to Pi successfully")
+                            channel.send(message)
                         except Exception as e:
-                            olliePrint_simple(f"❌ [CHANNEL-ERROR] Failed to send to channel: {e}")
-                            data_channels.discard(ch)
+                            olliePrint_simple(f"Channel send failed: {e}")
 
-                import threading as _threading
-                _threading.Thread(target=_call_fred, daemon=True).start()
+                # Run in background thread
+                import threading
+                threading.Thread(target=_call_fred, daemon=True).start()
 
-            # Start STT processing – this will spin up the processing thread
-            try:
-                stt_service.start_processing(process_pi_transcription)
-                olliePrint_simple("STT processing thread started for Pi audio")
-            except Exception as stt_err:
-                olliePrint_simple(f"Unable to start STT processing: {stt_err}", level='error')
-        
-        # Store data channel when created
         @pc.on('datachannel')
         def on_datachannel(channel):
             data_channels.add(channel)
-            pi_clients.add(channel)  # Track Pi clients
-            olliePrint_simple(f"[ARMLINK] Data channel '{channel.label}' established with field operative at {client_ip}")
+            pi_clients.add(client_ip)
+            olliePrint_simple(f"Data channel established: {client_ip}")
             
-            # Notify vision service that Pi is connected
+            # Set Pi connection for vision service
             vision_service.set_pi_connection_status(True)
-            olliePrint_simple(f"[OPTICS] ArmLink visual sensors ONLINE - initiating reconnaissance protocols")
             
-            # Check if this is a local STT client
-            is_local_stt = 'local_stt' in client_type_param
-            
-            # Debug logging for client type detection
-            olliePrint_simple(f"🔍 [DEBUG] Client type: '{client_type_param}', is_local_stt: {is_local_stt}")
-            
-            if is_local_stt:
-                olliePrint_simple(f"🧠 [LOCAL STT] Client using on-device transcription - text-only mode")
+            # Determine if client uses local STT
+            is_local_stt = client_type_param == 'local_stt'
             
             @channel.on('message')
             def on_message(message):
-                # Debug logging for message handling
-                olliePrint_simple(f"🔍 [DEBUG] Message received: '{message}' | is_local_stt: {is_local_stt}")
+                # Consolidated message handling
+                if message == "[HEARTBEAT]":
+                    channel.send("[HEARTBEAT_ACK]")
+                    return
                 
-                # Handle heartbeat messages
-                if message == '[HEARTBEAT]':
-                    olliePrint_simple(f"[VITAL-MONITOR] ArmLink heartbeat confirmed from {client_ip}")
-                    channel.send('[HEARTBEAT_ACK]')
-                elif is_local_stt:
-                    olliePrint_simple(f"🔀 [DEBUG] Taking LOCAL STT path")
-                    # Handle transcribed text from Pi
+                if is_local_stt:
+                    # Handle pre-transcribed text from Pi STT
                     try:
-                        import json
-                        data = json.loads(message)
-                        if data.get('type') == 'transcription':
-                            text = data.get('text', '').strip()
+                        # Try to parse as JSON first (new format)
+                        message_data = json.loads(message)
+                        if message_data.get('type') == 'transcription':
+                            text = message_data.get('text', '').strip()
                             if text:
-                                olliePrint_simple(f"🗣️ [PI TRANSCRIPTION] '{text}' from {client_ip}")
-                                olliePrint_simple(f"📨 [SERVER-RECEIVED] Processing transcription: '{text}'")
-                                # Process the transcribed text (same as old audio processing)
+                                olliePrint_simple(f"Pi text (JSON): '{text}'")
                                 process_pi_transcription(text, from_pi=True)
-                                olliePrint_simple(f"✅ [SERVER-PROCESSED] Transcription sent to F.R.E.D.: '{text}'")
+                        return
                     except json.JSONDecodeError:
-                        # Handle plain text messages
-                        if message.strip():
-                            olliePrint_simple(f"🗣️ [PI TRANSCRIPTION] '{message.strip()}' from {client_ip}")
-                            olliePrint_simple(f"📨 [SERVER-RECEIVED] Processing plain text: '{message.strip()}'")
-                            process_pi_transcription(message.strip(), from_pi=True)
-                            olliePrint_simple(f"✅ [SERVER-PROCESSED] Plain text sent to F.R.E.D.: '{message.strip()}'")
+                        # Fallback to old format handling
+                        if message.startswith("TRANSCRIPTION:"):
+                            text = message.replace("TRANSCRIPTION:", "").strip()
+                            olliePrint_simple(f"Pi text (legacy): '{text}'")
+                            process_pi_transcription(text, from_pi=True)
+                        else:
+                            # Plain text fallback
+                            text = message.strip()
+                            if text and len(text) > 2:  # Ignore very short messages
+                                olliePrint_simple(f"Pi message (plain): '{text}'")
+                                process_pi_transcription(text, from_pi=True)
                 else:
-                    olliePrint_simple(f"🔀 [DEBUG] Taking ELSE path (not local STT)")
-                    olliePrint_simple(f"[ARMLINK COMM] Field operative message: {message}")
+                    # Server-side STT processing
+                    if hasattr(stt_service, 'process_audio_from_webrtc'):
+                        stt_service.process_audio_from_webrtc(message, from_pi=True)
             
             @channel.on('close')
             def on_close():
                 data_channels.discard(channel)
-                pi_clients.discard(channel)
-                olliePrint_simple(f"[ARMLINK] Data channel '{channel.label}' closed from {client_ip}")
-                
-                # If no more Pi clients, stop vision processing
+                pi_clients.discard(client_ip)
                 if not pi_clients:
                     vision_service.set_pi_connection_status(False)
-                    olliePrint_simple(f"[OPTICS] All ArmLinks disconnected - reconnaissance protocols OFFLINE")
+                olliePrint_simple(f"Data channel closed: {client_ip}")
 
         @pc.on('track')
         async def on_track(track):
-            olliePrint_simple(f"[SIGNAL] {track.kind.upper()} link established with field operative {client_ip}")
+            olliePrint_simple(f"{track.kind.upper()} track connected: {client_ip}")
             
-            if track.kind == 'audio':
-                # Check if this is a local STT client
-                is_local_stt = 'local_stt' in client_type_param
+            if track.kind == "audio":
+                # Simplified audio handling
+                is_local_stt = client_type_param == 'local_stt'
                 
                 if is_local_stt:
-                    olliePrint_simple("[AUDIO] Client uses local STT - skipping server audio processing")
-                    # Just consume frames without processing to prevent buffer buildup
+                    # Skip server audio processing
                     async def consume_audio_frames_minimal():
+                        frame_count = 0
                         try:
-                            frame_count = 0
-                            while True:
-                                frame = await track.recv()
+                            async for frame in track:
                                 frame_count += 1
-                                if frame_count == 1:
-                                    olliePrint_simple(f"[AUDIO] Receiving audio frames from {client_ip} (not processing - local STT active)")
-                                elif frame_count % 5000 == 0:  # Very minimal logging
-                                    olliePrint_simple(f"[AUDIO] {frame_count} frames received (local STT mode)")
+                                if frame_count % 100 == 0:  # Log every 100 frames instead of every frame
+                                    olliePrint_simple(f"Audio frames: {frame_count} (local STT)")
                         except Exception as e:
-                            olliePrint_simple(f"[AUDIO] Audio stream ended: {e}")
+                            pass  # Silent audio end
                     
                     asyncio.create_task(consume_audio_frames_minimal())
                 else:
-                    olliePrint_simple("[AUDIO] Voice communication protocols active (server STT)")
-                    frame_count = 0
-                    
-                    # Create a task to consume audio frames from the track
+                    # Server STT processing
                     async def consume_audio_frames():
-                        nonlocal frame_count
-                        
                         try:
-                            buffer = []
-                            total_samples = 0
-                            # Pi-audio: use ~5-second chunk (80,000 samples @16 kHz) like old system
-                            CHUNK_TARGET = config.STT_SAMPLE_RATE * 5  # 48 000 samples
-
-                            while True:
-                                frame = await track.recv()
+                            # Start STT if not already running
+                            if not getattr(stt_service, "is_processing", False):
+                                stt_service.start_processing(process_pi_transcription)
+                                olliePrint_simple("STT processing started")
+                            
+                            frame_count = 0
+                            async for frame in track:
                                 frame_count += 1
-
-                                if frame_count == 1:
-                                    olliePrint_simple(f"[AUDIO] First transmission received from {client_ip}")
-                                # Reduced frequency of frame logging for conciseness
-                                elif frame_count % 2000 == 0:  # Every ~40 seconds instead of every 10
-                                    olliePrint_simple(f"[AUDIO] {frame_count} frames processed")
-
-                                pcm = frame.to_ndarray()
-
-                                # Shape (1, samples) -> flatten to samples
-                                if pcm.ndim == 2:
-                                    pcm = pcm.flatten()
-
-                                # HIGH QUALITY AUDIO: Preserve original 48kHz and let Whisper handle resampling
-                                input_sr = getattr(frame, 'sample_rate', 48000)
-                                target_sr = config.STT_SAMPLE_RATE
                                 
-                                # CRITICAL FIX: Use high-quality resampling and preserve float32 precision
+                                # Convert frame to numpy array
+                                audio_array = frame.to_ndarray()
+                                
+                                # Handle stereo to mono conversion
+                                if len(audio_array.shape) == 2 and audio_array.shape[1] == 2:
+                                    audio_array = np.mean(audio_array, axis=1)
+                                
+                                # Resample if needed
+                                input_sr = frame.sample_rate
+                                target_sr = 16000
+                                
                                 if input_sr != target_sr:
                                     try:
-                                        # Convert to float32 normalized [-1, 1] for high-quality processing
-                                        if pcm.dtype == np.int16:
-                                            pcm_f32 = pcm.astype(np.float32) / 32768.0
-                                        elif pcm.dtype == np.float32:
-                                            pcm_f32 = pcm
-                                        else:
-                                            pcm_f32 = pcm.astype(np.float32)
-                                        
-                                        # High-quality Kaiser window resampling (like your old system)
                                         from scipy.signal import resample_poly
-                                        pcm_resampled = resample_poly(pcm_f32, target_sr, input_sr)
-                                        
-                                        # Keep as float32 to preserve quality (don't quantize to int16!)
-                                        pcm = pcm_resampled.astype(np.float32)
-                                        
-                                    except Exception as rs_err:
-                                        olliePrint_simple(f"[WARNING] Audio resampling error ({input_sr}->{target_sr}): {rs_err}")
-                                        # Fallback: simple decimation
-                                        if input_sr == 48000 and target_sr == 16000:
-                                            pcm = pcm[::3].astype(np.float32) / 32768.0 if pcm.dtype == np.int16 else pcm[::3]
-                                else:
-                                    # Normalize to float32 even if no resampling needed
-                                    if pcm.dtype == np.int16:
-                                        pcm = pcm.astype(np.float32) / 32768.0
-                                    elif pcm.dtype != np.float32:
-                                        pcm = pcm.astype(np.float32)
-
-                                buffer.append(pcm)
-                                total_samples += pcm.shape[0]
-
-                                if total_samples >= CHUNK_TARGET:
-                                    chunk = np.concatenate(buffer)
-                                    stt_service.audio_queue.put((chunk, True))
-                                    buffer = []
-                                    total_samples = 0
-                                    # Reduced frequency of chunk processing logs
-                                    if frame_count % 3000 == 0:  # Much less frequent
-                                        olliePrint_simple(f"[PROCESSING] Speech data sent to recognition system")
-
+                                        gcd_val = np.gcd(target_sr, input_sr)
+                                        up = target_sr // gcd_val
+                                        down = input_sr // gcd_val
+                                        audio_array = resample_poly(audio_array, up, down)
+                                    except Exception:
+                                        pass  # Continue without resampling
+                                
+                                # Send to STT service
+                                if hasattr(stt_service, 'process_audio_from_webrtc'):
+                                    stt_service.process_audio_from_webrtc(audio_array, from_pi=True)
+                                
+                                # Reduced logging frequency
+                                if frame_count % 50 == 0:
+                                    olliePrint_simple(f"Processing audio frames: {frame_count}")
+                        
                         except Exception as e:
-                            olliePrint_simple(f"[ERROR] Audio transmission ended: {e}")
-                        finally:
-                            # graceful exit when track ends
-                            return
+                            pass  # Silent error handling
                     
                     asyncio.create_task(consume_audio_frames())
                 
-            elif track.kind == 'video':
-                olliePrint_simple("[OPTICS] Visual reconnaissance feed active")
-                frame_count = 0
-                
-                # Store track for on-demand frame requests
+            elif track.kind == "video":
+                # Store video track for vision processing
                 client_video_tracks[client_ip] = track
+                olliePrint_simple("Visual feed active")
                 
-                # Test: Request first frame immediately
-                try:
-                    frame = await track.recv()
-                    frame_count += 1
-                    olliePrint_simple(f"[OPTICS] Visual feed confirmed ({frame.width}x{frame.height})")
-                    
-                    # Store frame for vision processing
-                    vision_service.store_latest_frame(frame)
-                    
-                except Exception as e:
-                    olliePrint_simple(f"[ERROR] Visual feed initialization failed: {e}")
+                # Store frames for vision service
+                async def consume_video_frames():
+                    try:
+                        async for frame in track:
+                            vision_service.store_latest_frame(frame)
+                    except Exception as e:
+                        pass  # Silent video end
+                
+                asyncio.create_task(consume_video_frames())
             
-            # Add track to recorder safely
-            if recorder:
-                try:
-                    recorder.addTrack(track)
-                except Exception as rec_err:
-                    olliePrint_simple(f"[WARNING] Track recording failed: {rec_err}", level='error')
+            # Record track
+            try:
+                recorder.addTrack(track)
+            except Exception:
+                pass  # Silent recording failure
 
         @pc.on('connectionstatechange')
         async def on_connectionstatechange():
-            
-            if pc.connectionState == 'connected':
-                olliePrint_simple(f"[SUCCESS] ArmLink fully operational at {client_ip}")
-            elif pc.connectionState in ('failed', 'closed'):
-                olliePrint_simple(f"[DISCONNECT] ArmLink {client_ip} offline")
-                # Clean up video track reference
-                if client_ip in client_video_tracks:
-                    del client_video_tracks[client_ip]
-                await pc.close()
-                pcs.discard(pc)  # free slot for new connections
+            state = pc.connectionState
+            if state == "connected":
+                olliePrint_simple(f"ArmLink operational: {client_ip}")
+            elif state in ["disconnected", "failed", "closed"]:
+                olliePrint_simple(f"ArmLink offline: {client_ip}")
+                pcs.discard(pc)
+                client_video_tracks.pop(client_ip, None)
 
+        # Process the offer and create answer
         await pc.setRemoteDescription(offer)
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
 
-        return web.json_response({'sdp': pc.localDescription.sdp,
-                                  'type': pc.localDescription.type})
-    
+        return web.json_response({
+            "sdp": pc.localDescription.sdp,
+            "type": pc.localDescription.type
+        })
+
     except Exception as e:
-        olliePrint_simple(f"Error handling offer from {client_ip}: {e}", level='error')
+        olliePrint_simple(f"Connection error {client_ip}: {e}", level='error')
         return web.json_response({'error': 'Internal server error'}, status=500)
 
 # SocketIO event handlers for receiving responses from main F.R.E.D. server
@@ -520,6 +435,33 @@ async def fred_audio(data):
         loop.call_later(playback_seconds, lambda: stt_service.set_speaking_state(False))
     else:
         olliePrint_simple("[ERROR] No audio data in transmission from F.R.E.D. mainframe")
+
+@sio_client.event
+async def fred_text_response(data):
+    """Forward F.R.E.D.'s text responses to Pi clients for terminal display"""
+    text = data.get('text', '')
+    
+    if text:
+        olliePrint_simple(f"[TEXT-RELAY] Forwarding text to Pi terminals: '{text[:50]}...'")
+        
+        # Send text to all connected Pi clients
+        sent_count = 0
+        for channel in data_channels.copy():
+            try:
+                # Send as plain text - Pi client will display it
+                channel.send(text)
+                sent_count += 1
+                olliePrint_simple(f"[TEXT-TX] Text sent to ArmLink #{sent_count}")
+            except Exception as e:
+                olliePrint_simple(f"[ERROR] Text transmission failure to ArmLink #{sent_count+1}: {e}")
+                data_channels.discard(channel)
+        
+        if sent_count == 0:
+            olliePrint_simple("[WARNING] No ArmLink devices available - text transmission failed")
+        else:
+            olliePrint_simple(f"[SUCCESS] Text transmission complete - {sent_count} field operative(s) reached")
+    else:
+        olliePrint_simple("[ERROR] No text data in response from F.R.E.D. mainframe")
 
 async def cleanup(app):
     # This is still valuable for graceful shutdown

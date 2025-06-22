@@ -7,6 +7,7 @@ from duckduckgo_search import DDGS # Uncommented DuckDuckGo import
 import memory.librarian as lib
 from config import config
 from ollie_print import olliePrint
+import uuid
 
 # Change logging level to ERROR to reduce console clutter (handled by olliePrint)
 
@@ -196,43 +197,41 @@ AVAILABLE_TOOLS = [
 # --- Tool Implementations ---
 # Wrapper for adding memory
 def tool_add_memory(label: str, text: str, memory_type: str, parent_id: int | None = None, target_date: str | None = None):
-    """Wrapper to call librarian.add_memory."""
-    olliePrint(f"Tool call: add_memory(label='{label}', type='{memory_type}', target_date='{target_date}')")
+    """Adds a new memory node to the knowledge graph."""
     try:
+        olliePrint(f"Adding memory: '{label}' ({memory_type})")
         validate_memory_type(memory_type)
         parsed_target_date = parse_target_date(target_date)
         
         node_id = lib.add_memory(label=label, text=text, memory_type=memory_type, parent_id=parent_id, target_date=parsed_target_date)
-        return {"success": True, "nodeid": node_id, "message": f"Memory added with ID {node_id}."}
+        return f"Memory '{label}' added with ID {node_id}"
     except Exception as e:
-        olliePrint(f"Error in tool_add_memory: {e}", level='error')
-        return {"success": False, "error": str(e)}
+        olliePrint(f"Error adding memory: {e}", level='error')
+        return f"Failed to add memory: {e}"
 
 # Wrapper for superseding memory
 def tool_supersede_memory(old_nodeid: int, new_label: str, new_text: str, new_memory_type: str, target_date: str | None = None):
-    """Wrapper to call librarian.supersede_memory."""
-    olliePrint(f"Tool call: supersede_memory(old_nodeid={old_nodeid}, new_label='{new_label}', new_type='{new_memory_type}', target_date='{target_date}')")
+    """Supersedes an existing memory with a new one."""
     try:
-         # Validate old_nodeid is an integer
-         if not isinstance(old_nodeid, int):
-            error_message = f"Invalid old_nodeid: '{old_nodeid}'. Must be an integer."
-            olliePrint(error_message, level='error')
-            return {"success": False, "error": error_message}
-
-         validate_memory_type(new_memory_type, "new_memory_type")
-         parsed_target_date = parse_target_date(target_date)
-         
-         new_nodeid = lib.supersede_memory(old_nodeid=old_nodeid, new_label=new_label, new_text=new_text, new_memory_type=new_memory_type, target_date=parsed_target_date)
-         return {"success": True, "new_nodeid": new_nodeid, "message": f"Memory {old_nodeid} superseded by {new_nodeid}."}
+        olliePrint(f"Superseding memory {old_nodeid} with '{new_label}' ({new_memory_type})")
+        validate_memory_type(new_memory_type, "new_memory_type")
+        parsed_target_date = parse_target_date(target_date)
+        
+        new_id = lib.supersede_memory(old_nodeid=old_nodeid, new_label=new_label, new_text=new_text, new_memory_type=new_memory_type, target_date=parsed_target_date)
+        return f"Memory superseded. New ID: {new_id}"
+    except ValueError as e:
+        error_message = f"Cannot supersede memory {old_nodeid}: {e}"
+        olliePrint(error_message, level='error')
+        return error_message
     except Exception as e:
-        olliePrint(f"Error in tool_supersede_memory: {e}", level='error')
-        return {"success": False, "error": str(e)}
+        olliePrint(f"Error superseding memory: {e}", level='error')
+        return f"Failed to supersede memory: {e}"
 
 # Wrapper for searching memory
 def tool_search_memory(query_text: str, memory_type: str | None = None, limit: int = None, future_events_only: bool = False, use_keyword_search: bool = False):
-    """Wrapper to call librarian.search_memory."""
-    olliePrint(f"Tool call: search_memory(query='{query_text}', type='{memory_type}', limit={limit}, future_events_only={future_events_only}, use_keyword_search={use_keyword_search})")
+    """Searches the knowledge graph for relevant memories."""
     try:
+        olliePrint(f"Searching memories: '{query_text}' (type: {memory_type}, limit: {limit})")
         # Validate memory_type if provided
         if memory_type is not None:
             validate_memory_type(memory_type, "memory_type filter")
@@ -256,7 +255,7 @@ def tool_search_memory(query_text: str, memory_type: str | None = None, limit: i
             
         return {"success": True, "results": results}
     except Exception as e:
-        olliePrint(f"Error in tool_search_memory: {e}", level='error')
+        olliePrint(f"Error searching memory: {e}", level='error')
         return {"success": False, "error": str(e)}
 
 def search_web_information(query_text: str) -> dict:
@@ -271,8 +270,8 @@ def search_web_information(query_text: str) -> dict:
     Returns:
         dict: A dictionary containing the search results or an error message.
     """
-    olliePrint(f"Tool call: search_web_information(query_text='{query_text}')")
     try:
+        olliePrint(f"Searching web: '{query_text}'")
         ddgs = DDGS(timeout=config.WEB_SEARCH_TIMEOUT)
         
         text_results = []
@@ -361,14 +360,14 @@ Provide a 2-3 sentence summary of the key findings relevant to the query."""
         return {"success": True, "results": combined_results}
 
     except Exception as e:
-        olliePrint(f"Error in search_web_information for query '{query_text}': {e}", level='error')
+        olliePrint(f"Error in web search: {e}", level='error')
         return {"success": False, "error": str(e)}
 
 # New tool to get a node by ID with its connections
 def tool_get_node_by_id(nodeid: int):
-    """Retrieves a specific node by ID with its connections."""
-    olliePrint(f"Tool call: get_node_by_id(nodeid={nodeid})")
+    """Gets a specific memory node by its ID."""
     try:
+        olliePrint(f"Getting memory node: {nodeid}")
         # Use get_graph_data with depth=1 to get the node and its immediate connections
         graph_data = lib.get_graph_data(nodeid, depth=1)
         
@@ -415,14 +414,14 @@ def tool_get_node_by_id(nodeid: int):
         
         return {"success": True, "result": result}
     except Exception as e:
-        olliePrint(f"Error in tool_get_node_by_id: {e}", level='error')
+        olliePrint(f"Error getting node: {e}", level='error')
         return {"success": False, "error": str(e)}
 
 # New tool to get graph data
 def tool_get_graph_data(center_nodeid: int, depth: int = 1):
-    """Retrieves nodes and edges around a center node up to specified depth."""
-    olliePrint(f"Tool call: get_graph_data(center_nodeid={center_nodeid}, depth={depth})")
+    """Gets graph data for visualization."""
     try:
+        olliePrint(f"Getting graph data (center: {center_nodeid}, depth: {depth})")
         graph_data = lib.get_graph_data(center_nodeid, depth=depth)
         
         # Process datetime objects for JSON compatibility
@@ -431,13 +430,13 @@ def tool_get_graph_data(center_nodeid: int, depth: int = 1):
         
         return {"success": True, "result": graph_data}
     except Exception as e:
-        olliePrint(f"Error in tool_get_graph_data: {e}", level='error')
-        return {"success": False, "error": str(e)}
+        olliePrint(f"Error getting graph data: {e}", level='error')
+        return {"nodes": [], "links": []}
 
-def tool_update_knowledge_graph_edges(limit_per_run: int = 5):
-    """Wrapper to call librarian.process_pending_edges."""
-    olliePrint(f"Tool call: update_knowledge_graph_edges(limit_per_run={limit_per_run})")
+def tool_update_knowledge_graph_edges(limit_per_run: int = 3):
+    """Updates edges in the knowledge graph."""
     try:
+        olliePrint(f"Updating graph edges (limit: {limit_per_run})")
         if not isinstance(limit_per_run, int) or limit_per_run <= 0:
             raise ValueError("limit_per_run must be a positive integer.")
         
@@ -446,8 +445,8 @@ def tool_update_knowledge_graph_edges(limit_per_run: int = 5):
         # datetime objects are handled by librarian if any were returned directly.
         return {"success": True, "result": summary}
     except Exception as e:
-        olliePrint(f"Error in tool_update_knowledge_graph_edges: {e}", level='error')
-        return {"success": False, "error": str(e)}
+        olliePrint(f"Error updating edges: {e}", level='error')
+        return "Failed to update edges"
 
 # --- Tool Registry ---
 TOOL_FUNCTIONS = {
@@ -462,80 +461,50 @@ TOOL_FUNCTIONS = {
 
 # --- Tool Execution Logic ---
 # Simplified execution logic, assuming args are already parsed dicts by handle_tool_calls
-def handle_tool_calls(response_message):
-    """
-    Handles tool calls found within an LLM response message.
-
-    Args:
-        response_message: The 'message' dictionary from the Ollama response.
-
-    Returns:
-        A list of dictionaries, where each dictionary represents the result
-        of a tool call formatted for the Ollama API (role='tool', content='...', tool_call_id='...').
-        Returns an empty list if no tool calls are present or errors occur.
-    """
-    tool_calls = response_message.get('tool_calls')
+def handle_tool_calls(tool_calls):
+    """Handles multiple tool calls and returns results."""
     if not tool_calls:
-        return [] # No tool calls to handle
-
-    tool_outputs = []
+        return []
+    
+    results = []
     for tool_call in tool_calls:
-        function_name = tool_call.get('function', {}).get('name')
-        tool_args = tool_call.get('function', {}).get('arguments', {}) # Arguments should be dict
-        tool_call_id = tool_call.get('id') # Ollama now includes an ID
-
+        tool_call_id = tool_call.get('id', '')
+        function_name = tool_call.get('function', {}).get('name', '')
+        tool_args = tool_call.get('function', {}).get('arguments', {})
+        
         if not function_name:
-            olliePrint("Tool call missing function name.", level='error')
-            # Optionally add an error output for the LLM
-            continue # Skip this invalid tool call
-
-        if not tool_call_id:
-             olliePrint(f"Tool call for '{function_name}' missing 'id'. Generating one.", level='warning')
-             # Generate a fallback ID if needed, although Ollama should provide it
-             tool_call_id = f"call_{time.time_ns()}"
-
-        olliePrint(f"Handling tool call '{function_name}' with ID '{tool_call_id}' and args: {tool_args}")
-
-        # Argument parsing now happens directly before calling the function from TOOL_FUNCTIONS
-        try:
-            # Ensure arguments are a dictionary for ** unpacking
-            if not isinstance(tool_args, dict):
-                try:
-                    # Ollama now seems to pass args as a dict directly sometimes,
-                    # but might still be stringified JSON in other cases? Be robust.
-                    tool_args = json.loads(str(tool_args)) 
-                except json.JSONDecodeError:
-                     olliePrint(f"Tool arguments for '{function_name}' are not valid JSON or a dictionary: {tool_args}", level='error')
-                     output_content = json.dumps({"success": False, "error": f"Invalid arguments format for {function_name}."})
-                     tool_outputs.append({"tool_call_id": tool_call_id, "role": "tool", "content": output_content})
-                     continue # Skip this tool call
-
-            # Execute the tool (using the function from TOOL_FUNCTIONS directly)
-            olliePrint(f"Executing tool '{function_name}' via handle_tool_calls with args: {tool_args}")
-            tool_function = TOOL_FUNCTIONS.get(function_name)
-            if tool_function:
-                try:
-                    # Call the actual tool function (e.g., tool_add_memory)
-                    result_dict = tool_function(**tool_args) 
-                    output_content = json.dumps(result_dict) # Result should already be a serializable dict
-                except TypeError as e:
-                    # Handles cases where LLM might provide wrong/missing args
-                    olliePrint(f"TypeError executing {function_name} via handle_tool_calls: {e}. Args: {tool_args}", level='error')
-                    output_content = json.dumps({"success": False, "error": f"Argument mismatch for tool '{function_name}': {e}"})
-                except Exception as e:
-                    olliePrint(f"Unexpected error executing {function_name} via handle_tool_calls: {e}", level='error')
-                    output_content = json.dumps({"success": False, "error": f"Error during execution of {function_name}: {str(e)}"})
-            else:
-                olliePrint(f"Tool '{function_name}' not found in TOOL_FUNCTIONS.", level='error')
-                output_content = json.dumps({"success": False, "error": f"Tool '{function_name}' not found"})
+            olliePrint("Tool call missing function name", level='error')
+            continue
             
-            # Append the result for this tool call
-            tool_outputs.append({"tool_call_id": tool_call_id, "role": "tool", "content": output_content})
-
-        except Exception as e: # Catch broader errors during the loop iteration
-            olliePrint(f"General error processing tool call {tool_call_id} for {function_name}: {e}", level='error')
-            # Provide a generic error response for this specific tool call
-            error_content = json.dumps({"success": False, "error": f"Internal error processing tool call '{function_name}'."})
-            tool_outputs.append({"tool_call_id": tool_call_id, "role": "tool", "content": error_content})
-
-    return tool_outputs
+        if not tool_call_id:
+            olliePrint(f"Tool '{function_name}' missing ID - generating one", level='warning')
+            tool_call_id = str(uuid.uuid4())
+        
+        olliePrint(f"Executing tool: {function_name}")
+        
+        try:
+            # Convert arguments if they're a string
+            if isinstance(tool_args, str):
+                try:
+                    tool_args = json.loads(tool_args)
+                except json.JSONDecodeError:
+                    olliePrint(f"Invalid JSON arguments for '{function_name}': {tool_args}", level='error')
+                    continue
+            
+            # Execute the tool function
+            if function_name in TOOL_FUNCTIONS:
+                function = TOOL_FUNCTIONS[function_name]
+                content = function(**tool_args)
+                results.append({
+                    "tool_call_id": tool_call_id,
+                    "content": content
+                })
+            else:
+                olliePrint(f"Tool '{function_name}' not found", level='error')
+                
+        except TypeError as e:
+            olliePrint(f"TypeError executing {function_name}: {e}", level='error')
+        except Exception as e:
+            olliePrint(f"Error executing {function_name}: {e}", level='error')
+    
+    return results
