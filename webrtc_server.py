@@ -425,32 +425,6 @@ async def fred_audio(data):
     else:
         olliePrint_simple("[ERROR] No audio data in transmission from F.R.E.D. mainframe")
 
-@sio_client.event
-async def fred_text_response(data):
-    """Forward F.R.E.D.'s text responses to Pi clients for terminal display"""
-    text = data.get('text', '')
-    
-    if text:
-        olliePrint_simple(f"[TEXT-RELAY] Forwarding text to Pi terminals: '{text[:50]}...'")
-        
-        # Send text to all connected Pi clients
-        sent_count = 0
-        for channel in data_channels.copy():
-            try:
-                # Send as plain text - Pi client will display it
-                channel.send(text)
-                sent_count += 1
-                olliePrint_simple(f"[TEXT-TX] Text sent to ArmLink #{sent_count}")
-            except Exception as e:
-                olliePrint_simple(f"[ERROR] Text transmission failure to ArmLink #{sent_count+1}: {e}")
-                data_channels.discard(channel)
-        
-        if sent_count == 0:
-            olliePrint_simple("[WARNING] No ArmLink devices available - text transmission failed")
-        else:
-            olliePrint_simple(f"[SUCCESS] Text transmission complete - {sent_count} field operative(s) reached")
-    else:
-        olliePrint_simple("[ERROR] No text data in response from F.R.E.D. mainframe")
 
 async def cleanup(app):
     # This is still valuable for graceful shutdown

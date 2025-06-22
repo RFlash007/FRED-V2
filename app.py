@@ -338,11 +338,6 @@ def fred_speak(text, mute_fred=False, target_device='local'):
 
     olliePrint_simple(f"[F.R.E.D.] Initializing voice synthesis - Target: {target_device.upper()} | '{text[:50]}...'")
 
-    # Send text response to Pi terminal first (as per user memory preference)
-    if target_device in ['pi', 'all']:
-        olliePrint_simple(f"[TEXT-RELAY] Sending text to Pi terminal: '{text[:50]}...'")
-        socketio.emit('fred_text_response', {'text': text})
-
     # Cleanup previous file
     if fred_state.last_played_wav and os.path.exists(fred_state.last_played_wav):
         try:
@@ -886,6 +881,17 @@ def handle_voice_message(data):
 def run_app():
     """Starts the F.R.E.D. main server using Flask-SocketIO."""
     olliePrint_simple("[MAINFRAME] F.R.E.D. intelligence core starting...")
+    
+    # Initialize TTS if not already initialized
+    if fred_state.get_tts_engine() is None:
+        olliePrint_simple("[INIT] Initializing voice synthesis systems...")
+        initialize_tts()
+    
+    # Initialize STT if not already initialized  
+    if not getattr(stt_service, 'is_initialized', False):
+        olliePrint_simple("[INIT] Initializing speech recognition systems...")
+        stt_service.initialize()
+    
     try:
         socketio.run(app, host=config.HOST, port=config.PORT, debug=False, use_reloader=False)
     except Exception as e:
