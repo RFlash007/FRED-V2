@@ -68,9 +68,9 @@ class Config:
     STEWIE_VOICE_CLONE_QUALITY = "premium"  # Higher quality synthesis (options: ultra_fast, fast, standard, high, premium)
     STEWIE_VOICE_CLONE_SPEED = 0.9  # Slightly slower for natural pacing
     STEWIE_VOICE_CLONE_TEMPERATURE = 0.3  # Balanced variation for naturalness
-    STEWIE_VOICE_CLONE_REPETITION_PENALTY = 1.2  # Prevents robotic repetition
-    STEWIE_VOICE_CLONE_TOP_K = 50  # Broader sampling for prosody
-    STEWIE_VOICE_CLONE_TOP_P = 0.8  # More diverse sampling
+    STEWIE_VOICE_CLONE_REPETITION_PENALTY = 1.05  # Optimal for XTTS-v2 (1.0-1.1 range)
+    STEWIE_VOICE_CLONE_LENGTH_PENALTY = 1.0  # Controls output length consistency
+    STEWIE_VOICE_CLONE_ENABLE_TEXT_SPLITTING = True  # Better handling of longer texts
     
     # STT Configuration
     STT_SAMPLE_RATE = 16000

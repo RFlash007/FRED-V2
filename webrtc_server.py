@@ -127,8 +127,6 @@ async def offer(request):
                 if not text or not text.strip():
                     return
 
-                olliePrint_simple(f"Pi transmission: '{text}'")
-
                 # Prepare chat request for main server
                 payload = {
                     "message": text,
@@ -219,13 +217,13 @@ async def offer(request):
                     # Handle pre-transcribed text from Pi STT - Keep original simple format
                     if message.startswith("TRANSCRIPTION:"):
                         text = message.replace("TRANSCRIPTION:", "").strip()
-                        olliePrint_simple(f"Pi text: '{text}'")
+                        olliePrint_simple(f"Pi: '{text}'")
                         process_pi_transcription(text, from_pi=True)
                     else:
                         # Plain text - this is the main working path
                         text = message.strip()
                         if text and len(text) > 2:  # Ignore very short messages
-                            olliePrint_simple(f"Pi message: '{text}'")
+                            olliePrint_simple(f"Pi: '{text}'")
                             process_pi_transcription(text, from_pi=True)
                 else:
                     # Server-side STT processing

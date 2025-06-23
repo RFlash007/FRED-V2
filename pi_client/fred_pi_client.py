@@ -679,6 +679,7 @@ class FREDPiClient:
             
             @self.data_channel.on('message')
             def on_message(message):
+                # Debug: Log all incoming messages to troubleshoot audio issue
                 if message.startswith('[HEARTBEAT_ACK]'):
                     # Silent acknowledgment
                     pass
@@ -693,6 +694,7 @@ class FREDPiClient:
                         audio_b64 = message[header_end + 1:]
                         
                         olliePrint_simple(f"[TRANSMISSION] Incoming voice data from F.R.E.D. ({format_info})")
+                        olliePrint_simple(f"[DEBUG] Audio data length: {len(audio_b64)} chars")
                         self._play_audio_from_base64(audio_b64, format_info)
                         
                     except Exception as e:
@@ -701,6 +703,9 @@ class FREDPiClient:
                     # Handle F.R.E.D.'s text responses - display them prominently on Pi terminal
                     if len(message.strip()) > 0:
                         olliePrint_simple(f'\n[F.R.E.D.] {message}', 'success')
+                        # Debug: Show message type for troubleshooting
+                        if len(message) > 100:
+                            olliePrint_simple(f"[DEBUG] Received long message ({len(message)} chars) - possible audio data?")
                 
                 if not message.startswith('[HEARTBEAT_ACK]'):
                     olliePrint_simple('[ARMLINK] Standing by for commands...')
@@ -808,6 +813,7 @@ class FREDPiClient:
     def _play_audio_from_base64(self, audio_b64, format_type='wav'):
         """Play audio from base64 data"""
         try:
+            olliePrint_simple(f"[AUDIO] Decoding {len(audio_b64)} chars of base64 audio data")
             audio_data = base64.b64decode(audio_b64)
             olliePrint_simple(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
             
@@ -815,23 +821,45 @@ class FREDPiClient:
                 temp_file.write(audio_data)
                 temp_file_path = temp_file.name
             
-            try:
-                subprocess.run(['aplay', temp_file_path], check=True, capture_output=True)
-                olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete", 'success')
-            except subprocess.CalledProcessError:
-                try:
-                    subprocess.run(['paplay', temp_file_path], check=True, capture_output=True)
-                    olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (PulseAudio)", 'success')
-                except subprocess.CalledProcessError:
-                    olliePrint_simple("[CRITICAL] Audio playback failed", 'error')
+            olliePrint_simple(f"[AUDIO] Saved to temp file: {temp_file_path}")
             
+            # Try aplay first
+            try:
+                result = subprocess.run(['aplay', temp_file_path], check=True, capture_output=True, text=True)
+                olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (aplay)", 'success')
+            except subprocess.CalledProcessError as e:
+                olliePrint_simple(f"[AUDIO] aplay failed: {e.stderr}", 'warning')
+                # Try paplay as fallback
+                try:
+                    result = subprocess.run(['paplay', temp_file_path], check=True, capture_output=True, text=True)
+                    olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (paplay)", 'success')
+                except subprocess.CalledProcessError as e2:
+                    olliePrint_simple(f"[AUDIO] paplay also failed: {e2.stderr}", 'error')
+                    # Try mpg123 as last resort
+                    try:
+                        result = subprocess.run(['mpg123', temp_file_path], check=True, capture_output=True, text=True)
+                        olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (mpg123)", 'success')
+                    except subprocess.CalledProcessError as e3:
+                        olliePrint_simple(f"[CRITICAL] All audio players failed - last error: {e3.stderr}", 'error')
+            except FileNotFoundError:
+                olliePrint_simple("[AUDIO] aplay not found, trying paplay...", 'warning')
+                try:
+                    result = subprocess.run(['paplay', temp_file_path], check=True, capture_output=True, text=True)
+                    olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (paplay)", 'success')
+                except Exception as e:
+                    olliePrint_simple(f"[CRITICAL] Audio playback failed: {e}", 'error')
+            
+            # Cleanup temp file
             try:
                 os.unlink(temp_file_path)
-            except Exception:
-                pass
+                olliePrint_simple("[AUDIO] Temp file cleaned up")
+            except Exception as e:
+                olliePrint_simple(f"[AUDIO] Cleanup warning: {e}")
                 
         except Exception as e:
             olliePrint_simple(f"[CRITICAL] Audio playback system failure: {e}", 'error')
+            import traceback
+            traceback.print_exc()
     
     async def _cleanup(self):
         """Cleanup resources"""
