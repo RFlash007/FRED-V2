@@ -8,6 +8,8 @@ import memory.librarian as lib
 import re
 import playsound
 import uuid
+import subprocess
+import platform
 import glob
 from Tools import AVAILABLE_TOOLS, handle_tool_calls
 from datetime import datetime
@@ -195,7 +197,7 @@ def summarize_thinking(thinking_content, ollama_client):
         return ""
     
     try:
-        prompt = f"""Condense the following reasoning into exactly 2-3 sentences. Focus only on key insights and decisions. Do NOT use thinking tags or meta-commentary:
+        prompt = f"""Condense the following Language model reasoning into exactly 2-3 sentences. Focus only on key insights and decisions. Do NOT use thinking tags or meta-commentary, maintain the original perspective:
 
 {thinking_content}
 
@@ -320,6 +322,81 @@ def get_pending_tasks_alert():
         pass
     return ""
 
+def play_audio_locally(audio_file_path):
+    """Robust cross-platform audio playback with Windows optimization."""
+    if not os.path.exists(audio_file_path):
+        olliePrint_simple(f"[ERROR] Audio file not found: {audio_file_path}")
+        return
+    
+    try:
+        system = platform.system().lower()
+        olliePrint_simple(f"[AUDIO] Attempting playback on {system.upper()}: {os.path.basename(audio_file_path)}")
+        
+        if system == "windows":
+            # Windows: Use multiple fallback methods
+            try:
+                # Method 1: PowerShell with Windows Media Format SDK
+                cmd = [
+                    "powershell", "-Command", 
+                    f"(New-Object Media.SoundPlayer '{audio_file_path}').PlaySync()"
+                ]
+                subprocess.run(cmd, check=True, capture_output=True, timeout=None)
+                olliePrint_simple(f"[SUCCESS] Audio playback via PowerShell")
+                return
+            except Exception as e1:
+                olliePrint_simple(f"[FALLBACK] PowerShell failed ({e1}), trying playsound...")
+                
+                try:
+                    # Method 2: playsound library
+                    playsound.playsound(audio_file_path, block=False)
+                    olliePrint_simple(f"[SUCCESS] Audio playback via playsound")
+                    return
+                except Exception as e2:
+                    olliePrint_simple(f"[FALLBACK] playsound failed ({e2}), trying system call...")
+                    
+                    try:
+                        # Method 3: Direct system call to start with associated program
+                        subprocess.run(['start', '/wait', audio_file_path], shell=True, check=True, timeout=None)
+                        olliePrint_simple(f"[SUCCESS] Audio playback via system start")
+                        return
+                    except Exception as e3:
+                        olliePrint_simple(f"[ERROR] All Windows audio methods failed: {e3}")
+        
+        elif system == "linux":
+            # Linux: Try multiple audio players
+            players = ['aplay', 'paplay', 'mpg123', 'mpv', 'ffplay']
+            for player in players:
+                try:
+                    subprocess.run([player, audio_file_path], check=True, capture_output=True, timeout=None)
+                    olliePrint_simple(f"[SUCCESS] Audio playback via {player}")
+                    return
+                except (subprocess.CalledProcessError, FileNotFoundError):
+                    continue
+            olliePrint_simple(f"[ERROR] No working Linux audio player found")
+        
+        elif system == "darwin":  # macOS
+            try:
+                subprocess.run(['afplay', audio_file_path], check=True, capture_output=True, timeout=None)
+                olliePrint_simple(f"[SUCCESS] Audio playback via afplay")
+                return
+            except Exception as e:
+                olliePrint_simple(f"[ERROR] macOS audio playback failed: {e}")
+        
+        else:
+            # Fallback: Try playsound for unknown systems
+            try:
+                playsound.playsound(audio_file_path, block=False)
+                olliePrint_simple(f"[SUCCESS] Audio playback via playsound fallback")
+                return
+            except Exception as e:
+                olliePrint_simple(f"[ERROR] Unknown system audio playback failed: {e}")
+    
+    except Exception as e:
+        olliePrint_simple(f"[CRITICAL] Audio playback system failure: {e}")
+        # Last resort: show audio file location
+        olliePrint_simple(f"[INFO] Generated audio file: {audio_file_path}")
+        olliePrint_simple(f"[INFO] You can manually play this file to hear F.R.E.D.'s response")
+
 def fred_speak(text, mute_fred=False, target_device='local'):
     """Generate and play speech using TTS.
     
@@ -400,7 +477,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
         if target_device in ['local', 'all']:
             # Play locally on main computer
             olliePrint_simple(f"[LOCAL-COMM] Broadcasting to main terminal: '{text[:50]}...'")
-            playsound.playsound(output_path, block=False)
+            play_audio_locally(output_path)
 
         if target_device in ['pi', 'all']:
             # Send audio to Pi glasses
@@ -409,7 +486,7 @@ def fred_speak(text, mute_fred=False, target_device='local'):
 
         if target_device not in ['local', 'pi', 'all']:
             olliePrint_simple(f"[ERROR] Unknown device '{target_device}' - defaulting to local broadcast")
-            playsound.playsound(output_path, block=False)
+            play_audio_locally(output_path)
 
         # Schedule cleanup after a delay
         def delayed_cleanup():
@@ -902,7 +979,7 @@ if __name__ == '__main__':
     
     # Check Ollama connection
     try:
-        requests.get(config.OLLAMA_BASE_URL, timeout=2)
+        requests.get(config.OLLAMA_BASE_URL, timeout=None)
         olliePrint_simple(f"[NEURAL-NET] AI model interface connected")
     except:
         olliePrint_simple("[WARNING] AI model interface not responding", level='warning')

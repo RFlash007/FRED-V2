@@ -679,7 +679,7 @@ class FREDPiClient:
             
             @self.data_channel.on('message')
             def on_message(message):
-                # Debug: Log all incoming messages to troubleshoot audio issue
+                # Enhanced debug logging for audio troubleshooting
                 if message.startswith('[HEARTBEAT_ACK]'):
                     # Silent acknowledgment
                     pass
@@ -689,6 +689,7 @@ class FREDPiClient:
                 elif message.startswith('[AUDIO_BASE64:'):
                     # Handle incoming audio from F.R.E.D.
                     try:
+                        olliePrint_simple(f"[DEBUG] AUDIO MESSAGE DETECTED! Length: {len(message)}")
                         header_end = message.find(']')
                         format_info = message[14:header_end]
                         audio_b64 = message[header_end + 1:]
@@ -699,13 +700,19 @@ class FREDPiClient:
                         
                     except Exception as e:
                         olliePrint_simple(f"[ERROR] Audio processing failure: {e}", 'error')
+                        import traceback
+                        traceback.print_exc()
                 else:
                     # Handle F.R.E.D.'s text responses - display them prominently on Pi terminal
                     if len(message.strip()) > 0:
-                        olliePrint_simple(f'\n[F.R.E.D.] {message}', 'success')
-                        # Debug: Show message type for troubleshooting
+                        # Enhanced debugging for audio troubleshooting
+                        olliePrint_simple(f"[DEBUG] Received message type: {type(message)}, length: {len(message)}")
                         if len(message) > 100:
-                            olliePrint_simple(f"[DEBUG] Received long message ({len(message)} chars) - possible audio data?")
+                            olliePrint_simple(f"[DEBUG] Message starts with: '{message[:50]}...'")
+                            if '[AUDIO_BASE64' in message:
+                                olliePrint_simple(f"[CRITICAL] AUDIO MESSAGE FOUND IN TEXT HANDLER!")
+                        
+                        olliePrint_simple(f'\n[F.R.E.D.] {message}', 'success')
                 
                 if not message.startswith('[HEARTBEAT_ACK]'):
                     olliePrint_simple('[ARMLINK] Standing by for commands...')

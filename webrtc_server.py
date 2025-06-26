@@ -224,7 +224,7 @@ async def offer(request):
                         text = message.strip()
                         if text and len(text) > 2:  # Ignore very short messages
                             olliePrint_simple(f"Pi: '{text}'")
-                            process_pi_transcription(text, from_pi=True)
+                        process_pi_transcription(text, from_pi=True)
                 else:
                     # Server-side STT processing
                     if hasattr(stt_service, 'process_audio_from_webrtc'):

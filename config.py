@@ -39,7 +39,7 @@ class Config:
     OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
     OLLAMA_EMBED_URL = os.getenv('OLLAMA_EMBED_URL', 'http://localhost:11434/api/embeddings')
     OLLAMA_GENERATE_URL = os.getenv('OLLAMA_GENERATE_URL', 'http://localhost:11434/api/generate')
-    OLLAMA_TIMEOUT = 20
+    OLLAMA_TIMEOUT = None  # No timeout - let operations complete
     
     # Model Configuration
     DEFAULT_MODEL = 'huihui_ai/qwen3-abliterated:8b'
@@ -95,7 +95,7 @@ class Config:
     MAX_TOOL_ITERATIONS = 5
     WEB_SEARCH_MAX_RESULTS = 3
     WEB_SEARCH_NEWS_MAX_RESULTS = 2
-    WEB_SEARCH_TIMEOUT = 60
+    WEB_SEARCH_TIMEOUT = None  # No timeout for web searches
     
     # Memory Configuration
     MEMORY_SEARCH_LIMIT = 10
