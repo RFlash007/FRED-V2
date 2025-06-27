@@ -49,14 +49,15 @@ apply_theme()
 class FREDPiSTTService:
     """
     ShelterNet Speech Recognition Module
-    Optimized for Pi with Vosk small English model + Performance Optimizations:
+    Optimized for Pi with Vosk small English model + Responsive Performance:
     - Disabled word-level confidence processing (CPU intensive)
     - Disabled partial word results (reduced overhead)  
-    - Larger audio chunks (200ms vs 100ms for efficiency)
+    - 100ms audio chunks for responsiveness (balanced performance)
     - Reduced logging verbosity (minimal prints)
     - Optimized voice activity detection (max vs mean)
-    - Less frequent buffer checks (5s vs 2s intervals)
-    - Skip transcription on very quiet audio
+    - Frequent buffer checks (1s intervals for responsiveness)
+    - Queue size limits to prevent audio buildup
+    - Immediate processing triggers for faster response
     """
     
     def __init__(self):
@@ -68,15 +69,15 @@ class FREDPiSTTService:
         self.sample_rate = 16000
         self.channels = 1
         
-        # Optimized speech detection settings for Pi performance
+        # Responsive speech detection settings 
         self.speech_buffer = []
         self.partial_buffer = ""  # Track partial results separately
         self.last_speech_time = 0
-        self.silence_duration = 1.0  # Increased for better accuracy
-        self.silence_threshold = 0.003  # Slightly higher to reduce false triggers
+        self.silence_duration = 0.6  # Reduced for responsiveness (was causing delays)
+        self.silence_threshold = 0.002  # Lower for better detection
         
         # Processing control
-        self.audio_queue = queue.Queue()
+        self.audio_queue = queue.Queue(maxsize=10)  # Limit queue size to prevent buildup
         self.is_listening = False
         self.is_processing = False
         self.processing_thread = None
@@ -187,14 +188,21 @@ class FREDPiSTTService:
                 if self.is_processing:
                     # Convert to float32 and add to queue
                     audio_data = indata.flatten().astype(np.float32)
-                    if not self.audio_queue.full():
-                        self.audio_queue.put(audio_data)
+                    try:
+                        self.audio_queue.put_nowait(audio_data)
+                    except queue.Full:
+                        # If queue is full, remove oldest and add new (prevent buildup)
+                        try:
+                            self.audio_queue.get_nowait()
+                            self.audio_queue.put_nowait(audio_data)
+                        except queue.Empty:
+                            pass
             
-            # Start audio stream with larger blocks for Pi efficiency
+            # Start audio stream with balanced block size for responsiveness
             with sd.InputStream(
                 channels=1,
                 samplerate=self.sample_rate,
-                blocksize=int(self.sample_rate * 0.2),  # 200ms blocks for better Pi performance
+                blocksize=int(self.sample_rate * 0.1),  # 100ms blocks for responsiveness (was 200ms causing delay)
                 callback=audio_callback,
                 dtype=np.float32
             ):
@@ -210,12 +218,12 @@ class FREDPiSTTService:
                         else:
                             time.sleep(0.01)
                         
-                        # Periodic buffer check - reduced frequency for Pi performance
+                        # Periodic buffer check for responsiveness
                         current_time = time.time()
-                        if current_time - last_buffer_check > 5.0:  # Check every 5 seconds (reduced frequency)
+                        if current_time - last_buffer_check > 1.0:  # Check every 1 second for responsiveness
                             if self.is_listening and self.speech_buffer:
                                 time_since_speech = current_time - self.last_speech_time
-                                if time_since_speech > 3.0:  # Force processing if > 3 seconds old
+                                if time_since_speech > 1.5:  # Force processing if > 1.5 seconds old
                                     olliePrint_simple(f"⏰ [FORCED] Processing stuck buffer")
                                     self._process_complete_utterance()
                             last_buffer_check = current_time
@@ -232,7 +240,7 @@ class FREDPiSTTService:
     def _transcribe_audio(self, audio_chunk: np.ndarray) -> tuple:
         """Optimized transcribe audio using Vosk for Pi performance"""
         try:
-            if len(audio_chunk) < 3200:  # Less than 0.2 seconds (larger minimum for efficiency)
+            if len(audio_chunk) < 1600:  # Less than 0.1 seconds (responsive minimum)
                 return "", 0.0, False, []
             
             # Efficient conversion to int16 format that Vosk expects
@@ -319,12 +327,17 @@ class FREDPiSTTService:
                 text = text.replace(wake, "").strip()
             
             if len(text) > 2:
-                # Buffer the final text instead of sending immediately
+                # Buffer the final text
                 self.speech_buffer.append(text)
 
                 # Update performance stats with manual confidence
                 self._transcription_count += 1
                 self._confidence_sum += manual_confidence
+                
+                # Process immediately if we have enough content (more responsive)
+                if len(self.speech_buffer) >= 2 or len(" ".join(self.speech_buffer)) > 10:
+                    olliePrint_simple("🗣️ [IMMEDIATE] Processing speech")
+                    self._process_complete_utterance()
     
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
         """Optimized audio chunk processing for Pi performance"""
@@ -344,13 +357,12 @@ class FREDPiSTTService:
             # If we are here, there is audible sound. Update the last speech time.
             self.last_speech_time = time.time()
 
-            # Only transcribe if audio level is sufficient (skip very quiet audio)
-            if audio_level > self.silence_threshold * 2:
-                text, confidence, is_final, words = self._transcribe_audio(audio_chunk)
-                
-                # Handle the result of the transcription
-                if text and len(text.strip()) > 1:
-                    self._handle_transcribed_text(text.strip(), confidence, is_final, words, audio_chunk)
+            # Always transcribe when we have audible sound (don't skip transcription)
+            text, confidence, is_final, words = self._transcribe_audio(audio_chunk)
+            
+            # Handle the result of the transcription
+            if text and len(text.strip()) > 1:
+                self._handle_transcribed_text(text.strip(), confidence, is_final, words, audio_chunk)
                 
         except Exception as e:
             olliePrint_simple(f"Audio chunk processing error: {e}", 'error')
