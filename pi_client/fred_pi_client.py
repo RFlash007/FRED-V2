@@ -49,7 +49,14 @@ apply_theme()
 class FREDPiSTTService:
     """
     ShelterNet Speech Recognition Module
-    Optimized for Pi with Vosk small English model + Enhanced Text Processing
+    Optimized for Pi with Vosk small English model + Performance Optimizations:
+    - Disabled word-level confidence processing (CPU intensive)
+    - Disabled partial word results (reduced overhead)  
+    - Larger audio chunks (200ms vs 100ms for efficiency)
+    - Reduced logging verbosity (minimal prints)
+    - Optimized voice activity detection (max vs mean)
+    - Less frequent buffer checks (5s vs 2s intervals)
+    - Skip transcription on very quiet audio
     """
     
     def __init__(self):
@@ -61,12 +68,12 @@ class FREDPiSTTService:
         self.sample_rate = 16000
         self.channels = 1
         
-        # Enhanced speech detection settings
+        # Optimized speech detection settings for Pi performance
         self.speech_buffer = []
         self.partial_buffer = ""  # Track partial results separately
         self.last_speech_time = 0
-        self.silence_duration = 0.8  # Reduced from 1.2 for faster processing
-        self.silence_threshold = 0.002
+        self.silence_duration = 1.0  # Increased for better accuracy
+        self.silence_threshold = 0.003  # Slightly higher to reduce false triggers
         
         # Processing control
         self.audio_queue = queue.Queue()
@@ -110,6 +117,8 @@ class FREDPiSTTService:
                 "./vosk-model-small-en-us-0.15",             # Local Pi-optimized
                 "/home/raspberry/FRED-V2/pi_client/models/vosk-model-small-en-us-0.15",  # Pi installation path
                 "/opt/vosk/models/vosk-model-small-en-us-0.15",  # System Pi installation
+                # For extreme performance needs on very low-end Pi, consider:
+                # "models/vosk-model-small-en-us-zamia-0.5",  # Even smaller (49MB) but lower accuracy
                 "models/vosk-model-en-us-0.22",               # Larger model only if Pi has resources
                 "../models/vosk-model-en-us-0.22",
                 "./vosk-model-en-us-0.22"
@@ -129,9 +138,9 @@ class FREDPiSTTService:
             self.model = vosk.Model(model_path)
             self.recognizer = vosk.KaldiRecognizer(self.model, self.sample_rate)
             
-            # Configure recognizer for better accuracy
-            self.recognizer.SetWords(True)  # Enable word-level results
-            self.recognizer.SetPartialWords(True)  # Enable partial word results
+            # Configure recognizer for Pi performance (disable heavy features)
+            self.recognizer.SetWords(False)  # Disable word-level results for speed
+            self.recognizer.SetPartialWords(False)  # Disable partial word results for speed
             
             self.is_initialized = True
             olliePrint_simple("Voice recognition ready", 'success')
@@ -181,11 +190,11 @@ class FREDPiSTTService:
                     if not self.audio_queue.full():
                         self.audio_queue.put(audio_data)
             
-            # Start audio stream
+            # Start audio stream with larger blocks for Pi efficiency
             with sd.InputStream(
                 channels=1,
                 samplerate=self.sample_rate,
-                blocksize=int(self.sample_rate * 0.1),  # 100ms blocks
+                blocksize=int(self.sample_rate * 0.2),  # 200ms blocks for better Pi performance
                 callback=audio_callback,
                 dtype=np.float32
             ):
@@ -201,13 +210,13 @@ class FREDPiSTTService:
                         else:
                             time.sleep(0.01)
                         
-                        # Periodic buffer check - ensure speech doesn't get stuck
+                        # Periodic buffer check - reduced frequency for Pi performance
                         current_time = time.time()
-                        if current_time - last_buffer_check > 2.0:  # Check every 2 seconds
+                        if current_time - last_buffer_check > 5.0:  # Check every 5 seconds (reduced frequency)
                             if self.is_listening and self.speech_buffer:
                                 time_since_speech = current_time - self.last_speech_time
-                                if time_since_speech > 2.0:  # Force processing if > 2 seconds old
-                                    olliePrint_simple(f"⏰ [FORCED] Processing stuck buffer after {time_since_speech:.1f}s")
+                                if time_since_speech > 3.0:  # Force processing if > 3 seconds old
+                                    olliePrint_simple(f"⏰ [FORCED] Processing stuck buffer")
                                     self._process_complete_utterance()
                             last_buffer_check = current_time
                             
@@ -221,15 +230,15 @@ class FREDPiSTTService:
             olliePrint_simple(f"❌ [AUDIO] Audio capture failed: {e}", 'error')
     
     def _transcribe_audio(self, audio_chunk: np.ndarray) -> tuple:
-        """Enhanced transcribe audio using Vosk with confidence tracking"""
+        """Optimized transcribe audio using Vosk for Pi performance"""
         try:
-            if len(audio_chunk) < 1600:  # Less than 0.1 seconds
+            if len(audio_chunk) < 3200:  # Less than 0.2 seconds (larger minimum for efficiency)
                 return "", 0.0, False, []
             
-            # Convert to int16 format that Vosk expects
+            # Efficient conversion to int16 format that Vosk expects
             if audio_chunk.dtype == np.float32:
-                # Convert float32 [-1, 1] to int16
-                audio_data = (audio_chunk * 32767).astype(np.int16)
+                # More efficient conversion for Pi
+                audio_data = (audio_chunk * 32767).clip(-32767, 32767).astype(np.int16)
             else:
                 audio_data = audio_chunk.astype(np.int16)
             
@@ -238,29 +247,25 @@ class FREDPiSTTService:
             
             # Process with Vosk
             if self.recognizer.AcceptWaveform(audio_bytes):
-                # Final result - this is what we want for speech buffer
+                # Final result - simplified for speed
                 result = json.loads(self.recognizer.Result())
                 text = result.get('text', '').strip()
-                confidence = result.get('conf', 0.0)
-                words = result.get('result', [])
-                
-                # Show word-level confidence if available
-                if words and text:
-                    self._display_word_confidence(words)
+                confidence = result.get('conf', 0.7)  # Default confidence for Pi performance
                 
                 self._transcription_count += 1
                 if confidence > 0:
                     self._confidence_sum += confidence
                 
-                return text, confidence, True, words  # is_final=True
+                return text, confidence, True, []  # is_final=True, no word details for speed
             else:
-                # Partial result - only for live feedback
+                # Minimal partial result processing for Pi performance
                 result = json.loads(self.recognizer.PartialResult())
                 partial_text = result.get('partial', '').strip()
                 
-                # Show live feedback for partial results
-                if partial_text and partial_text != self.partial_buffer:
-                    olliePrint_simple(f"🎤 [LISTENING] {partial_text}...", 'muted')
+                # Only show partial results occasionally to reduce CPU load
+                if partial_text and len(partial_text) > 5 and partial_text != self.partial_buffer:
+                    if len(partial_text) % 10 == 0:  # Only show every 10th character change
+                        olliePrint_simple(f"🎤 [LISTENING] {partial_text}...", 'muted')
                     self.partial_buffer = partial_text
                 
                 return partial_text, 0.0, False, []  # is_final=False
@@ -269,23 +274,7 @@ class FREDPiSTTService:
             olliePrint_simple(f"Transcription error: {e}", 'error')
             return "", 0.0, False, []
     
-    def _display_word_confidence(self, words):
-        """Display word-level confidence with color coding"""
-        confidence_display = []
-        for word in words:
-            word_text = word.get('word', '')
-            word_conf = word.get('conf', 0.0)
-            
-            # Color code by confidence
-            if word_conf > 0.8:
-                confidence_display.append(f"'{word_text}'({word_conf:.2f})")
-            elif word_conf > 0.6:
-                confidence_display.append(f"'{word_text}'({word_conf:.2f})")
-            else:
-                confidence_display.append(f"'{word_text}'({word_conf:.2f})")
-        
-        if confidence_display:
-            olliePrint_simple(f"📝 [CONFIDENCE] {' '.join(confidence_display)}")
+    # _display_word_confidence removed for Pi performance optimization
     
     def _handle_transcribed_text(self, text: str, confidence: float, is_final: bool, words: list, audio_chunk: np.ndarray):
         """Process transcribed text with wake word detection"""
@@ -298,13 +287,12 @@ class FREDPiSTTService:
         if text in ["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"]:
             return
         
-        # Manual confidence calculation - use manual average instead of Vosk confidence
+        # Simplified confidence for Pi performance
         manual_confidence = min(0.8, len(text) / 10.0)  # Longer text = higher confidence, capped at 0.8
         
-        # Enhanced logging with manual confidence
-        confidence_emoji = "🟢" if manual_confidence > 0.6 else "🟡" if manual_confidence > 0.3 else "🔴"
-        if is_final:
-            olliePrint_simple(f"{confidence_emoji} '{text}' (manual conf: {manual_confidence:.2f})")
+        # Minimal logging for Pi performance - only show final results
+        if is_final and len(text) > 3:
+            olliePrint_simple(f"🎤 '{text}'")
         
         # Wake word detection
         wake_detected = any(wake in text for wake in self.wake_words)
@@ -339,29 +327,30 @@ class FREDPiSTTService:
                 self._confidence_sum += manual_confidence
     
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
-        """Enhanced audio chunk processing"""
+        """Optimized audio chunk processing for Pi performance"""
         try:
-            # Calculate audio level for voice activity detection
-            audio_level = np.abs(audio_chunk).mean()
+            # Fast voice activity detection using max instead of mean for speed
+            audio_level = np.abs(audio_chunk).max()
             
             # If too quiet, check if we should process a completed utterance
             if audio_level < self.silence_threshold:
                 if self.is_listening and self.speech_buffer and self.last_speech_time > 0:
                     silence_duration = time.time() - self.last_speech_time
                     if silence_duration > self.silence_duration:
-                        olliePrint_simple(f"🔇 [SILENCE] {silence_duration:.1f}s detected - processing utterance")
+                        olliePrint_simple(f"🔇 [SILENCE] Processing utterance")
                         self._process_complete_utterance()
                 return
 
             # If we are here, there is audible sound. Update the last speech time.
             self.last_speech_time = time.time()
 
-            # Transcribe the audio chunk
-            text, confidence, is_final, words = self._transcribe_audio(audio_chunk)
-            
-            # Handle the result of the transcription
-            if text and len(text.strip()) > 0:
-                self._handle_transcribed_text(text.strip(), confidence, is_final, words, audio_chunk)
+            # Only transcribe if audio level is sufficient (skip very quiet audio)
+            if audio_level > self.silence_threshold * 2:
+                text, confidence, is_final, words = self._transcribe_audio(audio_chunk)
+                
+                # Handle the result of the transcription
+                if text and len(text.strip()) > 1:
+                    self._handle_transcribed_text(text.strip(), confidence, is_final, words, audio_chunk)
                 
         except Exception as e:
             olliePrint_simple(f"Audio chunk processing error: {e}", 'error')
@@ -376,11 +365,10 @@ class FREDPiSTTService:
         
         # Filter out very short or low-quality utterances
         if len(complete_text.split()) < 2:  # Less than 2 words
-            olliePrint_simple(f"⚠️ [FILTER] Utterance too short: '{complete_text}'", 'warning')
             self.speech_buffer = []
             return
         
-        olliePrint_simple(f"🗣️ [COMPLETE] Processing: '{complete_text}'", 'success')
+        olliePrint_simple(f"🗣️ [COMPLETE] '{complete_text}'", 'success')
         
         # Clear buffer
         self.speech_buffer = []
@@ -390,13 +378,13 @@ class FREDPiSTTService:
         if self.transcription_callback:
             self.transcription_callback(complete_text)
         
-        # Performance stats
-        if self._transcription_count > 0:
+        # Performance stats - simplified for Pi
+        if self._transcription_count > 0 and self._transcription_count % 10 == 0:  # Only show every 10th time
             avg_confidence = self._confidence_sum / self._transcription_count
             olliePrint_simple(f"📊 [STATS] Avg confidence: {avg_confidence:.2f}")
         
-        # Resume listening
-        olliePrint_simple("👂 [READY] Listening for next command...")
+        # Resume listening - less verbose
+        olliePrint_simple("👂 [READY] Listening...")
 
     # enroll_user_voice method removed with speaker verification system
 
