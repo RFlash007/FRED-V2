@@ -42,7 +42,7 @@ class Config:
     OLLAMA_TIMEOUT = None  # No timeout - let operations complete
     
     # Model Configuration
-    DEFAULT_MODEL = 'huihui_ai/qwen3-abliterated:8b'
+    DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'
     EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
     LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M')
     THINKING_MODE_OPTIONS = {"temperature": 0.6, "min_p": 0.0, "top_p": 0.95, "top_k": 20}
@@ -72,19 +72,52 @@ class Config:
     STEWIE_VOICE_CLONE_LENGTH_PENALTY = 1.0  # Controls output length consistency
     STEWIE_VOICE_CLONE_ENABLE_TEXT_SPLITTING = True  # Better handling of longer texts
     
-    # STT Configuration
+    # STT Configuration (Vosk-based)
     STT_SAMPLE_RATE = 16000
     STT_CHANNELS = 1
-    STT_BLOCK_DURATION = 5  # Restored to 5 seconds like old working system
-    STT_SILENCE_THRESHOLD = 0.0015
+    STT_BLOCK_DURATION = 5  # Audio processing block duration
+    STT_SILENCE_THRESHOLD = 0.002   # Increased for better noise rejection
     # Separate default VAD threshold for Raspberry Pi glasses audio (mono, 16 kHz)
-    STT_PI_SILENCE_THRESHOLD = 0.001
-    STT_CALIBRATION_DURATION = 2  # seconds
-    STT_SILENCE_DURATION = 0.7  # seconds
-    STT_MODEL_SIZE = "distil-large-v3"  # Upgraded from small.en for optimal speed/accuracy balance
-    STT_COMPUTE_TYPE = "float16"          # Upgraded from int8 for better accuracy on GPU
-    STT_BEAM_SIZE = 5           # Optimal beam size for accuracy
-    STT_TEMPERATURE = 0.0       # Deterministic for consistent results
+    STT_PI_SILENCE_THRESHOLD = 0.0015  # Slightly higher for Pi noise rejection
+    STT_CALIBRATION_DURATION = 3  # seconds - longer calibration for better accuracy
+    STT_SILENCE_DURATION = 0.8  # seconds - slightly longer pause detection
+    
+    # Vosk Model Configuration
+    VOSK_MODEL_PATHS = [
+        "models/vosk-model-en-us-0.22",              # Large, accurate model (preferred for main server)
+        "models/vosk-model-en-us-0.21",              # Alternative large model
+        "models/vosk-model-small-en-us-0.15",        # Fallback to small model
+        "../models/vosk-model-en-us-0.22",
+        "../models/vosk-model-en-us-0.21", 
+        "../models/vosk-model-small-en-us-0.15",
+        "./vosk-model-en-us-0.22", 
+        "./vosk-model-en-us-0.21",
+        "./vosk-model-small-en-us-0.15",
+        "/opt/vosk/models/vosk-model-en-us-0.22",
+        "/opt/vosk/models/vosk-model-en-us-0.21",
+        "/opt/vosk/models/vosk-model-small-en-us-0.15"
+    ]
+
+    # Pi Client Specific Model Paths (prioritize small model for resource efficiency)
+    VOSK_PI_MODEL_PATHS = [
+        "models/vosk-model-small-en-us-0.15",         # Optimized for Pi resources (preferred)
+        "models/vosk-model-en-us-0.22",               # Larger model if Pi has sufficient resources
+        "../models/vosk-model-small-en-us-0.15",
+        "../models/vosk-model-en-us-0.22",
+        "./vosk-model-small-en-us-0.15",
+        "./vosk-model-en-us-0.22",
+        "/home/raspberry/FRED-V2/pi_client/models/vosk-model-small-en-us-0.15",
+        "/opt/vosk/models/vosk-model-small-en-us-0.15"
+    ]
+    
+    VOSK_ENABLE_WORDS = True        # Enable word-level results for better accuracy
+    VOSK_ENABLE_PARTIAL_WORDS = True # Enable partial word results for responsiveness
+    VOSK_LOG_LEVEL = -1             # Disable Vosk logging (-1 = silent)
+    
+    # Enhanced Speech Processing Settings
+    STT_MIN_WORD_LENGTH = 2         # Minimum word length to consider
+    STT_MIN_PHRASE_LENGTH = 3       # Minimum phrase length to process
+    STT_CONFIDENCE_THRESHOLD = 0.5  # Minimum confidence for accepting results
     
     # Database Configuration
     DB_PATH = os.path.join('memory', 'memory.db')

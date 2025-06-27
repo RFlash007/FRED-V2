@@ -381,9 +381,7 @@ def olliePrint_simple(message: Any, level: str = 'info') -> None:
     """Print a simple colored message without banner or thematic comments"""
     olliePrint(message, level, show_banner=False, show_comment=False)
 
-def olliePrint_quiet(message: Any, level: str = 'info') -> None:
-    """Print a message without banner or comment"""
-    olliePrint(message, level, show_banner=False, show_comment=False)
+
 
 # === Startup Banner Function ===
 def startup_block(component: str, info_lines: list) -> str:
