@@ -8,6 +8,7 @@ import numpy as np
 from config import config
 from ollietec_theme import apply_theme
 from ollie_print import olliePrint_simple
+from persona_service import persona_service
 
 apply_theme()
 
@@ -25,6 +26,7 @@ class VisionService:
         self.last_scene_description = ""
         self.current_scene_description = ""
         self.last_processing_time = 0
+        self.last_recognized_faces = []
         
         # Ollama client
         self.ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
@@ -112,17 +114,33 @@ class VisionService:
             return
         
         try:
+            # --- Persona Recognition Step ---
+            frame_array = self.current_frame.to_ndarray(format="rgb24")
+            self.last_recognized_faces = await asyncio.to_thread(
+                persona_service.recognize_faces, frame_array
+            )
+            
+            # --- Vision Model Analysis Step ---
             # Convert frame to base64
             image_b64 = self._frame_to_base64(self.current_frame)
             
-            # Create detailed prompt with change detection
+            # Create detailed prompt with change detection and persona info
             prompt = self._create_vision_prompt()
             
+            system_prompt = (
+                "You are an AI visual analysis assistant. Your task is to provide a concise, structured "
+                "analysis of the user's visual field. Focus on key information, changes, people, and actions. "
+                "Output must strictly follow the requested format."
+            )
+
             # Call Qwen 2.5-VL 7B
             response = await asyncio.to_thread(
                 self.ollama_client.chat,
                 model=self.model,
                 messages=[{
+                    "role": "system",
+                    "content": system_prompt
+                }, {
                     "role": "user",
                     "content": prompt,
                     "images": [image_b64]
@@ -151,16 +169,50 @@ class VisionService:
     
     def _create_vision_prompt(self):
         """Create detailed prompt for scene analysis"""
-        base_prompt = """Describe this scene concisely, focusing on key objects/people, their positions/actions, environmental factors, text content, spatial relationships, and notable colors/materials.
-
-"""
         
-        if self.last_scene_description:
-            return base_prompt + f"""Previous scene description: {self.last_scene_description}
+        # Prepare the people summary from persona recognition
+        people_summary = "No one detected."
+        if self.last_recognized_faces:
+            names = [face['name'] for face in self.last_recognized_faces]
+            # Consolidate names for a clean summary
+            if len(names) == 1:
+                people_summary = f"{names[0]} is present."
+            else:
+                # E.g., "Ian, Sarah, and 1 unknown person are present."
+                name_counts = {}
+                for name in names:
+                    name_counts[name] = name_counts.get(name, 0) + 1
+                
+                parts = []
+                for name, count in name_counts.items():
+                    if name == "An unknown person":
+                        parts.append(f"{count} unknown person" + ("s" if count > 1 else ""))
+                    else:
+                        parts.append(name)
+                
+                if len(parts) > 2:
+                    people_summary = ", ".join(parts[:-1]) + f", and {parts[-1]} are present."
+                else:
+                    people_summary = " and ".join(parts) + " are present."
 
-IMPORTANT: If anything has changed from the previous scene, clearly state what has changed at the beginning of your response."""
+
+        base_prompt = f"""Analyze the image.
+1.  **GIST (≤12 words):** The key takeaway.
+2.  **ENVIRONMENT:** Setting, lighting, mood.
+3.  **PEOPLE/ACTIONS:** {people_summary} Describe what they are doing.
+4.  **KEY OBJECTS:** 2-3 notable objects & their state.
+5.  **CONFIDENCE:** Your certainty (0-100%)."""
+
+        if self.last_scene_description:
+            return base_prompt + f"""
+
+---
+PREVIOUS:
+{self.last_scene_description}
+---
+**CHANGES:** Note what is new or different."""
         else:
-            return base_prompt + "This is the first frame being analyzed."
+            return base_prompt
     
     def _frame_to_base64(self, frame):
         """Convert WebRTC frame to base64"""

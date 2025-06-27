@@ -1,4 +1,22 @@
+# Base requirements
+aiohttp
+aiohttp_jinja2
+Pillow
+uvloop
+python-socketio
+eventlet
 ollama
+numpy
+# For WebRTC
+aiortc
+# For speech synthesis (if using Coqui TTS)
+TTS
+# For voice activity detection (if using Silero VAD)
+torch
+torchaudio
+# For persona recognition
+face_recognition # Note: Requires dlib which may need manual installation of cmake and C++ compiler
+dlib
 flask
 flask-socketio
 requests
@@ -9,10 +27,5 @@ duckdb
 psutil
 sounddevice
 vosk
-aiortc
-aiohttp
 duckduckgo-search
-scipy
-Pillow
-numpy
-av 
+scipy 

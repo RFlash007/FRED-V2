@@ -1,27 +1,60 @@
-1. Episodic Memory Buffer: A compressed representation of experiences that serve as scaffolding for future learning without requiring explicit rehearsal
+# F.R.E.D. Future Features
 
-2. Progressive Compression: Infrequently accessed knowledge is automatically compressed using task-specific lossy compression algorithms that preserve functional capabilities while reducing storage requirements.
+## Core System Enhancements
 
-3. Knowledge Distillation Automation: A continuous background process distills complex learned patterns into more efficient representations that require less computational resources while preserving functional capabilities.
+1. **Episodic Memory Buffer**  
+   Compressed representation of experiences serving as scaffolding for future learning without explicit rehearsal
 
-4. Unsupervised Domain Discovery: Automatically identifying conceptual domains in incoming information without explicit task labels.
+3. **Knowledge Distillation Automation**  
+   Continuous background process converting complex patterns into efficient representations while preserving functionality
 
-5. Context-Conditioned Persona Mapping: Rather than having a single output generation strategy, F.R.E.D. dynamically maps its core personality traits to contextually appropriate expressions.
+6. **Information Elicitation**  
+   Techniques for gathering missing information:
+   - Progressive questioning based on knowledge gaps
+   - Clarification requests for ambiguous instructions  
+   - Preference elicitation for decision support
 
-6. Information Elicitation: Techniques for gathering missing information through:
+7. **Topic Steering**  
+   Methods for productive conversations:
+   - Introducing relevant subtopics
+   - Refocusing wandering discussions
+   - Maintaining engagement through transitions
 
-- Progressive questioning based on knowledge gaps
-- Clarification requests for ambiguous instructions
-- Preference elicitation for decision support
+8. **Context Fusion Engine**  
+   Integrates multimodal inputs (visual/audio/schedule/location) for comprehensive situational awareness
 
-7. Topic Steering: Methods to direct conversations toward productive outcomes:
+9. **Speaker Diarization**  
+   Identifying and tracking individual speakers in multi-speaker conversations
 
-- Introducing relevant subtopics at appropriate moments
-- Refocusing wandering discussions toward original goals
-- Transitioning between related topics to maintain engagement
+## Vision System Roadmap
 
-8. Context Fusion Engine: Integrates multimodal inputs (visual, audio, schedule, location) to establish comprehensive situational awareness 
+### Tier 2: Temporal & Contextual Memory
+* **Dynamic Object Tracking**  
+  Maintain JSON state of key objects across frames  
+  Example state:  
+  ```json
+  {
+    "cup_on_table": {"state": "upright", "last_seen": "2024-07-29T10:00:05Z"},
+    "door": {"state": "closed", "last_seen": "2024-07-29T10:00:05Z"}
+  }
+  ```
 
-9. Speaker Diarization: Identifying and tracking individual speakers in multi-speaker conversations.
+* **Change Summaries**  
+  Generate concise human-readable descriptions of scene changes  
+  Example: "The cup was knocked over and door is now open"
 
-10. Token Context window optimization techniques
+* **Historical Context**  
+  Maintain rolling window of last 5-10 descriptions for richer context
+
+### Tier 3: Proactive Vision
+* **Gaze-Informed Assistance**  
+  Use gaze coordinates to identify focused objects and suggest actions  
+  Example: "That's the Breville Barista Express. Need cleaning instructions?"
+
+* **Anomaly Detection**  
+  Compare current scene against learned baseline of "normal"  
+  Prompt: "Given normal state `[summary]`, identify any anomalies"
+
+* **Visual Question Answering**  
+  Immediate frame capture + processing for visual queries  
+  Example: "What's the wifi password on that sign?" → OCR extraction

@@ -354,10 +354,18 @@ async def offer(request):
 # SocketIO event handlers for receiving responses from main F.R.E.D. server
 @sio_client.event
 async def connect():
-    olliePrint_simple("[SHELTER-NET] Established secure link to F.R.E.D. mainframe")
+    olliePrint_simple("[SHELTER-NET] Established secure link to F.R.E.D. mainframe", 'success')
     # Emit connection confirmation
     await sio_client.emit('webrtc_server_connected')
-    olliePrint_simple("[BRIDGE] Wasteland communication network ONLINE - standing by for field operations")
+    olliePrint_simple("[BRIDGE] Wasteland communication network ONLINE - standing by for field operations", 'success')
+
+@sio_client.event
+async def disconnect():
+    olliePrint_simple("[WARNING] Lost connection to F.R.E.D. mainframe - audio relay offline", 'warning')
+
+@sio_client.event
+async def connect_error(data):
+    olliePrint_simple(f"[ERROR] SocketIO connection error: {data}", 'error')
 
 @sio_client.event
 async def voice_response(data):
@@ -437,12 +445,24 @@ async def cleanup(app):
 
 async def init_app(app):
     """Initialize the WebRTC server and connect to main F.R.E.D. server"""
-    try:
-        # Connect to main F.R.E.D. server
-        await sio_client.connect('http://localhost:5000')
-        olliePrint_simple("Connected to F.R.E.D. main server for response forwarding")
-    except Exception as e:
-        olliePrint_simple(f"Failed to connect to F.R.E.D. main server: {e}")
+    max_retries = 10
+    retry_delay = 2
+    
+    for attempt in range(max_retries):
+        try:
+            olliePrint_simple(f"[BRIDGE] Attempting SocketIO connection to F.R.E.D. mainframe (attempt {attempt + 1}/{max_retries})")
+            # Connect to main F.R.E.D. server
+            await sio_client.connect('http://localhost:5000')
+            olliePrint_simple("[SUCCESS] Connected to F.R.E.D. main server for response forwarding", 'success')
+            return  # Success, exit retry loop
+        except Exception as e:
+            olliePrint_simple(f"[ATTEMPT {attempt + 1}] Connection failed: {e}", 'warning')
+            if attempt < max_retries - 1:
+                olliePrint_simple(f"[BRIDGE] Retrying in {retry_delay} seconds...")
+                await asyncio.sleep(retry_delay)
+            else:
+                olliePrint_simple(f"[CRITICAL] Failed to connect to F.R.E.D. main server after {max_retries} attempts", 'error')
+                olliePrint_simple("[WARNING] Audio relay will not function - Pi clients will only receive text responses", 'warning')
 
 async def main():
     parser = argparse.ArgumentParser(description="F.R.E.D. WebRTC server")

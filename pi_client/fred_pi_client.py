@@ -669,6 +669,10 @@ class FREDPiClient:
                 olliePrint_simple("🔧 Using legacy WebRTC configuration", 'warning')
                 self.pc = RTCPeerConnection()
             
+            # Suppress noisy ICE transaction timeout errors
+            import logging
+            logging.getLogger('aioice.stun').setLevel(logging.ERROR)
+            
             # Set up data channel for communication
             self.data_channel = self.pc.createDataChannel('chat')
             
@@ -689,13 +693,11 @@ class FREDPiClient:
                 elif message.startswith('[AUDIO_BASE64:'):
                     # Handle incoming audio from F.R.E.D.
                     try:
-                        olliePrint_simple(f"[DEBUG] AUDIO MESSAGE DETECTED! Length: {len(message)}")
                         header_end = message.find(']')
                         format_info = message[14:header_end]
                         audio_b64 = message[header_end + 1:]
                         
                         olliePrint_simple(f"[TRANSMISSION] Incoming voice data from F.R.E.D. ({format_info})")
-                        olliePrint_simple(f"[DEBUG] Audio data length: {len(audio_b64)} chars")
                         self._play_audio_from_base64(audio_b64, format_info)
                         
                     except Exception as e:
@@ -705,13 +707,6 @@ class FREDPiClient:
                 else:
                     # Handle F.R.E.D.'s text responses - display them prominently on Pi terminal
                     if len(message.strip()) > 0:
-                        # Enhanced debugging for audio troubleshooting
-                        olliePrint_simple(f"[DEBUG] Received message type: {type(message)}, length: {len(message)}")
-                        if len(message) > 100:
-                            olliePrint_simple(f"[DEBUG] Message starts with: '{message[:50]}...'")
-                            if '[AUDIO_BASE64' in message:
-                                olliePrint_simple(f"[CRITICAL] AUDIO MESSAGE FOUND IN TEXT HANDLER!")
-                        
                         olliePrint_simple(f'\n[F.R.E.D.] {message}', 'success')
                 
                 if not message.startswith('[HEARTBEAT_ACK]'):
@@ -820,15 +815,12 @@ class FREDPiClient:
     def _play_audio_from_base64(self, audio_b64, format_type='wav'):
         """Play audio from base64 data"""
         try:
-            olliePrint_simple(f"[AUDIO] Decoding {len(audio_b64)} chars of base64 audio data")
             audio_data = base64.b64decode(audio_b64)
             olliePrint_simple(f"[AUDIO] F.R.E.D. transmission received ({len(audio_data)} bytes)")
             
             with tempfile.NamedTemporaryFile(suffix=f'.{format_type}', delete=False) as temp_file:
                 temp_file.write(audio_data)
                 temp_file_path = temp_file.name
-            
-            olliePrint_simple(f"[AUDIO] Saved to temp file: {temp_file_path}")
             
             # Try aplay first
             try:
@@ -859,9 +851,8 @@ class FREDPiClient:
             # Cleanup temp file
             try:
                 os.unlink(temp_file_path)
-                olliePrint_simple("[AUDIO] Temp file cleaned up")
-            except Exception as e:
-                olliePrint_simple(f"[AUDIO] Cleanup warning: {e}")
+            except Exception:
+                pass  # Silent cleanup
                 
         except Exception as e:
             olliePrint_simple(f"[CRITICAL] Audio playback system failure: {e}", 'error')

@@ -178,6 +178,20 @@ AVAILABLE_TOOLS = [
         }
     },
     {
+        "name": "enroll_person",
+        "description": "Learns and remembers a new person's face. Use when the user introduces someone (e.g., 'This is Sarah', 'My name is Ian'). Requires an active camera feed from the Pi glasses.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The name of the person to enroll."
+                }
+            },
+            "required": ["name"]
+        }
+    },
+    {
         "name": "update_knowledge_graph_edges",
         "description": "Processes pending edge creation tasks. Iteratively builds connections for recently added memories based on semantic similarity and LLM-based relationship determination.",
         "parameters": {
@@ -433,6 +447,40 @@ def tool_get_graph_data(center_nodeid: int, depth: int = 1):
         olliePrint(f"Error getting graph data: {e}", level='error')
         return {"nodes": [], "links": []}
 
+def tool_enroll_person(name: str):
+    """Enrolls a new person by capturing their face from the live camera feed."""
+    try:
+        olliePrint(f"Received request to enroll new person: {name}")
+        # Local imports to prevent circular dependencies and access services
+        import asyncio
+        from vision_service import vision_service
+        from persona_service import persona_service
+        # This local import is critical to avoid a circular dependency loop at startup
+        from webrtc_server import request_frame_from_client
+
+        if not vision_service.pi_connected:
+            return "Enrollment failed: No camera client is connected."
+
+        async def enroll_async_wrapper():
+            # Assumes the first connected client is the target, similar to vision_service
+            client_id = "127.0.0.1" 
+            olliePrint(f"Requesting frame from client '{client_id}' for enrollment.")
+            frame = await request_frame_from_client(client_id)
+
+            if frame:
+                frame_array = frame.to_ndarray(format="rgb24")
+                result = persona_service.enroll_person(frame_array, name)
+                return result
+            else:
+                return "Enrollment failed: Could not capture a frame from the camera."
+        
+        # Run the async enrollment function in a new event loop
+        return asyncio.run(enroll_async_wrapper())
+
+    except Exception as e:
+        olliePrint(f"Error during enrollment tool execution: {e}", level='error')
+        return f"An unexpected error occurred during enrollment: {str(e)}"
+
 def tool_update_knowledge_graph_edges(limit_per_run: int = 3):
     """Updates edges in the knowledge graph."""
     try:
@@ -456,6 +504,7 @@ TOOL_FUNCTIONS = {
     "search_web_information": search_web_information,
     "get_node_by_id": tool_get_node_by_id,
     "get_graph_data": tool_get_graph_data,
+    "enroll_person": tool_enroll_person,
     "update_knowledge_graph_edges": tool_update_knowledge_graph_edges
 }
 
