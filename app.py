@@ -706,7 +706,7 @@ def chat_endpoint():
                             "content": f"Executing {tool_name}..."
                         }) + '\n'
                     
-                    tool_outputs = handle_tool_calls(response_message)
+                    tool_outputs = handle_tool_calls(tool_calls)
                     olliePrint_simple(f"[TOOL CALLS] Executed {len(tool_outputs) if tool_outputs else 0} tools successfully")
                     
                     # Print tool results
