@@ -44,20 +44,7 @@ class VisionService:
         elif not connected and self.is_processing:
             self.stop_continuous_processing()
     
-    def store_latest_frame(self, frame):
-        """Store the latest frame from WebRTC"""
-        try:
-            self.current_frame = frame
-            # Reduced logging frequency - only log every 10th frame
-            if hasattr(self, '_frame_count'):
-                self._frame_count += 1
-            else:
-                self._frame_count = 1
-            
-            if self._frame_count % 10 == 0:
-                olliePrint_simple(f"Frame stored ({frame.width}x{frame.height})")
-        except Exception as e:
-            olliePrint_simple(f"Frame storage error: {e}")
+    # store_latest_frame method removed - using on-demand capture instead
     
     def start_continuous_processing(self):
         """Start the continuous vision processing loop"""
@@ -76,12 +63,12 @@ class VisionService:
         olliePrint_simple("Vision processing stopped")
     
     async def _processing_loop(self):
-        """Main processing loop - runs every N seconds when Pi is connected"""
+        """Main processing loop - request-based fresh image capture"""
         while self.is_processing and self.pi_connected:
             try:
                 if time.time() - self.last_processing_time >= self.processing_interval:
-                    # Request fresh frame from Pi
-                    await self._request_and_process_frame()
+                    # Request fresh image capture from Pi
+                    await self._request_fresh_capture()
                     self.last_processing_time = time.time()
                 
                 await asyncio.sleep(1)  # Check every second
@@ -92,46 +79,64 @@ class VisionService:
                 olliePrint_simple(f"Vision processing error: {e}")
                 await asyncio.sleep(5)  # Wait before retrying
     
-    async def _request_and_process_frame(self):
-        """Request a fresh frame from Pi and process it"""
+    async def _request_fresh_capture(self):
+        """Request a fresh image capture from Pi via data channel"""
         try:
             # Import here to avoid circular imports
-            from webrtc_server import request_frame_from_client
+            from webrtc_server import send_capture_request_to_pi
             
-            # Request frame from the first connected Pi client
-            frame = await request_frame_from_client("127.0.0.1")
+            olliePrint_simple("🎯 [VISION] Requesting fresh image capture from Pi...")
+            success = await send_capture_request_to_pi()
             
-            if frame:
-                self.current_frame = frame
-                await self._process_current_frame()
+            if not success:
+                olliePrint_simple("❌ [VISION] Failed to request image capture from Pi", 'warning')
                 
         except Exception as e:
-            olliePrint_simple(f"Frame request error: {e}")
+            olliePrint_simple(f"Vision capture request error: {e}")
     
-    async def _process_current_frame(self):
-        """Process the current frame with Qwen 2.5-VL 7B"""
-        if not self.current_frame:
-            return
-        
+    async def process_fresh_image(self, image_data, format_type='jpeg'):
+        """Process a fresh image received from Pi"""
         try:
-            # --- Persona Recognition Step ---
-            frame_array = self.current_frame.to_ndarray(format="rgb24")
+            import base64
+            from PIL import Image
+            import io
+            
+            # Decode the image data
+            if isinstance(image_data, str):
+                # Base64 encoded image
+                image_bytes = base64.b64decode(image_data)
+            else:
+                # Raw bytes
+                image_bytes = image_data
+            
+            # Convert to PIL Image
+            image = Image.open(io.BytesIO(image_bytes))
+            
+            olliePrint_simple(f"📸 [VISION] Processing fresh {image.size[0]}x{image.size[1]} image from Pi")
+            
+            # Convert PIL image to frame-like object for existing processing
+            frame_array = np.array(image.convert('RGB'))
+            
+            # Store for enrollment tool access
+            self.last_processed_image_array = frame_array
+            
+            # Process face recognition
             self.last_recognized_faces = await asyncio.to_thread(
                 persona_service.recognize_faces, frame_array
             )
             
-            # --- Vision Model Analysis Step ---
-            # Convert frame to base64
-            image_b64 = self._frame_to_base64(self.current_frame)
+            # Convert image to base64 for vision model
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=int(config.VISION_FRAME_QUALITY * 100))
+            image_b64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
             
-            # Create ultra-concise prompt focused on F.R.E.D.'s needs
+            # Create vision prompt and analyze
             prompt = self._create_vision_prompt()
             
-            # Ultra-focused system prompt for direct F.R.E.D. context injection
             system_prompt = (
-                "You are F.R.E.D.'s visual perception. Your analysis becomes F.R.E.D.'s eyes - "
-                "directly injected into conversations to enable contextual assistance. Output ONLY "
-                "actionable insights F.R.E.D. needs to help the user. Be precise, practical, concise."
+                "You are F.R.E.D.'s visual perception analyzing a FRESH image capture. "
+                "This is real-time visual context for immediate user assistance. "
+                "Output ONLY actionable insights F.R.E.D. needs right now. Be precise, practical, concise."
             )
 
             # Call Qwen 2.5-VL 7B
@@ -148,40 +153,36 @@ class VisionService:
                 }]
             )
             
-            # Parse structured response and update scene descriptions
+            # Parse and update scene description
             raw_response = response['message']['content']
             
             try:
-                # Try to parse as JSON first
                 import json
                 if raw_response.strip().startswith('{'):
                     parsed_response = json.loads(raw_response)
                     formatted_description = self._format_structured_response(parsed_response)
                 else:
-                    # Fallback to raw text
                     formatted_description = raw_response
             except json.JSONDecodeError:
-                # Use raw response if JSON parsing fails
                 formatted_description = raw_response
             
             # Update scene descriptions
             self.last_scene_description = self.current_scene_description
             
-            # Limit description length if configured
             if config.VISION_MAX_DESCRIPTION_LENGTH > 0:
                 formatted_description = formatted_description[:config.VISION_MAX_DESCRIPTION_LENGTH]
             
             self.current_scene_description = formatted_description
             
-            # Only show significant scene changes
-            if self.last_scene_description != self.current_scene_description:
-                olliePrint_simple(f"Scene: {self.current_scene_description}")
+            # Always show fresh vision analysis
+            olliePrint_simple(f"🔍 [FRESH VISION] {self.current_scene_description}")
             
-        except ollama.ResponseError as e:
-            olliePrint_simple(f"Vision model error: {e}")
-            self.current_scene_description = "Vision processing temporarily unavailable."
         except Exception as e:
-            olliePrint_simple(f"Frame processing error: {e}")
+            olliePrint_simple(f"Fresh image processing error: {e}", 'error')
+            import traceback
+            traceback.print_exc()
+    
+    # _process_current_frame method removed - replaced by process_fresh_image for on-demand processing
     
     def _format_structured_response(self, parsed_json):
         """Convert structured JSON to readable format for F.R.E.D.'s context"""
@@ -278,23 +279,7 @@ Detect: new people, objects, activities, user focus shifts, environmental change
         else:
             return base_prompt
     
-    def _frame_to_base64(self, frame):
-        """Convert WebRTC frame to base64"""
-        try:
-            # Convert frame to PIL Image
-            frame_array = frame.to_ndarray(format="rgb24")
-            image = Image.fromarray(frame_array)
-            
-            # Compress for efficiency
-            buffer = io.BytesIO()
-            image.save(buffer, format="JPEG", quality=int(config.VISION_FRAME_QUALITY * 100))
-            
-            # Encode to base64
-            image_bytes = buffer.getvalue()
-            return base64.b64encode(image_bytes).decode('utf-8')
-        except Exception as e:
-            olliePrint_simple(f"Frame conversion error: {e}")
-            raise
+    # _frame_to_base64 method removed - no longer processing WebRTC frames directly
     
     def get_current_visual_context(self):
         """Get the current visual context for injection into conversations"""

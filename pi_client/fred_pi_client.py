@@ -628,31 +628,12 @@ class FREDPiClient:
                         olliePrint_simple("✅ Picamera2 video track initialized", 'success')
 
                     async def recv(self):
-                        """Receive video frames from the camera - optimized for on-demand only"""
+                        """Minimal video track to maintain WebRTC connection - no actual camera streaming"""
                         pts, time_base = await self.next_timestamp()
                         
-                        # **OPTIMIZATION**: For local STT users, reduce frame rate dramatically
-                        # Only send frames when specifically requested by vision service
-                        if hasattr(self, '_last_frame_time'):
-                            time_since_last = time.time() - self._last_frame_time
-                            if time_since_last < 2.0:  # Minimum 2 seconds between frames
-                                # Return a low-quality frame to maintain connection
-                                array = np.zeros((480, 640, 3), dtype=np.uint8)  # Small placeholder
-                            else:
-                                try:
-                                    array = self.camera.capture_array("main")
-                                    self._last_frame_time = time.time()
-                                except Exception as e:
-                                    olliePrint_simple(f"💥 Failed to capture frame from Picamera2: {e}", 'error')
-                                    array = np.zeros((2464, 3280, 3), dtype=np.uint8)
-                        else:
-                            # First frame - always capture
-                            try:
-                                array = self.camera.capture_array("main")
-                                self._last_frame_time = time.time()
-                            except Exception as e:
-                                olliePrint_simple(f"💥 Failed to capture frame from Picamera2: {e}", 'error')
-                                array = np.zeros((2464, 3280, 3), dtype=np.uint8)
+                        # Send minimal placeholder frames to maintain WebRTC connection
+                        # Actual image capture is now handled via data channel on-demand
+                        array = np.zeros((240, 320, 3), dtype=np.uint8)  # Minimal placeholder
                         
                         # Convert to video frame for aiortc
                         frame = av.VideoFrame.from_ndarray(array, format="rgb24")
@@ -661,12 +642,9 @@ class FREDPiClient:
 
                         self.frame_count += 1
                         if self.frame_count == 1:
-                            olliePrint_simple(f"🚀 First frame sent! Size: {array.shape}", 'success')
-                        elif self.frame_count % 300 == 0:  # Reduced logging frequency
-                            elapsed = time.time() - self.start_time
-                            if elapsed > 0:
-                                fps = self.frame_count / elapsed
-                                olliePrint_simple(f"📊 Sent {self.frame_count} frames. Average FPS: {fps:.2f}")
+                            olliePrint_simple("🎥 [VIDEO] Minimal WebRTC video track established (on-demand capture mode)", 'success')
+                        elif self.frame_count % 1000 == 0:  # Very infrequent logging
+                            olliePrint_simple(f"📡 [VIDEO] Connection maintained ({self.frame_count} placeholder frames)")
 
                         return frame
 
@@ -713,6 +691,10 @@ class FREDPiClient:
                 if message.startswith('[HEARTBEAT_ACK]'):
                     # Silent acknowledgment
                     pass
+                elif message == '[CAPTURE_REQUEST]':
+                    # Handle fresh image capture request from F.R.E.D. vision service
+                    olliePrint_simple("📸 [CAPTURE] Fresh image capture requested by F.R.E.D.")
+                    self._capture_and_send_image()
                 elif message.startswith('[ACK]'):
                     ack_text = message.replace('[ACK] ', '')
                     olliePrint_simple(f"[F.R.E.D.] {ack_text}")
@@ -837,6 +819,47 @@ class FREDPiClient:
         """Async helper to send transcription via data channel"""
         # Send as plain text - revert to original working format
         self.data_channel.send(text)
+    
+    def _capture_and_send_image(self):
+        """Capture fresh high-resolution image and send to F.R.E.D. mainframe"""
+        try:
+            if not self.camera:
+                olliePrint_simple("❌ [CAPTURE] No camera available", 'error')
+                return
+            
+            # Capture high-resolution image
+            image_array = self.camera.capture_array("main")
+            height, width = image_array.shape[:2]
+            
+            olliePrint_simple(f"📸 [CAPTURE] Captured fresh {width}x{height} image")
+            
+            # Convert to PIL Image and compress for transmission
+            from PIL import Image
+            import io
+            
+            image = Image.fromarray(image_array)
+            
+            # Compress to JPEG for efficient transmission
+            buffer = io.BytesIO()
+            image.save(buffer, format="JPEG", quality=85)  # High quality but efficient
+            image_bytes = buffer.getvalue()
+            
+            # Encode to base64
+            image_b64 = base64.b64encode(image_bytes).decode('utf-8')
+            
+            # Send via data channel with format header
+            message = f"[IMAGE_DATA:jpeg]{image_b64}"
+            
+            if self.data_channel and self.data_channel.readyState == 'open':
+                self.data_channel.send(message)
+                olliePrint_simple(f"📡 [SENT] Fresh image sent to F.R.E.D. ({len(image_bytes)} bytes)", 'success')
+            else:
+                olliePrint_simple("❌ [CAPTURE] No data channel available", 'error')
+                
+        except Exception as e:
+            olliePrint_simple(f"[CAPTURE] Image capture failed: {e}", 'error')
+            import traceback
+            traceback.print_exc()
     
     def _play_audio_from_base64(self, audio_b64, format_type='wav'):
         """Play audio from base64 data"""

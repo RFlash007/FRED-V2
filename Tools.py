@@ -462,17 +462,28 @@ def tool_enroll_person(name: str):
             return "Enrollment failed: No camera client is connected."
 
         async def enroll_async_wrapper():
-            # Assumes the first connected client is the target, similar to vision_service
-            client_id = "127.0.0.1" 
-            olliePrint(f"Requesting frame from client '{client_id}' for enrollment.")
-            frame = await request_frame_from_client(client_id)
-
-            if frame:
-                frame_array = frame.to_ndarray(format="rgb24")
-                result = persona_service.enroll_person(frame_array, name)
-                return result
+            # Request fresh capture from Pi for enrollment
+            from webrtc_server import send_capture_request_to_pi
+            
+            olliePrint(f"Requesting fresh image capture for enrollment of '{name}'")
+            
+            # For enrollment, we need to handle this differently since we need immediate response
+            # This is a simplified approach - in production you might want a more sophisticated callback system
+            success = await send_capture_request_to_pi()
+            
+            if success:
+                # Wait for image to be processed by vision service and use current frame
+                await asyncio.sleep(3)  # Give time for capture and processing
+                
+                # Get the latest processed image data from vision service
+                if hasattr(vision_service, 'last_processed_image_array'):
+                    frame_array = vision_service.last_processed_image_array
+                    result = persona_service.enroll_person(frame_array, name)
+                    return result
+                else:
+                    return "Enrollment failed: Could not get processed image from vision service."
             else:
-                return "Enrollment failed: Could not capture a frame from the camera."
+                return "Enrollment failed: Could not request image capture from Pi."
         
         # Run the async enrollment function in a new event loop
         return asyncio.run(enroll_async_wrapper())

@@ -27,25 +27,32 @@ apply_theme()
 pcs = set()
 data_channels = set()  # Store data channels for sending responses back to Pi
 pi_clients = set()  # Track Pi clients for vision processing
-client_video_tracks = {}  # Store video tracks for on-demand frame requests
 connection_timestamps = {}  # Track connection times for rate limiting
 
 # Runner instance for graceful shutdown when running as a script
 runner = None
 
-async def request_frame_from_client(client_ip):
-    """Request a fresh frame from a specific client"""
-    if client_ip not in client_video_tracks:
-        return None
+async def send_capture_request_to_pi():
+    """Send capture request to all connected Pi clients"""
+    if not data_channels:
+        olliePrint_simple("❌ No Pi clients connected for capture request", 'warning')
+        return False
     
     try:
-        track = client_video_tracks[client_ip]
-        frame = await track.recv()
-        olliePrint_simple(f"Frame received from {client_ip} ({frame.width}x{frame.height})")
-        return frame
+        capture_sent = False
+        for channel in list(data_channels):
+            try:
+                if channel.readyState == 'open':
+                    channel.send("[CAPTURE_REQUEST]")
+                    capture_sent = True
+                    olliePrint_simple("📡 [REQUEST] Sent capture request to Pi")
+            except Exception as e:
+                olliePrint_simple(f"Failed to send capture request: {e}", 'warning')
+        
+        return capture_sent
     except Exception as e:
-        olliePrint_simple(f"Frame request failed: {e}")
-        return None
+        olliePrint_simple(f"Capture request error: {e}", 'error')
+        return False
 
 # SocketIO client to connect to main F.R.E.D. server
 sio_client = socketio.AsyncClient()
@@ -213,6 +220,27 @@ async def offer(request):
                     channel.send("[HEARTBEAT_ACK]")
                     return
                 
+                # Handle fresh image data from Pi
+                if message.startswith("[IMAGE_DATA:"):
+                    try:
+                        # Extract image data - format: [IMAGE_DATA:jpeg]base64_data
+                        header_end = message.find(']')
+                        format_info = message[12:header_end]  # Skip "[IMAGE_DATA:"
+                        image_b64 = message[header_end + 1:]
+                        
+                        olliePrint_simple(f"📸 [RECEIVED] Fresh image from Pi ({format_info}, {len(image_b64)} chars)")
+                        
+                        # Send to vision service for processing
+                        async def process_image_async():
+                            await vision_service.process_fresh_image(image_b64, format_info)
+                        
+                        # Schedule processing in the main event loop
+                        asyncio.run_coroutine_threadsafe(process_image_async(), main_event_loop)
+                        
+                    except Exception as e:
+                        olliePrint_simple(f"Image processing error: {e}", 'error')
+                    return
+                
                 if is_local_stt:
                     # Handle pre-transcribed text from Pi STT - Keep original simple format
                     if message.startswith("TRANSCRIPTION:"):
@@ -307,19 +335,22 @@ async def offer(request):
                     asyncio.create_task(consume_audio_frames())
                 
             elif track.kind == "video":
-                # Store video track for vision processing
-                client_video_tracks[client_ip] = track
-                olliePrint_simple("Visual feed active")
+                # No longer processing continuous video - using on-demand capture instead
+                olliePrint_simple("Video track connected (on-demand capture mode)")
                 
-                # Store frames for vision service
-                async def consume_video_frames():
+                # Consume video frames without processing to prevent WebRTC errors
+                async def consume_video_frames_minimal():
                     try:
+                        frame_count = 0
                         async for frame in track:
-                            vision_service.store_latest_frame(frame)
+                            frame_count += 1
+                            # Only log occasionally to reduce noise
+                            if frame_count % 500 == 0:
+                                olliePrint_simple(f"Video connection maintained ({frame_count} frames discarded)")
                     except Exception as e:
                         pass  # Silent video end
                 
-                asyncio.create_task(consume_video_frames())
+                asyncio.create_task(consume_video_frames_minimal())
             
             # Record track
             try:
@@ -335,7 +366,6 @@ async def offer(request):
             elif state in ["disconnected", "failed", "closed"]:
                 olliePrint_simple(f"ArmLink offline: {client_ip}")
                 pcs.discard(pc)
-                client_video_tracks.pop(client_ip, None)
 
         # Process the offer and create answer
         await pc.setRemoteDescription(offer)
