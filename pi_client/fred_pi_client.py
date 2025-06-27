@@ -400,30 +400,28 @@ class FREDPiSTTService:
             olliePrint_simple("Wake word detected - listening", 'success')
             # Send acknowledgment
             if is_final and self.transcription_callback:
-                self.transcription_callback("Wake word confirmed")
+                self.transcription_callback("_acknowledge_Wake word confirmed")
             return
         
         if self.is_listening and stop_detected:
             self.is_listening = False
             olliePrint_simple("Stop word detected - standby", 'warning')
+            self._process_complete_utterance() # Process anything in buffer before stopping
             return
         
-        # Process speech when listening - REMOVED confidence check, use manual average
-        if self.is_listening and is_final and len(text) > 2:  # Only check text length, not confidence
-            # Clean up text
+        # Process speech when listening
+        if self.is_listening and is_final and len(text) > 2:
+            # Clean up text by removing wake words
             for wake in self.wake_words:
                 text = text.replace(wake, "").strip()
             
-            if len(text) > 2:  # Minimum meaningful length
-                olliePrint_simple(f"Processing: '{text}'", 'success')
-                
+            if len(text) > 2:
+                # Buffer the final text instead of sending immediately
+                self.speech_buffer.append(text)
+
                 # Update performance stats with manual confidence
                 self._transcription_count += 1
                 self._confidence_sum += manual_confidence
-                
-                # Send to callback
-                if self.transcription_callback:
-                    self.transcription_callback(text)
     
     def _process_audio_chunk(self, audio_chunk: np.ndarray):
         """Enhanced audio chunk processing"""
@@ -431,18 +429,22 @@ class FREDPiSTTService:
             # Calculate audio level for voice activity detection
             audio_level = np.abs(audio_chunk).mean()
             
-            # Skip if too quiet
+            # If too quiet, check if we should process a completed utterance
             if audio_level < self.silence_threshold:
-                if self.is_listening and self.speech_buffer:
+                if self.is_listening and self.speech_buffer and self.last_speech_time > 0:
                     silence_duration = time.time() - self.last_speech_time
                     if silence_duration > self.silence_duration:
                         olliePrint_simple(f"🔇 [SILENCE] {silence_duration:.1f}s detected - processing utterance")
                         self._process_complete_utterance()
                 return
-            
-            # Enhanced transcription with confidence
+
+            # If we are here, there is audible sound. Update the last speech time.
+            self.last_speech_time = time.time()
+
+            # Transcribe the audio chunk
             text, confidence, is_final, words = self._transcribe_audio(audio_chunk)
             
+            # Handle the result of the transcription
             if text and len(text.strip()) > 0:
                 self._handle_transcribed_text(text.strip(), confidence, is_final, words, audio_chunk)
                 
