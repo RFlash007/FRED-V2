@@ -30,8 +30,7 @@ import queue
 import numpy as np
 from typing import Optional, Callable
 import vosk
-import librosa
-import scipy
+# librosa and scipy removed - were only needed for speaker verification
 
 # Import Ollie-Tec theming
 from ollietec_theme import apply_theme, banner
@@ -44,90 +43,7 @@ from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, R
 apply_theme()
 
 
-class LightweightSpeakerVerification:
-    """Ultra-lightweight speaker verification for Pi Zero 2W"""
-    
-    def __init__(self):
-        self.user_profile = None  # Single user profile to save memory
-        self.sample_rate = 16000
-        self.mfcc_features = 13  # Minimal MFCC features
-        self.is_enrolled = False
-        
-    def extract_mfcc_features(self, audio_data):
-        """Extract minimal MFCC features"""
-        try:
-            # Use minimal settings for Pi Zero 2W
-            mfccs = librosa.feature.mfcc(
-                y=audio_data.astype(np.float32), 
-                sr=self.sample_rate,
-                n_mfcc=self.mfcc_features,
-                n_fft=512,  # Smaller FFT for speed
-                hop_length=160  # Larger hop for speed
-            )
-            return np.mean(mfccs, axis=1)  # Average across time
-        except (ImportError, Exception):
-            # Fallback: basic spectral features without librosa
-            return self._basic_spectral_features(audio_data)
-    
-    def _basic_spectral_features(self, audio_data):
-        """Fallback spectral features without librosa"""
-        # Convert to frequency domain
-        fft = np.fft.fft(audio_data)
-        magnitude = np.abs(fft[:len(fft)//2])
-        
-        # Extract basic features
-        features = []
-        features.append(np.mean(magnitude))  # Spectral centroid approximation
-        features.append(np.std(magnitude))   # Spectral spread
-        features.append(np.max(magnitude))   # Peak magnitude
-        
-        return np.array(features)
-    
-    def enroll_user(self, audio_chunks):
-        """Create user voice profile from audio samples"""
-        if not audio_chunks:
-            return False
-            
-        features_list = []
-        for chunk in audio_chunks:
-            if len(chunk) > 0:
-                features = self.extract_mfcc_features(chunk)
-                if features is not None and len(features) > 0:
-                    features_list.append(features)
-        
-        if features_list:
-            # Create average profile
-            self.user_profile = np.mean(features_list, axis=0)
-            self.is_enrolled = True
-            olliePrint_simple("✅ [VOICE-ID] User voice profile created", 'success')
-            return True
-        else:
-            olliePrint_simple("❌ [VOICE-ID] Enrollment failed", 'error')
-            return False
-    
-    def verify_speaker(self, audio_chunk):
-        """Verify if audio matches enrolled user"""
-        if not self.is_enrolled or self.user_profile is None or len(audio_chunk) == 0:
-            return True, 1.0  # Allow all speech if not enrolled
-        
-        try:
-            features = self.extract_mfcc_features(audio_chunk)
-            if features is None or len(features) == 0:
-                return True, 0.5  # Benefit of doubt
-            
-            # Cosine similarity (memory efficient)
-            similarity = np.dot(features, self.user_profile) / (
-                np.linalg.norm(features) * np.linalg.norm(self.user_profile) + 1e-8
-            )
-            
-            # Convert to confidence score
-            confidence = max(0.0, min(1.0, similarity))
-            is_user = confidence > 0.6  # Tunable threshold
-            
-            return is_user, confidence
-        except Exception as e:
-            olliePrint_simple(f"Speaker verification error: {e}", 'warning')
-            return True, 0.5  # Default to allowing speech
+# Speaker verification system removed to fix wake word detection issues
 
 
 class FREDPiSTTService:
@@ -169,8 +85,7 @@ class FREDPiSTTService:
             "that's all", "thank you fred", "sleep now"
         ]
         
-        # Speaker verification
-        self.speaker_verifier = LightweightSpeakerVerification()
+        # Speaker verification removed to fix wake word detection
         
         # Enhanced performance monitoring
         self._transcription_count = 0
@@ -373,7 +288,7 @@ class FREDPiSTTService:
             olliePrint_simple(f"📝 [CONFIDENCE] {' '.join(confidence_display)}")
     
     def _handle_transcribed_text(self, text: str, confidence: float, is_final: bool, words: list, audio_chunk: np.ndarray):
-        """Process transcribed text with wake word detection and speaker verification"""
+        """Process transcribed text with wake word detection"""
         if not text or len(text.strip()) < 2:
             return
             
@@ -381,14 +296,6 @@ class FREDPiSTTService:
         
         # Skip common Vosk artifacts
         if text in ["the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with", "by"]:
-            return
-        
-        # Speaker verification (simplified logging)
-        is_authorized_user, speaker_confidence = self.speaker_verifier.verify_speaker(audio_chunk)
-        
-        if not is_authorized_user:
-            if speaker_confidence < 0.3:  # Only log very low confidence
-                olliePrint_simple(f"Unverified speaker (confidence: {speaker_confidence:.2f})", 'warning')
             return
         
         # Manual confidence calculation - use manual average instead of Vosk confidence
@@ -491,46 +398,7 @@ class FREDPiSTTService:
         # Resume listening
         olliePrint_simple("👂 [READY] Listening for next command...")
 
-    def enroll_user_voice(self):
-        """Simple user voice enrollment process"""
-        olliePrint_simple("🎤 [ENROLLMENT] Voice enrollment starting...")
-        olliePrint_simple("📋 [INSTRUCTIONS] Say 'Hello Fred' 5 times when prompted")
-        
-        enrollment_samples = []
-        
-        for i in range(5):
-            olliePrint_simple(f"🎙️ [{i+1}/5] Say 'Hello Fred' now...")
-            
-            # Collect audio for 3 seconds
-            start_time = time.time()
-            audio_buffer = []
-            
-            while time.time() - start_time < 3.0:
-                if not self.audio_queue.empty():
-                    chunk = self.audio_queue.get()
-                    audio_buffer.append(chunk)
-                time.sleep(0.01)
-            
-            if audio_buffer:
-                # Concatenate audio chunks
-                audio_sample = np.concatenate(audio_buffer)
-                enrollment_samples.append(audio_sample)
-                olliePrint_simple(f"✅ [{i+1}/5] Sample recorded", 'success')
-            else:
-                olliePrint_simple(f"❌ [{i+1}/5] No audio detected", 'error')
-            
-            if i < 4:  # Don't wait after last sample
-                time.sleep(1)
-        
-        # Create voice profile
-        success = self.speaker_verifier.enroll_user(enrollment_samples)
-        if success:
-            olliePrint_simple("🎉 [ENROLLMENT] Voice profile created successfully!", 'success')
-            olliePrint_simple("🔐 [SECURITY] F.R.E.D. will now only respond to your voice")
-        else:
-            olliePrint_simple("❌ [ENROLLMENT] Voice enrollment failed", 'error')
-        
-        return success
+    # enroll_user_voice method removed with speaker verification system
 
 
 class FREDPiClient:

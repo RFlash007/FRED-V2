@@ -28,6 +28,10 @@ class VisionService:
         self.last_processing_time = 0
         self.last_recognized_faces = []
         
+        # Processing control
+        self.vision_processing_lock = None  # Created lazily when needed
+        self.currently_processing_vision = False
+        
         # Ollama client
         self.ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
         
@@ -81,6 +85,16 @@ class VisionService:
     
     async def _request_fresh_capture(self):
         """Request a fresh image capture from Pi via data channel"""
+        
+        # Create lock if it doesn't exist
+        if self.vision_processing_lock is None:
+            self.vision_processing_lock = asyncio.Lock()
+        
+        # Check if already processing
+        if self.currently_processing_vision:
+            olliePrint_simple("⏳ [VISION] Already processing image, skipping request", 'warning')
+            return
+            
         try:
             # Import here to avoid circular imports
             from webrtc_server import send_capture_request_to_pi
@@ -96,6 +110,26 @@ class VisionService:
     
     async def process_fresh_image(self, image_data, format_type='jpeg'):
         """Process a fresh image received from Pi"""
+        
+        # Create lock if it doesn't exist
+        if self.vision_processing_lock is None:
+            self.vision_processing_lock = asyncio.Lock()
+        
+        # Use lock to prevent overlapping processing
+        async with self.vision_processing_lock:
+            if self.currently_processing_vision:
+                olliePrint_simple("⏳ [VISION] Already processing, dropping duplicate image", 'warning')
+                return
+                
+            self.currently_processing_vision = True
+            
+            try:
+                await self._process_image_internal(image_data, format_type)
+            finally:
+                self.currently_processing_vision = False
+    
+    async def _process_image_internal(self, image_data, format_type='jpeg'):
+        """Internal image processing method"""
         try:
             import base64
             from PIL import Image
@@ -139,43 +173,45 @@ class VisionService:
                 "Output ONLY actionable insights F.R.E.D. needs right now. Be precise, practical, concise."
             )
 
-            # Call Qwen 2.5-VL 7B
-            response = await asyncio.to_thread(
-                self.ollama_client.chat,
-                model=self.model,
-                messages=[{
-                    "role": "system",
-                    "content": system_prompt
-                }, {
-                    "role": "user",
-                    "content": prompt,
-                    "images": [image_b64]
-                }]
-            )
+            olliePrint_simple(f"🤖 [QWEN] Calling {self.model} for vision analysis...")
             
-            # Parse and update scene description
-            raw_response = response['message']['content']
-            
+            # Call Qwen 2.5-VL 7B with proper error handling (no timeout - model needs time)
             try:
-                import json
-                if raw_response.strip().startswith('{'):
-                    parsed_response = json.loads(raw_response)
-                    formatted_description = self._format_structured_response(parsed_response)
-                else:
-                    formatted_description = raw_response
-            except json.JSONDecodeError:
-                formatted_description = raw_response
+                response = await asyncio.to_thread(
+                    self.ollama_client.chat,
+                    model=self.model,
+                    messages=[{
+                        "role": "system",
+                        "content": system_prompt
+                    }, {
+                        "role": "user",
+                        "content": prompt,
+                        "images": [image_b64]
+                    }]
+                )
+                
+                olliePrint_simple("✅ [QWEN] Model response received", 'success')
+                
+            except Exception as model_error:
+                olliePrint_simple(f"❌ [QWEN] Model call failed: {model_error}", 'error')
+                self.current_scene_description = f"Vision processing failed: {model_error}"
+                return
+            
+            # Get raw model response - NO JSON PARSING
+            raw_response = response['message']['content']
             
             # Update scene descriptions
             self.last_scene_description = self.current_scene_description
             
+            # Use raw response directly
             if config.VISION_MAX_DESCRIPTION_LENGTH > 0:
-                formatted_description = formatted_description[:config.VISION_MAX_DESCRIPTION_LENGTH]
-            
-            self.current_scene_description = formatted_description
+                self.current_scene_description = raw_response[:config.VISION_MAX_DESCRIPTION_LENGTH]
+            else:
+                self.current_scene_description = raw_response
             
             # Always show fresh vision analysis
-            olliePrint_simple(f"🔍 [FRESH VISION] {self.current_scene_description}")
+            olliePrint_simple(f"🔍 [QWEN OUTPUT] {self.current_scene_description}")
+            olliePrint_simple("✅ [VISION] Fresh image processing COMPLETE", 'success')
             
         except Exception as e:
             olliePrint_simple(f"Fresh image processing error: {e}", 'error')
@@ -184,40 +220,7 @@ class VisionService:
     
     # _process_current_frame method removed - replaced by process_fresh_image for on-demand processing
     
-    def _format_structured_response(self, parsed_json):
-        """Convert structured JSON to readable format for F.R.E.D.'s context"""
-        try:
-            parts = []
-            
-            if 'summary' in parsed_json:
-                parts.append(f"Scene: {parsed_json['summary']}")
-            
-            if 'people_activity' in parsed_json:
-                parts.append(f"Person: {parsed_json['people_activity']}")
-            
-            if 'assistance_context' in parsed_json:
-                parts.append(f"Context: {parsed_json['assistance_context']}")
-            
-            if 'affordances' in parsed_json and parsed_json['affordances']:
-                affordances_str = ", ".join(parsed_json['affordances'][:3])  # Limit to 3 for brevity
-                parts.append(f"Available: {affordances_str}")
-            
-            if 'changes' in parsed_json and parsed_json['changes']:
-                change_level = parsed_json.get('change_significance', 'change')
-                parts.append(f"Change ({change_level}): {parsed_json['changes']}")
-            
-            if 'uncertainty' in parsed_json and parsed_json['uncertainty']:
-                parts.append(f"Uncertain: {parsed_json['uncertainty']}")
-            
-            if 'confidence' in parsed_json:
-                conf = parsed_json['confidence']
-                if conf < 70:
-                    parts.append(f"Confidence: {conf}%")
-            
-            return " | ".join(parts) if parts else str(parsed_json)
-            
-        except Exception:
-            return str(parsed_json)
+    # _format_structured_response method removed - using raw Qwen output only
     
     def _create_vision_prompt(self):
         """Optimized prompt incorporating advanced techniques for F.R.E.D.'s contextual assistance"""
