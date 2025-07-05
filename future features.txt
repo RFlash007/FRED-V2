@@ -2,28 +2,25 @@
 
 ## Core System Enhancements
 
-1. **Episodic Memory Buffer**  
-   Compressed representation of experiences serving as scaffolding for future learning without explicit rehearsal
-
-3. **Knowledge Distillation Automation**  
+1. **Knowledge Distillation Automation**  
    Continuous background process converting complex patterns into efficient representations while preserving functionality
 
-6. **Information Elicitation**  
+2. **Information Elicitation**  
    Techniques for gathering missing information:
    - Progressive questioning based on knowledge gaps
    - Clarification requests for ambiguous instructions  
    - Preference elicitation for decision support
 
-7. **Topic Steering**  
+3. **Topic Steering**  
    Methods for productive conversations:
    - Introducing relevant subtopics
    - Refocusing wandering discussions
    - Maintaining engagement through transitions
 
-8. **Context Fusion Engine**  
+4. **Context Fusion Engine**  
    Integrates multimodal inputs (visual/audio/schedule/location) for comprehensive situational awareness
 
-9. **Speaker Diarization**  
+5. **Speaker Diarization**  
    Identifying and tracking individual speakers in multi-speaker conversations
 
 ## Vision System Roadmap

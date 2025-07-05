@@ -143,19 +143,39 @@ CRAP_TOOLS = [
             "required": ["center_nodeid"]
         }
     },
-
     {
-        "name": "search_web_information",
-        "description": "Searches the web for information using DuckDuckGo. This tool retrieves current information from the internet. It combines results from general web search and news search.",
+        "name": "search_general",
+        "description": "General web search for broad topics, documentation, or official sources.",
         "parameters": {
-            "type": "object", 
-            "properties": {
-                "query_text": {
-                    "type": "string", 
-                    "description": "The text to search for."
-                }
-            },
-            "required": ["query_text"]
+            "type": "object", "properties": {"query": {"type": "string", "description": "Search query"}}, "required": ["query"]
+        }
+    },
+    {
+        "name": "search_news",
+        "description": "Search for recent news articles and current events.",
+        "parameters": {
+            "type": "object", "properties": {"query": {"type": "string", "description": "Search query for news"}}, "required": ["query"]
+        }
+    },
+    {
+        "name": "search_academic",
+        "description": "Search for academic papers and research articles.",
+        "parameters": {
+            "type": "object", "properties": {"query": {"type": "string", "description": "Search query for academic content"}}, "required": ["query"]
+        }
+    },
+    {
+        "name": "search_forums",
+        "description": "Search forums and community discussion platforms like Reddit and Stack Overflow.",
+        "parameters": {
+            "type": "object", "properties": {"query": {"type": "string", "description": "Search query for forum discussions"}}, "required": ["query"]
+        }
+    },
+    {
+        "name": "read_webpage",
+        "description": "Extract content from a specific URL. Use after a search to read promising sources.",
+        "parameters": {
+            "type": "object", "properties": {"url": {"type": "string", "description": "The complete URL of the webpage to read."}}, "required": ["url"]
         }
     }
 ]

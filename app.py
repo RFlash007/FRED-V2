@@ -222,13 +222,7 @@ def initialize_tts():
         fred_state.stewie_voice_available = False
 
 # Load System Prompt
-SYSTEM_PROMPT_FILE = os.path.join(APP_ROOT, 'system_prompt.txt')
-try:
-    with open(SYSTEM_PROMPT_FILE, 'r', encoding='utf-8') as f:
-        SYSTEM_PROMPT = f.read()
-except Exception as e:
-    olliePrint_simple(f"Error loading system prompt: {e}", 'error')
-    SYSTEM_PROMPT = "You are F.R.E.D., a helpful AI assistant."
+SYSTEM_PROMPT = config.FRED_SYSTEM_PROMPT
 
 def extract_think_content(text):
     """Extract thinking content from <think>...</think> tags."""
