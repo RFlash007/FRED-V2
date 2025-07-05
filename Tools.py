@@ -10,6 +10,17 @@ from ollie_print import olliePrint
 import uuid
 import concurrent.futures
 import threading
+import io
+from trafilatura import fetch_url, extract
+
+# Explicitly export search functions for direct import
+__all__ = [
+    'tool_search_general',
+    'tool_search_news',
+    'tool_search_academic',
+    'tool_search_forums',
+    'tool_read_webpage'
+]
 
 # Change logging level to ERROR to reduce console clutter (handled by olliePrint)
 
@@ -42,6 +53,114 @@ def convert_datetime_for_json(obj: dict) -> dict:
         elif isinstance(value, Decimal):
             obj[key] = float(value)
     return obj
+
+# --- Search Tool Implementations (moved early) ---
+
+def tool_search_general(query: str) -> dict:
+    """Specialized tool for general web searches."""
+    is_valid, validation_message = validate_research_input(query)
+    if not is_valid:
+        return {"success": False, "error": f"Input validation failed: {validation_message}"}
+
+    olliePrint(f"Executing general search for: '{query}'", show_banner=False)
+    all_results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_source = {
+            executor.submit(search_brave, query): "Brave",
+            executor.submit(search_duckduckgo, query): "DuckDuckGo",
+            executor.submit(search_searchapi, query): "SearchAPI"
+        }
+        for future in concurrent.futures.as_completed(future_to_source):
+            try:
+                source_results = future.result()
+                if source_results and 'web' in source_results:
+                    all_results.extend(source_results['web'])
+            except Exception as e:
+                olliePrint(f"General search source {future_to_source[future]} failed: {e}", level='warning')
+    
+    unique_results = {result['url']: result for result in all_results}.values()
+    return {"success": True, "results": list(unique_results)}
+
+def tool_search_news(query: str) -> dict:
+    """Specialized tool for news searches."""
+    is_valid, validation_message = validate_research_input(query)
+    if not is_valid:
+        return {"success": False, "error": f"Input validation failed: {validation_message}"}
+
+    olliePrint(f"Executing news search for: '{query}'", show_banner=False)
+    all_results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_source = {
+            executor.submit(search_brave, query): "Brave",
+            executor.submit(search_duckduckgo, query): "DuckDuckGo",
+            executor.submit(search_news_apis, query): "NewsAPI"
+        }
+        for future in concurrent.futures.as_completed(future_to_source):
+            try:
+                source_results = future.result()
+                if source_results:
+                    if isinstance(source_results, dict) and 'news' in source_results:
+                         all_results.extend(source_results['news'])
+                    elif isinstance(source_results, list): # For search_news_apis
+                        all_results.extend(source_results)
+            except Exception as e:
+                olliePrint(f"News search source {future_to_source[future]} failed: {e}", level='warning')
+
+    unique_results = {result['url']: result for result in all_results}.values()
+    return {"success": True, "results": list(unique_results)}
+
+def tool_search_academic(query: str) -> dict:
+    """Enhanced academic search with arXiv, Semantic Scholar, and PubMed Central."""
+    is_valid, validation_message = validate_research_input(query)
+    if not is_valid:
+        return {"success": False, "error": f"Input validation failed: {validation_message}"}
+
+    olliePrint(f"Executing academic search for: '{query}'", show_banner=False)
+    all_results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_source = {
+            executor.submit(search_arxiv, query): "arXiv",
+            executor.submit(search_semantic_scholar, query): "Semantic Scholar",
+            executor.submit(search_pubmed, query): "PubMed Central"
+        }
+        for future in concurrent.futures.as_completed(future_to_source):
+            try:
+                source_results = future.result()
+                if source_results:
+                    # Enhance Semantic Scholar results with Unpaywall
+                    if future_to_source[future] == "Semantic Scholar":
+                        source_results = [enhance_with_unpaywall(paper) for paper in source_results]
+                    all_results.extend(source_results)
+            except Exception as e:
+                olliePrint(f"Academic search source {future_to_source[future]} failed: {e}", level='warning')
+
+    unique_results = {result['url']: result for result in all_results}.values()
+    return {"success": True, "results": list(unique_results)}
+
+def tool_search_forums(query: str) -> dict:
+    """Specialized tool for forum and community discussion searches."""
+    is_valid, validation_message = validate_research_input(query)
+    if not is_valid:
+        return {"success": False, "error": f"Input validation failed: {validation_message}"}
+
+    olliePrint(f"Executing forum search for: '{query}'", show_banner=False)
+    all_results = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_source = {
+            executor.submit(search_reddit, query): "Reddit",
+            executor.submit(search_stackoverflow, query): "Stack Overflow",
+            executor.submit(search_youtube_transcripts, query): "YouTube"
+        }
+        for future in concurrent.futures.as_completed(future_to_source):
+            try:
+                source_results = future.result()
+                if source_results:
+                    all_results.extend(source_results)
+            except Exception as e:
+                olliePrint(f"Forum search source {future_to_source[future]} failed: {e}", level='warning')
+
+    unique_results = {result['url']: result for result in all_results}.values()
+    return {"success": True, "results": list(unique_results)}
 
 # --- Tool Definitions ---
 AVAILABLE_TOOLS = [
@@ -219,13 +338,13 @@ AVAILABLE_TOOLS = [
     },
     {
         "name": "read_webpage",
-        "description": "Extract full content from a specific webpage URL. Use after search_web_information to read promising sources in detail.",
+        "description": "Extract text from webpages or PDFs.",
         "parameters": {
             "type": "object",
             "properties": {
                 "url": {
                     "type": "string",
-                    "description": "The complete URL of the webpage to read and extract content from."
+                    "description": "The complete URL of the webpage or PDF to read and extract content from."
                 }
             },
             "required": ["url"]
@@ -955,48 +1074,46 @@ def tool_trigger_sleep_cycle():
         olliePrint(f"Error during sleep cycle: {e}", level='error')
         return {"success": False, "error": str(e)}
 
-def tool_read_webpage(url: str):
-    """Reads and extracts full content from a webpage."""
-    try:
-        olliePrint(f"Reading webpage: {url[:80]}...", show_banner=False)
-        
-        # Validate URL format
-        if not url.startswith(('http://', 'https://')):
-            return {"success": False, "error": "Invalid URL format. Must start with http:// or https://"}
-        
-        # Extract webpage content
-        content = extract_webpage_content(url)
-        
-        if content:
-            return {
-                "success": True,
-                "url": url,
-                "content": content.get("text", ""),
-                "links_found": len(content.get("links", []))
-            }
-        else:
-            return {"success": False, "error": "Failed to extract content from webpage"}
-            
-    except Exception as e:
-        olliePrint(f"Error reading webpage: {e}", level='error')
-        return {"success": False, "error": str(e)}
+def tool_read_webpage(url: str) -> dict:
+    """Extract text from webpages or PDFs."""
+    if url.lower().endswith('.pdf'):
+        try:
+            import pdfplumber
+            import requests
+            response = requests.get(url)
+            with pdfplumber.open(io.BytesIO(response.content)) as pdf:
+                text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+            return {"success": True, "url": url, "content": text, "links_found": len(text.split())}
+        except Exception as e:
+            return {"success": False, "error": f"PDF extraction failed: {e}"}
+    else:
+        try:
+            downloaded = fetch_url(url)
+            content = extract(downloaded, include_links=False)
+            if not content:
+                return {"success": False, "error": "No content extracted"}
+            return {"success": True, "url": url, "content": content, "links_found": len(content.split())}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
 
-# --- Tool Registry ---
+# --- Tool Registry (finalized) ---
 TOOL_FUNCTIONS = {
     "add_memory": tool_add_memory,
     "supersede_memory": tool_supersede_memory,
     "search_memory": tool_search_memory,
+    # High-level search helpers
     "search_general": tool_search_general,
     "search_news": tool_search_news,
     "search_academic": tool_search_academic,
     "search_forums": tool_search_forums,
+    # Graph & memory helpers
     "get_node_by_id": tool_get_node_by_id,
     "get_graph_data": tool_get_graph_data,
     "enroll_person": tool_enroll_person,
     "update_knowledge_graph_edges": tool_update_knowledge_graph_edges,
     "addTaskToAgenda": tool_add_task_to_agenda,
     "triggerSleepCycle": tool_trigger_sleep_cycle,
-    "read_webpage": tool_read_webpage
+    "read_webpage": tool_read_webpage,
 }
 
 # --- Tool Execution Logic ---
@@ -1269,35 +1386,33 @@ def search_searchapi(query: str) -> dict:
         return None
 
 def search_arxiv(query: str) -> list:
-    """Search arXiv and return a list of structured results."""
-    try:
-        import requests
-        import xml.etree.ElementTree as ET
+    """Search arXiv with explicit PDF URLs."""
+    import requests
+    import xml.etree.ElementTree as ET
+    
+    params = {'search_query': f'all:{query}', 'start': 0, 'max_results': config.RESEARCH_MAX_ACADEMIC_PAPERS}
+    response = requests.get(config.ARXIV_API_BASE, params=params, timeout=config.RESEARCH_CORE_TIMEOUT)
+    response.raise_for_status()
+    
+    root = ET.fromstring(response.content)
+    ns = {'atom': 'http://www.w3.org/2005/Atom'}
+    
+    results = []
+    for entry in root.findall('atom:entry', ns):
+        url = entry.find('atom:id', ns).text
+        title = entry.find('atom:title', ns).text.strip().replace('\n', ' ')
+        authors = [author.find('atom:name', ns).text for author in entry.findall('atom:author', ns)]
+        summary = entry.find('atom:summary', ns).text.strip()
+        pdf_url = f"https://arxiv.org/pdf/{url.split('/')[-1]}"  # Explicit PDF URL
         
-        params = {'search_query': f'all:{query}', 'start': 0, 'max_results': config.RESEARCH_MAX_ACADEMIC_PAPERS}
-        response = requests.get(config.ARXIV_API_BASE, params=params, timeout=config.RESEARCH_CORE_TIMEOUT)
-        response.raise_for_status()
-        
-        root = ET.fromstring(response.content)
-        ns = {'atom': 'http://www.w3.org/2005/Atom'}
-        
-        results = []
-        for entry in root.findall('atom:entry', ns):
-            url = entry.find('atom:id', ns)
-            if url is not None:
-                title = entry.find('atom:title', ns).text.strip().replace('\n', ' ')
-                authors = [author.find('atom:name', ns).text for author in entry.findall('atom:author', ns)]
-                summary = entry.find('atom:summary', ns).text.strip()
-                snippet = f"Authors: {', '.join(authors[:3])}. Abstract: {summary[:300]}..."
-                
-                results.append({"title": title, "snippet": snippet, "url": url.text, "source": "arXiv"})
-        
-        print(f"[ARXIV] Success. Found {len(results)} academic papers.")
-        return results
-        
-    except Exception as e:
-        olliePrint(f"arXiv search failed: {e}", level='warning')
-        return []
+        results.append({
+            "title": title,
+            "snippet": f"Authors: {', '.join(authors[:3])}. Abstract: {summary[:300]}...",
+            "url": url,
+            "pdf_url": pdf_url,  # Add PDF link
+            "source": "arXiv"
+        })
+    return results
 
 def search_semantic_scholar(query: str) -> list:
     """Search Semantic Scholar and return a list of structured results."""
@@ -1656,108 +1771,43 @@ def categorize_extracted_links(links: list, source_url: str) -> dict:
     
     return categorized
 
-# New Specialized Search Tools
-# ============================
-
-def tool_search_general(query: str) -> dict:
-    """Specialized tool for general web searches."""
-    is_valid, validation_message = validate_research_input(query)
-    if not is_valid:
-        return {"success": False, "error": f"Input validation failed: {validation_message}"}
-
-    olliePrint(f"Executing general search for: '{query}'", show_banner=False)
-    all_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_source = {
-            executor.submit(search_brave, query): "Brave",
-            executor.submit(search_duckduckgo, query): "DuckDuckGo",
-            executor.submit(search_searchapi, query): "SearchAPI"
-        }
-        for future in concurrent.futures.as_completed(future_to_source):
-            try:
-                source_results = future.result()
-                if source_results and 'web' in source_results:
-                    all_results.extend(source_results['web'])
-            except Exception as e:
-                olliePrint(f"General search source {future_to_source[future]} failed: {e}", level='warning')
+def search_pubmed(query: str) -> list:
+    """Search PubMed Central for biomedical papers."""
+    import requests
     
-    # Deduplicate results based on URL
-    unique_results = {result['url']: result for result in all_results}.values()
-    return {"success": True, "results": list(unique_results)}
+    params = {
+        'term': query,
+        'retmax': config.RESEARCH_MAX_ACADEMIC_PAPERS,
+        'retmode': 'json'
+    }
+    response = requests.get("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pmc", params=params)
+    papers = response.json().get('esearchresult', {}).get('idlist', [])
+    
+    results = []
+    for paper_id in papers:
+        results.append({
+            "title": f"PMC{paper_id}",
+            "snippet": f"PubMed Central ID: {paper_id}",
+            "url": f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{paper_id}",
+            "pdf_url": f"https://www.ncbi.nlm.nih.gov/pmc/articles/PMC{paper_id}/pdf/",
+            "source": "PubMed Central"
+        })
+    return results
 
-def tool_search_news(query: str) -> dict:
-    """Specialized tool for news searches."""
-    is_valid, validation_message = validate_research_input(query)
-    if not is_valid:
-        return {"success": False, "error": f"Input validation failed: {validation_message}"}
+def fetch_unpaywall(doi: str) -> str | None:
+    """Fetch open-access PDF URL from Unpaywall."""
+    import requests
+    try:
+        response = requests.get(f"https://api.unpaywall.org/v2/{doi}?email=YOUR_EMAIL@example.com", timeout=10)
+        return response.json().get("best_oa_location", {}).get("url")
+    except Exception:
+        return None
 
-    olliePrint(f"Executing news search for: '{query}'", show_banner=False)
-    all_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_source = {
-            executor.submit(search_brave, query): "Brave",
-            executor.submit(search_duckduckgo, query): "DuckDuckGo",
-            executor.submit(search_news_apis, query): "NewsAPI"
-        }
-        for future in concurrent.futures.as_completed(future_to_source):
-            try:
-                source_results = future.result()
-                if source_results:
-                    if isinstance(source_results, dict) and 'news' in source_results:
-                         all_results.extend(source_results['news'])
-                    elif isinstance(source_results, list): # For search_news_apis
-                        all_results.extend(source_results)
-            except Exception as e:
-                olliePrint(f"News search source {future_to_source[future]} failed: {e}", level='warning')
-
-    unique_results = {result['url']: result for result in all_results}.values()
-    return {"success": True, "results": list(unique_results)}
-
-def tool_search_academic(query: str) -> dict:
-    """Specialized tool for academic searches."""
-    is_valid, validation_message = validate_research_input(query)
-    if not is_valid:
-        return {"success": False, "error": f"Input validation failed: {validation_message}"}
-
-    olliePrint(f"Executing academic search for: '{query}'", show_banner=False)
-    all_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-        future_to_source = {
-            executor.submit(search_arxiv, query): "arXiv",
-            executor.submit(search_semantic_scholar, query): "Semantic Scholar"
-        }
-        for future in concurrent.futures.as_completed(future_to_source):
-            try:
-                source_results = future.result()
-                if source_results:
-                    all_results.extend(source_results)
-            except Exception as e:
-                olliePrint(f"Academic search source {future_to_source[future]} failed: {e}", level='warning')
-
-    unique_results = {result['url']: result for result in all_results}.values()
-    return {"success": True, "results": list(unique_results)}
-
-def tool_search_forums(query: str) -> dict:
-    """Specialized tool for forum and community discussion searches."""
-    is_valid, validation_message = validate_research_input(query)
-    if not is_valid:
-        return {"success": False, "error": f"Input validation failed: {validation_message}"}
-
-    olliePrint(f"Executing forum search for: '{query}'", show_banner=False)
-    all_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_source = {
-            executor.submit(search_reddit, query): "Reddit",
-            executor.submit(search_stackoverflow, query): "Stack Overflow",
-            executor.submit(search_youtube_transcripts, query): "YouTube"
-        }
-        for future in concurrent.futures.as_completed(future_to_source):
-            try:
-                source_results = future.result()
-                if source_results:
-                    all_results.extend(source_results)
-            except Exception as e:
-                olliePrint(f"Forum search source {future_to_source[future]} failed: {e}", level='warning')
-
-    unique_results = {result['url']: result for result in all_results}.values()
-    return {"success": True, "results": list(unique_results)}
+def enhance_with_unpaywall(paper: dict) -> dict:
+    """Add PDF URL if Unpaywall finds one."""
+    if not paper.get("pdf_url") and "doi.org" in paper.get("url", ""):
+        doi = paper["url"].split("doi.org/")[-1]
+        pdf_url = fetch_unpaywall(doi)
+        if pdf_url:
+            paper["pdf_url"] = pdf_url
+    return paper
