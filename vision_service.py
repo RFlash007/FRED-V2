@@ -167,11 +167,7 @@ class VisionService:
             # Create vision prompt and analyze
             prompt = self._create_vision_prompt()
             
-            system_prompt = (
-                "You are F.R.E.D.'s visual perception analyzing a FRESH image capture. "
-                "This is real-time visual context for immediate user assistance. "
-                "Output ONLY actionable insights F.R.E.D. needs right now. Be precise, practical, concise."
-            )
+            system_prompt = config.VISION_SYSTEM_PROMPT
 
             olliePrint_simple(f"🤖 [QWEN] Calling {self.model} for vision analysis...")
             
@@ -245,26 +241,8 @@ class VisionService:
                 
                 people_summary = ", ".join(parts)
 
-        # Enhanced structured prompt with key techniques restored
-        base_prompt = f"""Analyze for F.R.E.D.'s contextual assistance. Think step-by-step:
-
-1. **OBSERVE:** Scene layout, objects, lighting, spatial context
-2. **PEOPLE:** {people_summary} - activity, posture, emotional state, focus
-3. **AFFORDANCES:** What actions are possible? What tools/objects enable tasks?
-4. **ASSISTANCE:** What might user need help with? Opportunities to assist?
-
-Output JSON:
-{{
-  "summary": "~15 words scene description",
-  "people_activity": "What {people_summary} is doing/feeling - be specific",
-  "assistance_context": "Concrete help opportunities F.R.E.D. could offer",
-  "affordances": ["actionable", "objects", "within", "reach"],
-  "confidence": 85,
-  "uncertainty": "specific aspects unclear (if any)"
-}}
-
-**CRITICAL:** If uncertain about details, state specifics in "uncertainty" field.
-Focus: Enable F.R.E.D.'s proactive, contextual assistance."""
+        # Use configurable base prompt with dynamic people context
+        base_prompt = config.VISION_USER_PROMPT + f"\n\nPeople visible: {people_summary}"
 
         # Add change detection with enhanced context
         if self.last_scene_description:

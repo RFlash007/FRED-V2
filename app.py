@@ -4,14 +4,62 @@ from flask import Flask, request, jsonify, Response, render_template, send_from_
 from flask_socketio import SocketIO, emit
 import json
 import requests
-import memory.librarian as lib
+import memory.L3_memory as L3
 import re
 import playsound
 import uuid
 import subprocess
 import platform
 import glob
-from Tools import AVAILABLE_TOOLS, handle_tool_calls
+# Import only non-memory tools for F.R.E.D.
+from Tools import handle_tool_calls
+
+# F.R.E.D.'s tool set (no memory tools - handled by CRAP)
+FRED_TOOLS = [
+    {
+        "name": "enroll_person",
+        "description": "Learns a new person's face from the live camera feed. Use when the user introduces someone (e.g., 'This is Sarah', 'My name is Ian'). Requires an active camera feed from the Pi glasses.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "The name of the person to enroll."
+                }
+            },
+            "required": ["name"]
+        }
+    },
+    {
+        "name": "addTaskToAgenda",
+        "description": "Add a research task to the agenda for future processing during sleep cycles. Use when the user wants information that requires recent data you don't possess, or complex research that should be done later.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_description": {
+                    "type": "string",
+                    "description": "Detailed description of the research task or information needed."
+                },
+                "priority": {
+                    "type": "integer",
+                    "description": "Task priority: 1 (important) or 2 (normal). Defaults to 2.",
+                    "enum": [1, 2],
+                    "default": 2
+                }
+            },
+            "required": ["task_description"]
+        }
+    },
+    {
+        "name": "triggerSleepCycle",
+        "description": "Initiate the sleep cycle to process agenda tasks, consolidate L2 memories to L3, and perform background maintenance. This will block F.R.E.D. temporarily while processing.",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    }
+]
 from datetime import datetime
 import torch
 from TTS.api import TTS
@@ -26,8 +74,9 @@ apply_theme()
 import time
 from config import config
 
-# Import STM module
-import memory.short_term_memory as stm
+# Import L2 and Agenda modules
+import memory.L2_memory as L2
+import memory.agenda_system as agenda
 
 # State Management Class
 class FREDState:
@@ -38,8 +87,8 @@ class FREDState:
         self.tts_engine = None
         self.last_played_wav = None
         self.stt_enabled = True
-        self.total_conversation_turns = 0  # Track conversation turns for STM
-        self.last_analyzed_message_index = 0  # Track last analyzed message for STM
+        self.total_conversation_turns = 0  # Track conversation turns for L2
+        self.last_analyzed_message_index = 0  # Track last analyzed message for L2
         self.stewie_voice_available = False  # Track if Stewie voice cloning is available
         self._lock = threading.Lock()
     
@@ -52,36 +101,39 @@ class FREDState:
             self.conversation_history.append(turn)
             
             # Check if we need to remove old messages
-            if len(self.conversation_history) > config.MAX_CONVERSATION_MESSAGES:
-                messages_to_remove = len(self.conversation_history) - config.MAX_CONVERSATION_MESSAGES
+            if len(self.conversation_history) > config.FRED_MAX_CONVERSATION_MESSAGES:
+                messages_to_remove = len(self.conversation_history) - config.FRED_MAX_CONVERSATION_MESSAGES
                 
                 # Log the cleanup action
-                olliePrint_simple(f"Conversation history cleanup: removing {messages_to_remove} old messages (keeping {config.MAX_CONVERSATION_MESSAGES})")
+                olliePrint_simple(f"Conversation history cleanup: removing {messages_to_remove} old messages (keeping {config.FRED_MAX_CONVERSATION_MESSAGES})")
                 
                 # Remove oldest messages
                 self.conversation_history = self.conversation_history[messages_to_remove:]
                 
-                # Adjust STM tracking indices to account for removed messages
+                # Adjust L2 tracking indices to account for removed messages
                 self.last_analyzed_message_index = max(0, self.last_analyzed_message_index - messages_to_remove)
                 
                 olliePrint_simple(f"Adjusted last_analyzed_message_index to {self.last_analyzed_message_index}")
             
-            # Increment turn counter and check STM trigger
+            # Increment turn counter and check L2 trigger
             if role == 'assistant':  # Complete turn (user + assistant)
                 self.total_conversation_turns += 1
-                if self.total_conversation_turns % config.STM_TRIGGER_INTERVAL == 0:
-                    # Trigger STM analysis in background
+                if self.total_conversation_turns % config.L2_TRIGGER_INTERVAL == 0:
+                    # Trigger L2 analysis in background (after F.R.E.D. responds)
+                    def delayed_l2_processing():
+                        # Get the user message that triggered this turn
+                        if len(self.conversation_history) >= 2:
+                            user_msg = self.conversation_history[-2].get('content', '')
+                            L2.process_l2_creation(
+                                self.conversation_history.copy(),
+                                len(self.conversation_history),
+                                user_msg
+                            )
+                    
                     threading.Thread(
-                        target=stm.process_stm_analysis,
-                        args=(
-                            self.conversation_history.copy(), 
-                            self.last_analyzed_message_index,
-                            len(self.conversation_history)
-                        ),
+                        target=delayed_l2_processing,
                         daemon=True
                     ).start()
-                    # Update analyzed index to current position
-                    self.last_analyzed_message_index = len(self.conversation_history)
     
     def get_conversation_history(self):
         """Get a copy of conversation history."""
@@ -108,7 +160,7 @@ class FREDState:
         with self._lock:
             return {
                 'current_messages': len(self.conversation_history),
-                'max_messages': config.MAX_CONVERSATION_MESSAGES,
+                'max_messages': config.FRED_MAX_CONVERSATION_MESSAGES,
                 'total_turns': self.total_conversation_turns,
                 'last_analyzed_index': self.last_analyzed_message_index
             }
@@ -123,7 +175,7 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 # Configuration handled via olliePrint; reduce Flask request noise
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = config.get_db_path(APP_ROOT)
-lib.DB_FILE = DB_PATH
+L3.DB_FILE = DB_PATH
 FRED_CORE_NODE_ID = "FRED_CORE"
 
 def initialize_tts():
@@ -191,136 +243,7 @@ def strip_think_tags(text):
         return ""
     return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
-def summarize_thinking(thinking_content, ollama_client):
-    """Summarize thinking content using Qwen3-4B model."""
-    if not thinking_content.strip():
-        return ""
-    
-    try:
-        prompt = f"""Condense the following Language model reasoning into exactly 2-3 sentences. Focus only on key insights and decisions. Do NOT use thinking tags or meta-commentary, maintain the original perspective:
-
-{thinking_content}
-
-Condensed reasoning (2-3 sentences only):"""
-
-        # Remove verbose logging - just show result
-        response = ollama_client.chat(
-            model="hf.co/unsloth/Qwen3-4B-GGUF:Q4_K_M",
-            messages=[{"role": "user", "content": prompt}],
-            options={"temperature": 0.5, "max_tokens": 150}
-        )
-        raw_summary_response = response.get('message', {}).get('content', '').strip()
-        summary = strip_think_tags(raw_summary_response).strip()
-        
-        # Only log if there's an actual summary generated
-        if summary and len(summary) > 10:
-            olliePrint_simple(f"Thinking condensed: {summary[:100]}{'...' if len(summary) > 100 else ''}")
-        
-        return summary
-    except Exception as e:
-        olliePrint_simple(f"Thinking summary failed: {e}", 'warning')
-        return ""
-
-def prepare_messages_with_thinking(system_prompt, user_message, ollama_client):
-    """Prepare messages with appropriate thinking context based on recency."""
-    messages = [{"role": "system", "content": system_prompt}]
-    
-    # Add conversation history with thinking context
-    for i, turn in enumerate(fred_state.get_conversation_history()):
-        age = len(fred_state.get_conversation_history()) - i
-        
-        if turn['role'] == 'user':
-            messages.append({"role": "user", "content": turn['content']})
-        elif turn['role'] == 'assistant':
-            content = turn['content']
-            thinking = turn.get('thinking', '')
-            
-            if age <= 3 and thinking:
-                # Recent messages: include full thinking
-                olliePrint_simple(f"[THINKING] Including full thinking for recent message (age {age})")
-                full_content = f"<think>\n{thinking}\n</think>\n{content}"
-                olliePrint_simple("[THINKING CONTEXT] Message with full thinking being sent to model:")
-                olliePrint_simple(f"{'='*50}")
-                olliePrint_simple(full_content)
-                olliePrint_simple(f"{'='*50}\n")
-                messages.append({"role": "assistant", "content": full_content})
-            elif age <= 6 and thinking:
-                # Older messages: include summarized thinking
-                olliePrint_simple(f"[THINKING] Including summarized thinking for older message (age {age})")
-                if not hasattr(prepare_messages_with_thinking, '_thinking_cache'):
-                    prepare_messages_with_thinking._thinking_cache = {}
-                
-                cache_key = hash(thinking)
-                if cache_key not in prepare_messages_with_thinking._thinking_cache:
-                    prepare_messages_with_thinking._thinking_cache[cache_key] = summarize_thinking(thinking, ollama_client)
-                
-                summarized = prepare_messages_with_thinking._thinking_cache[cache_key]
-                if summarized:
-                    full_content = f"<think>\n{summarized}\n</think>\n{content}"
-                    olliePrint_simple("[THINKING CONTEXT] Message with summarized thinking being sent to model:")
-                    olliePrint_simple(f"{'='*50}")
-                    olliePrint_simple(full_content)
-                    olliePrint_simple(f"{'='*50}\n")
-                    messages.append({"role": "assistant", "content": full_content})
-                else:
-                    messages.append({"role": "assistant", "content": content})
-            else:
-                # Oldest messages: no thinking context
-                if thinking:
-                    olliePrint_simple(f"[THINKING] Excluding thinking for old message (age {age})")
-                messages.append({"role": "assistant", "content": content})
-    
-    # Add current user message
-    pending_tasks_alert = get_pending_tasks_alert()
-    
-    # Get STM context
-    stm_context = stm.query_stm_context(user_message)
-    stm_section = f"\n{stm_context}\n" if stm_context else ""
-    
-    formatted_input = f"""(USER INPUT)
-{user_message}
-(END OF USER INPUT)
-
-(FRED DATABASE)
-{pending_tasks_alert}{stm_section}The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-(END OF FRED DATABASE)"""
-    
-    messages.append({"role": "user", "content": formatted_input})
-    return messages
-
-def prepare_messages_with_visual_context(system_prompt, user_message, ollama_client):
-    """Prepare messages with visual context for Pi glasses input."""
-    messages = prepare_messages_with_thinking(system_prompt, user_message, ollama_client)
-    
-    # Get current visual context
-    visual_context = vision_service.get_current_visual_context()
-    
-    # Inject visual context into the user message
-    for i in range(len(messages) - 1, -1, -1):
-        if messages[i].get('role') == 'user':
-            existing_content = messages[i]['content']
-            
-            # Find the FRED DATABASE section and inject visual context
-            if "(FRED DATABASE)" in existing_content:
-                # Insert visual context after the database header
-                parts = existing_content.split("(FRED DATABASE)", 1)
-                if len(parts) == 2:
-                    enhanced_content = f"{parts[0]}(FRED DATABASE)\nCurrent Visual Context (Pi Glasses): {visual_context}\n{parts[1]}"
-                    messages[i]['content'] = enhanced_content
-            break
-    
-    return messages
-
-def get_pending_tasks_alert():
-    """Get pending tasks alert if needed."""
-    try:
-        with lib.duckdb.connect(lib.DB_FILE) as con:
-            count = con.execute("SELECT COUNT(*) FROM pending_edge_creation_tasks WHERE status = 'pending';").fetchone()
-            if count and count[0] > 20:
-                return f"Alert: {count[0]} memory nodes awaiting connection processing.\n"
-    except Exception:
-        pass
-    return ""
+# Legacy message preparation functions removed - now handled by CORTEX
 
 def play_audio_locally(audio_file_path):
     """Robust cross-platform audio playback with Windows optimization."""
@@ -556,12 +479,12 @@ def cleanup_wav_files():
         except Exception:
             pass
 
-# Initialize
+# Initialize databases
 try:
-    lib.init_db()
-    olliePrint_simple(f"[INFO] Memory DB initialized at: {DB_PATH}")
+    L3.init_db()
+    olliePrint_simple(f"[MAINFRAME] Memory systems (L2/L3) & Agenda initialized at: {DB_PATH}")
 except Exception as e:
-    olliePrint_simple(f"Database initialization failed: {e}", level='error')
+    olliePrint_simple(f"[ERROR] Database initialization failed: {e}", level='error')
 
 if not os.path.exists(app.static_folder):
     os.makedirs(app.static_folder)
@@ -591,7 +514,7 @@ def get_graph():
     edges = []
     
     try:
-        with lib.duckdb.connect(lib.DB_FILE) as con:
+        with L3.duckdb.connect(L3.DB_FILE) as con:
             # Get most connected memories
             memories = con.execute("""
                 SELECT n.nodeid, n.label, n.text, n.type, n.created_at, n.last_access,
@@ -650,21 +573,20 @@ def chat_endpoint():
             
             client = ollama.Client(host=ollama_base_url)
             
-            # Enhanced message preparation with visual context
-            if from_pi_glasses:
-                messages = prepare_messages_with_visual_context(SYSTEM_PROMPT, user_message, client)
-            else:
-                messages = prepare_messages_with_thinking(SYSTEM_PROMPT, user_message, client)
+            # Enhanced message preparation with C.R.A.P. memory management
+            from memory.crap import prepare_messages_with_memory_context
+            messages = prepare_messages_with_memory_context(SYSTEM_PROMPT, user_message, client, from_pi_glasses)
             
             assistant_response = ""
             raw_thinking = ""
             
             # Tool iteration loop
+            sleep_cycle_triggered = False  # Initialize variable
             for iteration in range(max_tool_iterations):
                 response = client.chat(
                     model=model_name,
                     messages=messages,
-                    tools=AVAILABLE_TOOLS,
+                    tools=FRED_TOOLS,
                     stream=False,
                     options=config.THINKING_MODE_OPTIONS
                 )
@@ -689,22 +611,40 @@ def chat_endpoint():
                 clean_content = strip_think_tags(raw_content)
                 tool_calls = response_message.get('tool_calls')
                 
-                # Ensure assistant role
+                # Ensure assistant role and preserve thinking for next iteration
                 if 'role' not in response_message:
                     response_message['role'] = 'assistant'
+                
+                # If there are tool calls, preserve the thinking content for the next iteration
+                if tool_calls and current_thinking:
+                    # Keep raw content with thinking tags for model's context
+                    response_message['content'] = raw_content
+                
                 messages.append(response_message)
                 
                 if tool_calls:
+                    # Check for sleep cycle trigger (special blocking behavior)
+                    sleep_cycle_triggered = any(tc.get('function', {}).get('name') == 'triggerSleepCycle' for tc in tool_calls)
+                    
+                    if sleep_cycle_triggered:
+                        # Immediate sleep cycle message
+                        yield json.dumps({
+                            "type": "sleep_cycle_start",
+                            "content": config.SLEEP_CYCLE_MESSAGE
+                        }) + '\n'
+                        yield json.dumps({'response': config.SLEEP_CYCLE_MESSAGE}) + '\n'
+                    
                     # Execute tools
                     olliePrint_simple(f"\n[TOOL CALLS] Model requested {len(tool_calls)} tool(s):")
                     for tc in tool_calls:
                         tool_name = tc.get('function', {}).get('name', 'unknown')
                         tool_args = tc.get('function', {}).get('arguments', {})
                         olliePrint_simple(f"[TOOL CALLS] - {tool_name} with args: {tool_args}")
-                        yield json.dumps({
-                            "type": "tool_activity",
-                            "content": f"Executing {tool_name}..."
-                        }) + '\n'
+                        if not sleep_cycle_triggered:  # Don't show activity for sleep cycle (already shown)
+                            yield json.dumps({
+                                "type": "tool_activity",
+                                "content": f"Executing {tool_name}..."
+                            }) + '\n'
                     
                     tool_outputs = handle_tool_calls(tool_calls)
                     olliePrint_simple(f"[TOOL CALLS] Executed {len(tool_outputs) if tool_outputs else 0} tools successfully")
@@ -729,15 +669,14 @@ def chat_endpoint():
                             olliePrint_simple(f"{'-'*30}")
                         olliePrint_simple(f"{'='*50}\n")
                     
-                    if tool_outputs:
-                        messages.extend(tool_outputs)
                         
-                        # Update user message with tool results
-                        tool_results = []
-                        for output in tool_outputs:
-                            tool_results.append(f"Tool result: {output.get('content', '{}')}")
-                        
-                        enhanced_message = f"""(USER INPUT)
+                        # Update user message with tool results (skip for sleep cycle - already handled)
+                        if not sleep_cycle_triggered:
+                            tool_results = []
+                            for output in tool_outputs:
+                                tool_results.append(f"Tool result: {output.get('content', '{}')}")
+                            
+                            enhanced_message = f"""(USER INPUT)
 {user_message}
 (END OF USER INPUT)
 
@@ -745,12 +684,12 @@ def chat_endpoint():
 {chr(10).join(tool_results)}
 The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 (END OF FRED DATABASE)"""
-                        
-                        # Update last user message
-                        for i in range(len(messages) - 1, -1, -1):
-                            if messages[i].get('role') == 'user':
-                                messages[i]['content'] = enhanced_message
-                                break
+                            
+                            # Update last user message
+                            for i in range(len(messages) - 1, -1, -1):
+                                if messages[i].get('role') == 'user':
+                                    messages[i]['content'] = enhanced_message
+                                    break
                     else:
                         yield json.dumps({"type": "error", "content": "Tool execution failed"}) + '\n'
                         break
@@ -759,6 +698,14 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     if clean_content:
                         assistant_response = clean_content
                     break
+            
+            # Sleep cycle complete - skip normal response generation
+            if sleep_cycle_triggered and tool_outputs:
+                assistant_response = config.SLEEP_CYCLE_MESSAGE
+                # Store the sleep cycle activation in history
+                fred_state.add_conversation_turn('assistant', assistant_response)
+                yield json.dumps({'type': 'done'}) + '\n'
+                return
             
             # Generate final response if needed
             if not assistant_response:
@@ -821,7 +768,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 def get_memory_viz_data():
     """Get memory visualization data."""
     try:
-        return jsonify(lib.get_all_active_nodes_for_viz())
+        return jsonify(L3.get_all_active_nodes_for_viz())
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

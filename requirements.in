@@ -28,4 +28,5 @@ psutil
 sounddevice
 vosk
 duckduckgo-search
+youtube-transcript-api
 scipy 

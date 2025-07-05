@@ -114,7 +114,7 @@ class STTService:
                     break
             
             if not model_path:
-                olliePrint_simple("Vosk model not found. Please install a Vosk model.", level='error')
+                olliePrint_simple("⚠️  Vosk model missing (speech-to-text unavailable)", level='warning')
                 return False
             
             olliePrint_simple(f"Loading Vosk model from: {model_path}")

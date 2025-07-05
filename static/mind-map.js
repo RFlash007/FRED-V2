@@ -454,13 +454,13 @@ class MemorySolarSystem {
     
     async loadConnectionData(memoryData) {
         // Load detailed connection information for each memory
-        olliePrint('Loading connection data for', memoryData.length, 'memories');
+        olliePrint(`Loading connection data for ${memoryData.length} memories`, 'debug');
         for (const memory of memoryData) {
             try {
                 const response = await fetch(`/api/memory/${memory.nodeid}/connections`);
                 if (response.ok) {
                     const connectionData = await response.json();
-                    olliePrint(`Loaded connections for memory ${memory.nodeid}:`, connectionData);
+                    olliePrint(`Loaded connections for memory ${memory.nodeid}`, 'debug');
                     this.memoryConnections.set(memory.nodeid.toString(), connectionData);
                 } else {
                     console.warn(`Failed to load connections for memory ${memory.nodeid}: HTTP ${response.status}`);
@@ -470,7 +470,7 @@ class MemorySolarSystem {
                 this.memoryConnections.set(memory.nodeid.toString(), { connections: [] });
             }
         }
-        olliePrint('Finished loading connection data. Total connections loaded:', this.memoryConnections.size);
+        olliePrint(`Finished loading connection data. Total connections loaded: ${this.memoryConnections.size}`, 'debug');
     }
     
     createHierarchicalMemorySystem(memoryData) {
@@ -906,7 +906,7 @@ class MemorySolarSystem {
             { nodeid: 'demo6', label: 'System State', type: 'general', total_edge_count: 4 }
         ];
         
-        this.createMemoryOrbs(demoData);
+        this.createHierarchicalMemorySystem(demoData);
     }
     
     setupEventListeners() {
@@ -973,7 +973,8 @@ class MemorySolarSystem {
         this.selectedMemory = memoryData;
         
         // Debug: log the memory data structure to understand what we're working with
-        olliePrint('Memory data for details panel:', memoryData);
+        olliePrint('Memory data for details panel:', 'debug');
+        console.log(memoryData);
         
         // Update panel content
         const panel = this.detailsPanel;
@@ -1004,7 +1005,8 @@ class MemorySolarSystem {
             connections = connectionData.connections || [];
         }
         
-        olliePrint(`Found ${connections.length} connections for memory ${memoryData.nodeid}:`, connections);
+        olliePrint(`Found ${connections.length} connections for memory ${memoryData.nodeid}`, 'debug');
+        console.log(connections);
         
         if (connections.length > 0) {
             connections.slice(0, 10).forEach(connection => { // Show max 10 connections

@@ -67,6 +67,8 @@ Your memory is crucial and stored in your private FRED DATABASE. You will manage
 
 When using these types in tool calls (e.g., for `add_memory` or `supersede_memory`), you MUST use these exact string values: 'Semantic', 'Episodic', or 'Procedural'.
 
+**Important**: You do NOT have direct access to memory tools. Your memory is managed by CRAP (Context Retrieval for Augmented Prompts), which provides you with relevant context in your FRED DATABASE section. Trust the context provided by CRAP rather than trying to search memory yourself.
+
 **Memory Operations & Instructions:**
 
 1.  **Information Retrieval (`search_memory`):**

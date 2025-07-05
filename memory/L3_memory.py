@@ -8,6 +8,7 @@ import os # For potential environment variables later
 import threading
 from ollie_print import olliePrint_simple
 from contextlib import contextmanager
+from config import config # Import the config
 
 # --- Configuration ---
 # Set default path inside the memory folder
@@ -101,7 +102,7 @@ def init_db():
                     FOREIGN KEY (node_id_to_process) REFERENCES nodes(nodeid)
                 );
             """)
-        olliePrint_simple("Database initialized successfully.")
+        # Database initialized (logged by caller if needed)
     except ImportError:
         olliePrint_simple("DuckDB library not found. Database operations will fail.", level='error')
         # Depending on the use case, you might want to raise this error
@@ -138,13 +139,7 @@ def get_embedding(text):
 #Simple ollama call with JSON response
 def call_ollama_generate(prompt, model=LLM_DECISION_MODEL):
     """Calls the Ollama generate API, expecting a JSON response."""
-    full_prompt = f"""
-You are an AI assistant specializing in knowledge graph management. Your task is to analyze the provided information and respond ONLY with a valid JSON object containing the requested information. Do not include any explanations, apologies, or introductory text outside the JSON structure.
-
-{prompt}
-
-Respond with ONLY the JSON object.
-"""
+    full_prompt = config.L3_EDGE_SYSTEM_PROMPT.format(prompt=prompt)
     try:
         response = requests.post(
             OLLAMA_GENERATE_URL,
@@ -203,26 +198,14 @@ def determine_edge_type_llm(source_node_info, target_node_info):
     - sourceAttribution: Information originates from a source (e.g., "Quote" sourceAttribution "Book").
     """
 
-    prompt = f"""
-Analyze the relationship between the following two memory nodes:
-
-Source Node:
-- Label: {source_node_info['label']}
-- Type: {source_node_info['type']}
-- Text: {source_node_info['text']}
-
-Target Node:
-- Label: {target_node_info['label']}
-- Type: {target_node_info['type']}
-- Text: {target_node_info['text']}
-
-Consider the connection *from* the Source Node *to* the Target Node. Choose the single most appropriate relationship type from the following list, based on these definitions:
-{rel_definitions}
-
-Valid types: {VALID_REL_TYPES}
-
-Return ONLY your chosen relationship type as a JSON object like this: {{"relationship_type": "chosen_type"}}
-"""
+    source_info = f"Label: {source_node_info['label']}, Type: {source_node_info['type']}, Text: {source_node_info['text']}"
+    target_info = f"Label: {target_node_info['label']}, Type: {target_node_info['type']}, Text: {target_node_info['text']}"
+    
+    prompt = config.L3_EDGE_TYPE_PROMPT.format(
+        source_info=source_info,
+        target_info=target_info,
+        relationship_definitions=rel_definitions
+    )
     try:
         response_json = call_ollama_generate(prompt)
         rel_type = response_json.get("relationship_type")
@@ -491,7 +474,7 @@ def add_edge(sourceid: int, targetid: int, rel_type: str | None = None, con: duc
          raise RuntimeError(f"Unexpected error adding edge: {e}") from e
 
 
-def search_memory(query_text, memory_type=None, limit=10, future_events_only=False, include_past_events=True, use_keyword_search=False, include_connections=False):
+def search_memory(query_text, memory_type=None, limit=10, future_events_only=False, include_past_events=True, use_keyword_search=False, include_connections=False, start_date=None, end_date=None):
     """Searches memory nodes using cosine similarity and/or keyword matching.
 
     Args:
@@ -502,6 +485,8 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
         include_past_events: If False, excludes nodes with target_date in the past.
         use_keyword_search: If True, performs a keyword search. If False (default), performs semantic search.
         include_connections: If True, includes edge connections for each result node.
+        start_date: Optional start date for filtering results based on created_at timestamp.
+        end_date: Optional end date for filtering results based on created_at timestamp.
     """
     results = []
     node_ids_updated = set() # Track updated nodes to avoid duplicate updates
@@ -588,6 +573,15 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
                     elif not include_past_events:
                         base_query += " AND (target_date IS NULL OR target_date > ?)"
                         params_semantic.append(now)
+
+                    # --- NEW ADDITION for date range ---
+                    if start_date:
+                        base_query += " AND created_at >= ?"
+                        params_semantic.append(start_date)
+                    if end_date:
+                        base_query += " AND created_at <= ?"
+                        params_semantic.append(end_date)
+                    # --- END NEW ADDITION ---
 
                     base_query += " ORDER BY similarity DESC LIMIT ?"
                     params_semantic.append(limit)
