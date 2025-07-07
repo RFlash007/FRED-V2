@@ -71,51 +71,37 @@ def display_results(result: dict, original_task: str):
     print(f"🔄 Iterations: {result.get('iterations', 0)}")
     
     if result.get('conversation_path'):
-        print(f"💾 Conversation Log: {result['conversation_path']}")
+        print(f"💾 Conversation Log Path: {result['conversation_path']}")
+        print(f"   • research_findings.txt  (human-readable report)")
+        print(f"   • full_conversation.json (complete model exchange)")
+        print(f"   • research_events.jsonl  (tool calls, synthesis logs)")
     
     print(f"\n📋 FINAL RESEARCH REPORT:")
     print("-" * 40)
     findings = result.get('findings', 'No findings available')
 
-    # Try to parse the report sections for cleaner output
+    # Improved regex to avoid overlapping matches
     sections = re.split(
-        r'(Executive Summary|Methodology|Core Findings|Analysis|Conclusions|Sources):', 
+        r'(?m)^(### [A-Z ]+ ###)$',  # Matches section headers like "### EXECUTIVE SUMMARY ###"
         findings
     )
     
     if len(sections) > 1:
-        # The first element is usually empty, so skip it.
-        # Iterate in pairs of (header, content)
-        for i in range(1, len(sections), 2):
-            header = sections[i]
-            content = sections[i+1].strip()
-            
-            print(f"\n\n### {header.upper()} ###")
-            
-            # Word wrap the content for readability
-            words = content.split(' ')
-            lines = []
-            current_line = []
-            current_length = 0
-            
-            for word in words:
-                if current_length + len(word) + 1 > 80:  # 80 char line limit
-                    lines.append(' '.join(current_line))
-                    current_line = [word]
-                    current_length = len(word)
-                else:
-                    current_line.append(word)
-                    current_length += len(word) + 1
-            
-            if current_line:
-                lines.append(' '.join(current_line))
-            
-            for line in lines:
-                print(f"   {line}")
+        # Skip the first empty element if present
+        sections = [s.strip() for s in sections if s.strip()]
+        
+        # Iterate through sections in pairs (header, content)
+        for i in range(0, len(sections), 2):
+            if i + 1 < len(sections):
+                header = sections[i]
+                content = sections[i + 1]
+                
+                print(f"\n{header}")
+                print_word_wrapped(content)  # Helper function to wrap text
     else:
         # Fallback for unstructured findings
-        print(f"   {findings}")
-    
+        print_word_wrapped(findings)
+
     # Display any issues
     if not result.get('success'):
         reason = result.get('reason', 'unknown')
@@ -123,6 +109,24 @@ def display_results(result: dict, original_task: str):
         if reason == 'max_iterations_reached':
             print("   The research reached the maximum iteration limit.")
             print("   Results may be incomplete but still contain valuable information.")
+
+def print_word_wrapped(text: str, line_length: int = 80):
+    """Helper function to print text with word wrapping."""
+    words = text.split()
+    current_line = []
+    current_length = 0
+    
+    for word in words:
+        if current_length + len(word) + 1 > line_length:
+            print("   " + " ".join(current_line))
+            current_line = [word]
+            current_length = len(word)
+        else:
+            current_line.append(word)
+            current_length += len(word) + 1
+    
+    if current_line:
+        print("   " + " ".join(current_line))
 
 def test_memory_synthesis(result: dict, original_task: str):
     """Test the S.A.G.E. memory synthesis component."""
@@ -149,65 +153,6 @@ def test_memory_synthesis(result: dict, original_task: str):
     except Exception as e:
         print(f"❌ Memory synthesis error: {e}")
 
-def save_complete_research_log(task_id: str, original_task: str, result: dict):
-    """Save complete research findings to agenda_conversations directory for test script."""
-    try:
-        # Create agenda_conversations directory if it doesn't exist
-        agenda_dir = Path("memory/agenda_conversations")
-        agenda_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Create test-specific subdirectory
-        test_dir = agenda_dir / task_id
-        test_dir.mkdir(exist_ok=True)
-        
-        # Prepare complete research log
-        complete_log = {
-            "test_session": True,
-            "task_id": task_id,
-            "original_task": original_task,
-            "timestamp": datetime.now().isoformat(),
-            "research_result": result,
-            "complete_research_findings": result.get('findings', ''),
-            "success": result.get('success', False),
-            "iterations": result.get('iterations', 0),
-            "conversation_path": result.get('conversation_path', ''),
-            "test_metadata": {
-                "script_version": "test_arch_delve_research.py",
-                "session_type": "manual_test",
-                "findings_length": len(result.get('findings', '')),
-                "research_complete": True
-            }
-        }
-        
-        # Save complete research log
-        log_file = test_dir / "complete_research_log.json"
-        with open(log_file, 'w', encoding='utf-8') as f:
-            json.dump(complete_log, f, indent=2, ensure_ascii=False)
-        
-        # Also save just the findings in a readable format
-        findings_file = test_dir / "research_findings.txt"
-        with open(findings_file, 'w', encoding='utf-8') as f:
-            f.write(f"Research Task: {original_task}\n")
-            f.write(f"Task ID: {task_id}\n")
-            f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-            f.write(f"Success: {result.get('success', False)}\n")
-            f.write(f"Iterations: {result.get('iterations', 0)}\n")
-            f.write("=" * 80 + "\n")
-            f.write("COMPLETE RESEARCH FINDINGS:\n")
-            f.write("=" * 80 + "\n")
-            f.write(result.get('findings', 'No findings available'))
-            f.write("\n" + "=" * 80 + "\n")
-        
-        print(f"\n📁 Complete research log saved:")
-        print(f"   JSON: {log_file}")
-        print(f"   Text: {findings_file}")
-        
-        return str(test_dir)
-        
-    except Exception as e:
-        print(f"❌ Failed to save complete research log: {e}")
-        return None
-
 def main():
     """Main test script execution."""
     print_banner()
@@ -228,9 +173,6 @@ def main():
         # Display results
         display_results(result, query)
         
-        # Save complete research log to agenda_conversations
-        save_complete_research_log(task_id, query, result)
-        
         # Test memory synthesis
         print(f"\n🤔 Would you like to synthesize these findings into F.R.E.D.'s memory? (y/n): ", end="")
         if input().lower().startswith('y'):
@@ -242,10 +184,9 @@ def main():
         print(f"\n✨ Research Session Complete!")
         print(f"   Query: {query}")
         print(f"   Status: {'Success' if result.get('success') else 'Partial'}")
-        print(f"   Duration: Check conversation logs for detailed timeline")
         
         if result.get('conversation_path'):
-            print(f"\n📁 Full conversation logs available at:")
+            print(f"\n📁 All artifacts for this session are located in:")
             print(f"   {result['conversation_path']}")
         
     except KeyboardInterrupt:

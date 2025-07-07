@@ -1,3 +1,4 @@
+import re
 import time
 import json
 import datetime
@@ -12,6 +13,10 @@ import concurrent.futures
 import threading
 import io
 from trafilatura import fetch_url, extract
+import ollama
+
+# Create a single client instance to be reused
+ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
 
 # Explicitly export search functions for direct import
 __all__ = [
@@ -57,55 +62,58 @@ def convert_datetime_for_json(obj: dict) -> dict:
 # --- Search Tool Implementations (moved early) ---
 
 def tool_search_general(query: str) -> dict:
-    """Specialized tool for general web searches."""
+    """Specialized tool for general web searches with Brave-first and SearchAPI fallback."""
     is_valid, validation_message = validate_research_input(query)
     if not is_valid:
         return {"success": False, "error": f"Input validation failed: {validation_message}"}
 
     olliePrint(f"Executing general search for: '{query}'", show_banner=False)
     all_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_source = {
-            executor.submit(search_brave, query): "Brave",
-            executor.submit(search_duckduckgo, query): "DuckDuckGo",
-            executor.submit(search_searchapi, query): "SearchAPI"
-        }
-        for future in concurrent.futures.as_completed(future_to_source):
-            try:
-                source_results = future.result()
-                if source_results and 'web' in source_results:
-                    all_results.extend(source_results['web'])
-            except Exception as e:
-                olliePrint(f"General search source {future_to_source[future]} failed: {e}", level='warning')
-    
+
+    # Step 1: Try Brave first
+    brave_results = search_brave(query)
+    if brave_results and 'web' in brave_results:
+        all_results.extend(brave_results['web'])
+        olliePrint("Brave search successful, using results.", level='info')
+    else:
+        olliePrint("Brave search failed or returned no results, falling back to SearchAPI.", level='warning')
+        # Step 2: Fall back to SearchAPI if Brave fails
+        searchapi_results = search_searchapi(query)
+        if searchapi_results and 'web' in searchapi_results:
+            all_results.extend(searchapi_results['web'])
+            olliePrint("SearchAPI fallback successful.", level='info')
+        else:
+            olliePrint("SearchAPI fallback also failed.", level='error')
+
+    # Deduplicate results
     unique_results = {result['url']: result for result in all_results}.values()
     return {"success": True, "results": list(unique_results)}
 
 def tool_search_news(query: str) -> dict:
-    """Specialized tool for news searches."""
+    """Specialized tool for news searches with Brave-first and SearchAPI fallback."""
     is_valid, validation_message = validate_research_input(query)
     if not is_valid:
         return {"success": False, "error": f"Input validation failed: {validation_message}"}
 
     olliePrint(f"Executing news search for: '{query}'", show_banner=False)
     all_results = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_source = {
-            executor.submit(search_brave, query): "Brave",
-            executor.submit(search_duckduckgo, query): "DuckDuckGo",
-            executor.submit(search_news_apis, query): "NewsAPI"
-        }
-        for future in concurrent.futures.as_completed(future_to_source):
-            try:
-                source_results = future.result()
-                if source_results:
-                    if isinstance(source_results, dict) and 'news' in source_results:
-                         all_results.extend(source_results['news'])
-                    elif isinstance(source_results, list): # For search_news_apis
-                        all_results.extend(source_results)
-            except Exception as e:
-                olliePrint(f"News search source {future_to_source[future]} failed: {e}", level='warning')
 
+    # Step 1: Try Brave first
+    brave_results = search_brave(query)
+    if brave_results and 'news' in brave_results:
+        all_results.extend(brave_results['news'])
+        olliePrint("Brave news search successful, using results.", level='info')
+    else:
+        olliePrint("Brave news search failed or returned no results, falling back to SearchAPI.", level='warning')
+        # Step 2: Fall back to SearchAPI if Brave fails
+        searchapi_results = search_news_apis(query)
+        if searchapi_results and isinstance(searchapi_results, list):
+            all_results.extend(searchapi_results)
+            olliePrint("SearchAPI news fallback successful.", level='info')
+        else:
+            olliePrint("SearchAPI news fallback also failed.", level='error')
+
+    # Deduplicate results
     unique_results = {result['url']: result for result in all_results}.values()
     return {"success": True, "results": list(unique_results)}
 
@@ -602,9 +610,9 @@ def search_web_information(query_or_url: str) -> dict:
     """Enhanced version of search_web_information with comprehensive error handling."""
     try:
         # Enhanced logging
-        print(f"\n[WEB SEARCH] Starting search for: '{query_or_url}'")
-        print(f"[WEB SEARCH] Query type: {'URL' if query_or_url.startswith(('http://', 'https://')) else 'Query'}")
-        print(f"[WEB SEARCH] Query length: {len(query_or_url)} characters")
+        olliePrint(f"\n[WEB SEARCH] Starting search for: '{query_or_url}'", show_banner=False)
+        olliePrint(f"[WEB SEARCH] Query type: {'URL' if query_or_url.startswith(('http://', 'https://')) else 'Query'}", show_banner=False)
+        olliePrint(f"[WEB SEARCH] Query length: {len(query_or_url)} characters", show_banner=False)
         
         # Input validation
         is_valid, validation_message = validate_research_input(query_or_url)
@@ -613,31 +621,31 @@ def search_web_information(query_or_url: str) -> dict:
                 "success": False, 
                 "error": f"Input validation failed: {validation_message}"
             }
-            print(f"[WEB SEARCH] ❌ Validation failed: {validation_message}")
+            olliePrint(f"[WEB SEARCH] ❌ Validation failed: {validation_message}", level='error')
             return error_result
         
         # Execute main search
-        print(f"[WEB SEARCH] ✅ Input valid, executing comprehensive search...")
+        olliePrint(f"[WEB SEARCH] ✅ Input valid, executing comprehensive search...", show_banner=False)
         result = execute_comprehensive_search(query_or_url)
         
         # Enhanced logging of results
         if result.get("success"):
-            print(f"[WEB SEARCH] ✅ Search successful")
+            olliePrint(f"[WEB SEARCH] ✅ Search successful", show_banner=False)
             if "results" in result:
                 content_length = len(result["results"].get("content", ""))
                 links_count = sum(len(links) for links in result["results"].get("suggested_links", {}).values())
-                print(f"[WEB SEARCH] Content length: {content_length} chars, Links found: {links_count}")
+                olliePrint(f"[WEB SEARCH] Content length: {content_length} chars, Links found: {links_count}", show_banner=False)
                 
                 # Enhance successful results
                 result["results"] = enhance_research_results_with_metadata(result["results"])
         else:
-            print(f"[WEB SEARCH] ❌ Search failed: {result.get('error', 'Unknown error')}")
+            olliePrint(f"[WEB SEARCH] ❌ Search failed: {result.get('error', 'Unknown error')}", level='error')
         
         return result
         
     except Exception as e:
         error_msg = f"Research system error: {str(e)}"
-        print(f"[WEB SEARCH] ❌ Exception occurred: {e}")
+        olliePrint(f"[WEB SEARCH] ❌ Exception occurred: {e}", level='error')
         olliePrint(f"❌ Enhanced research system error: {e}", level='error')
         return {
             "success": False, 
@@ -1073,6 +1081,26 @@ def tool_trigger_sleep_cycle():
     except Exception as e:
         olliePrint(f"Error during sleep cycle: {e}", level='error')
         return {"success": False, "error": str(e)}
+    
+def gist_summarize_source(source: str) -> str:
+    """Summarize the content of a source using Ollama with G.I.S.T. model."""
+    try:
+        messages = [
+            {"role": "system", "content": config.GIST_SYSTEM_PROMPT},
+            {"role": "user", "content": config.GIST_USER_PROMPT.format(source=source)}
+        ]
+        
+        response = ollama_client.chat(
+            model=config.GIST_SUMMARY_MODEL,
+            messages=messages,
+            stream=False
+        )
+        
+        response_content = response.get('message', {}).get('content', '')
+        return re.sub(r'<think>.*?</think>', '', response_content.strip(), flags=re.DOTALL)
+    except Exception as e:
+        olliePrint(f"G.I.S.T. summarization failed: {e}", level='error')
+        return f"Error summarizing source: {e}"
 
 def tool_read_webpage(url: str) -> dict:
     """Extract text from webpages or PDFs."""
@@ -1083,7 +1111,7 @@ def tool_read_webpage(url: str) -> dict:
             response = requests.get(url)
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
                 text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
-            return {"success": True, "url": url, "content": text, "links_found": len(text.split())}
+            return {"success": True, "url": url, "content": gist_summarize_source(text), "links_found": len(text.split())}
         except Exception as e:
             return {"success": False, "error": f"PDF extraction failed: {e}"}
     else:
@@ -1092,7 +1120,7 @@ def tool_read_webpage(url: str) -> dict:
             content = extract(downloaded, include_links=False)
             if not content:
                 return {"success": False, "error": "No content extracted"}
-            return {"success": True, "url": url, "content": content, "links_found": len(content.split())}
+            return {"success": True, "url": url, "content": gist_summarize_source(content), "links_found": len(content.split())}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
@@ -1179,10 +1207,10 @@ def search_brave(query: str) -> dict:
         import requests
         
         if not config.BRAVE_SEARCH_API_KEY:
-            print(f"[BRAVE] No API key configured, skipping")
+            olliePrint(f"[BRAVE] No API key configured, skipping", show_banner=False)
             return None
         
-        print(f"[BRAVE] Starting search for: '{query}'")
+        olliePrint(f"[BRAVE] Starting search for: '{query}'", show_banner=False)
         
         web_results = []
         news_results = []
@@ -1219,10 +1247,10 @@ def search_brave(query: str) -> dict:
                     url = result.get('url', '')
                     if url:
                         web_results.append({"title": title, "snippet": snippet, "url": url, "source": "Brave Web"})
-            print(f"[BRAVE] Web search completed: {len(web_results)} results")
+            olliePrint(f"[BRAVE] Web search completed: {len(web_results)} results", show_banner=False)
             
         except Exception as e:
-            print(f"[BRAVE] Web search failed: {e}")
+            olliePrint(f"[BRAVE] Web search failed: {e}", level='warning')
         
         # News search
         news_params = {
@@ -1249,15 +1277,15 @@ def search_brave(query: str) -> dict:
                     url = result.get('url', '')
                     if url:
                         news_results.append({"title": title, "snippet": snippet, "url": url, "source": "Brave News"})
-            print(f"[BRAVE] News search completed: {len(news_results)} results")
+            olliePrint(f"[BRAVE] News search completed: {len(news_results)} results", show_banner=False)
             
         except Exception as e:
-            print(f"[BRAVE] News search failed: {e}")
+            olliePrint(f"[BRAVE] News search failed: {e}", level='warning')
         
         if web_results or news_results:
             return {"web": web_results, "news": news_results}
         else:
-            print(f"[BRAVE] No results obtained")
+            olliePrint(f"[BRAVE] No results obtained", show_banner=False)
             return None
         
     except Exception as e:
@@ -1270,14 +1298,14 @@ def search_duckduckgo(query: str) -> dict:
         import time
         import random
         
-        print(f"[DUCKDUCKGO] Starting search for: '{query}' (fallback mode)")
+        olliePrint(f"[DUCKDUCKGO] Starting search for: '{query}' (fallback mode)", show_banner=False)
         
         time.sleep(random.uniform(2.0, 4.0))
         
         try:
             ddgs = DDGS(timeout=config.WEB_SEARCH_TIMEOUT)
         except Exception as e:
-            print(f"[DUCKDUCKGO] Failed to initialize DDGS: {e}")
+            olliePrint(f"[DUCKDUCKGO] Failed to initialize DDGS: {e}", level='warning')
             return None
         
         web_results = []
@@ -1292,7 +1320,7 @@ def search_duckduckgo(query: str) -> dict:
                 )
                 if raw_web_results: break
             except Exception as e:
-                print(f"[DUCKDUCKGO] Web search attempt {attempt+1} failed: {e}")
+                olliePrint(f"[DUCKDUCKGO] Web search attempt {attempt+1} failed: {e}", level='warning')
                 time.sleep(3)
         
         if raw_web_results:
@@ -1315,7 +1343,7 @@ def search_duckduckgo(query: str) -> dict:
                 )
                 if raw_news_results: break
             except Exception as e:
-                print(f"[DUCKDUCKGO] News search attempt {attempt+1} failed: {e}")
+                olliePrint(f"[DUCKDUCKGO] News search attempt {attempt+1} failed: {e}", level='warning')
                 time.sleep(2)
 
         if raw_news_results:
@@ -1329,7 +1357,7 @@ def search_duckduckgo(query: str) -> dict:
                         "source": "DuckDuckGo News"
                     })
 
-        print(f"[DUCKDUCKGO] Search completed: {len(web_results)} web, {len(news_results)} news results.")
+        olliePrint(f"[DUCKDUCKGO] Search completed: {len(web_results)} web, {len(news_results)} news results.", show_banner=False)
         if web_results or news_results:
             return {"web": web_results, "news": news_results}
         else:
@@ -1345,10 +1373,10 @@ def search_searchapi(query: str) -> dict:
         import requests
         
         if not config.SEARCHAPI_API_KEY:
-            print(f"[SEARCHAPI] No API key configured, skipping")
+            olliePrint(f"[SEARCHAPI] No API key configured, skipping", show_banner=False)
             return None
         
-        print(f"[SEARCHAPI] Starting search for: '{query}'")
+        olliePrint(f"[SEARCHAPI] Starting search for: '{query}'", show_banner=False)
         
         results = []
         
@@ -1374,11 +1402,11 @@ def search_searchapi(query: str) -> dict:
                                 "source": "SearchAPI"
                             })
                             
-            print(f"[SEARCHAPI] Search completed: {len(results)} results")
+            olliePrint(f"[SEARCHAPI] Search completed: {len(results)} results", show_banner=False)
             return {"web": results, "news": []} if results else None # SearchAPI doesn't differentiate well
             
         except Exception as e:
-            print(f"[SEARCHAPI] Search failed: {e}")
+            olliePrint(f"[SEARCHAPI] Search failed: {e}", level='warning')
             return None
         
     except Exception as e:
@@ -1438,7 +1466,7 @@ def search_semantic_scholar(query: str) -> list:
                     "title": paper.get('title', 'No Title'), "snippet": snippet, "url": url, "source": "Semantic Scholar"
                 })
         
-        print(f"[SEMANTIC SCHOLAR] Success. Found {len(results)} academic papers.")
+        olliePrint(f"[SEMANTIC SCHOLAR] Success. Found {len(results)} academic papers.", show_banner=False)
         return results
         
     except Exception as e:
@@ -1470,7 +1498,7 @@ def search_news_apis(query: str) -> list:
             except Exception as e:
                 olliePrint(f"NewsAPI failed: {e}", level='warning')
         
-        print(f"[NEWSAPI] Success. Found {len(results)} news articles.")
+        olliePrint(f"[NEWSAPI] Success. Found {len(results)} news articles.", show_banner=False)
         return results
         
     except Exception as e:
@@ -1513,7 +1541,7 @@ def search_reddit(query: str) -> list:
             except Exception as e:
                 olliePrint(f"Reddit API failed: {e}", level='warning')
         
-        print(f"[REDDIT] Success. Found {len(results)} relevant posts.")
+        olliePrint(f"[REDDIT] Success. Found {len(results)} relevant posts.", show_banner=False)
         return results
         
     except Exception as e:
@@ -1545,7 +1573,7 @@ def search_stackoverflow(query: str) -> list:
                     "title": question.get('title', 'No Title'), "snippet": snippet, "url": link, "source": "Stack Overflow"
                 })
         
-        print(f"[STACKOVERFLOW] Success. Found {len(results)} relevant questions.")
+        olliePrint(f"[STACKOVERFLOW] Success. Found {len(results)} relevant questions.", show_banner=False)
         return results
         
     except Exception as e:
@@ -1559,10 +1587,10 @@ def search_youtube_transcripts(query: str) -> list:
         results = []
         
         if not config.YOUTUBE_API_KEY:
-            print(f"[YOUTUBE] No API key configured, skipping")
+            olliePrint(f"[YOUTUBE] No API key configured, skipping", show_banner=False)
             return []
         
-        print(f"[YOUTUBE] Starting search for: '{query}'")
+        olliePrint(f"[YOUTUBE] Starting search for: '{query}'", show_banner=False)
         
         try:
             search_params = {
@@ -1578,7 +1606,7 @@ def search_youtube_transcripts(query: str) -> list:
                 transcript_api_available = True
             except ImportError:
                 transcript_api_available = False
-                print(f"[YOUTUBE] WARNING: youtube-transcript-api not installed.")
+                olliePrint(f"[YOUTUBE] WARNING: youtube-transcript-api not installed.", level='warning')
             
             for item in search_data.get('items', []):
                 video_id = item['id']['videoId']
@@ -1599,7 +1627,7 @@ def search_youtube_transcripts(query: str) -> list:
                 snippet = f"Channel: {item['snippet']['channelTitle']}. Description: {item['snippet']['description'][:150]}... Transcript: {transcript_text[:200]}..."
                 results.append({"title": title, "snippet": snippet, "url": video_url, "source": "YouTube"})
                 
-            print(f"[YOUTUBE] Search completed: {len(results)} videos found")
+            olliePrint(f"[YOUTUBE] Search completed: {len(results)} videos found", show_banner=False)
             
         except Exception as e:
             olliePrint(f"YouTube API failed: {e}", level='warning')

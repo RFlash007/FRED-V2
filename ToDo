@@ -1,12 +1,66 @@
-- [ ] Bing API Key/Rework search_web_information
 - [ ] Fix Voice recognition
 - [ ] Research: What is Geospatial Searching?
 - [ ] Implement: Speaker Recognition
 - [ ] Personal: Fortnite Refund  
 - [ ] Work on Ollie-Tech
 - [ ] Test Synth pipeline
-- [ ] Decide when certain sources are necessary in SearchWeb Pipeline
-- [ ] Check for redundant links in searches
+
+- [ ] Knowledge Distillation Automation  
+   # Continuous background process converting complex patterns into efficient representations while preserving functionality
+
+- [ ] Information Elicitation  
+   # Techniques for gathering missing information:
+   - [ ] Progressive questioning based on knowledge gaps
+   - [ ] Clarification requests for ambiguous instructions  
+   - [ ] Preference elicitation for decision support
+
+- [ ] Topic Steering  
+   # Methods for productive conversations:
+   - [ ] Introducing relevant subtopics
+   - [ ] Refocusing wandering discussions
+   - [ ] Maintaining engagement through transitions
+
+- [ ] Context Fusion Engine  
+   # Integrates multimodal inputs (visual/audio/schedule/location) for comprehensive situational awareness
+
+- [ ] Speaker Diarization  
+   # Identifying and tracking individual speakers in multi-speaker conversations
+
+## Vision System Roadmap
+
+- [ ] Temporal & Contextual Memory
+- [ ] Dynamic Object Tracking  
+  # Maintain JSON state of key objects across frames  
+  Example state:  
+    ```json
+    {
+        "cup_on_table": {"state": "upright", "last_seen": "2024-07-29T10:00:05Z"},
+        "door": {"state": "closed", "last_seen": "2024-07-29T10:00:05Z"}
+    }
+    ```
+
+- [ ] Change Summaries  
+  # Generate concise human-readable descriptions of scene changes  
+  Example: "The cup was knocked over and door is now open"
+
+- [ ] Historical Context  
+  # Maintain rolling window of last 5-10 descriptions for richer context
+
+### Tier 3: Proactive Vision
+- [ ] Gaze-Informed Assistance  
+  # Use gaze coordinates to identify focused objects and suggest actions  
+  Example: "That's the Breville Barista Express. Need cleaning instructions?"
+
+- [ ] Anomaly Detection  
+  # Compare current scene against learned baseline of "normal"  
+  Prompt: "Given normal state `[summary]`, identify any anomalies"
+
+- [ ] Visual Question Answering  
+  # Immediate frame capture + processing for visual queries  
+  Example: "What's the wifi password on that sign?" → OCR extraction
+
+Notes:
+Concise prompts do not help, verbosity and in depth directions are key
 
 
 

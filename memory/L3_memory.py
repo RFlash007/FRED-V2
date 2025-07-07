@@ -6,6 +6,7 @@ import json
 import time
 import os # For potential environment variables later
 import threading
+import ollama
 from ollie_print import olliePrint_simple
 from contextlib import contextmanager
 from config import config # Import the config
@@ -13,11 +14,12 @@ from config import config # Import the config
 # --- Configuration ---
 # Set default path inside the memory folder
 DB_FILE = os.path.join('memory', 'memory.db')  # Default that can be overridden
-OLLAMA_EMBED_URL = os.getenv('OLLAMA_EMBED_URL', 'http://localhost:11434/api/embeddings')
-OLLAMA_GENERATE_URL = os.getenv('OLLAMA_GENERATE_URL', 'http://localhost:11434/api/generate')
 EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
 LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M') # As requested
 EMBEDDING_DIM = 768 # As specified for nomic-embed-text
+
+# Create a single client instance for all Ollama interactions in this module
+ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
 
 # How many similar nodes to check for automatic edge creation
 AUTO_EDGE_SIMILARITY_CHECK_LIMIT = 3
@@ -116,21 +118,14 @@ def init_db():
 def get_embedding(text):
     """Gets the embedding for a given text using the Ollama Embedding API."""
     try:
-        response = requests.post(
-            OLLAMA_EMBED_URL,
-            json={"model": EMBED_MODEL, "prompt": text},
+        response = ollama_client.embeddings(
+            model=EMBED_MODEL,
+            prompt=text
         )
-        response.raise_for_status()
-        embedding = response.json().get("embedding", [])
+        embedding = response.get("embedding", [])
         if len(embedding) != EMBEDDING_DIM:
             raise ValueError(f"Embedding dimension mismatch: expected {EMBEDDING_DIM}, got {len(embedding)}")
         return embedding
-    except requests.exceptions.RequestException as e:
-        olliePrint_simple(f"Error contacting Ollama Embedding API: {e}", level='error')
-        raise ConnectionError(f"Failed to get embedding from Ollama: {e}") from e
-    except ValueError as e:
-        olliePrint_simple(f"Embedding processing error: {e}", level='error')
-        raise ValueError(f"Embedding data error: {e}") from e
     except Exception as e:
         olliePrint_simple(f"An unexpected error occurred during embedding: {e}", level='error')
         raise RuntimeError(f"Unexpected error getting embedding: {e}") from e
@@ -138,38 +133,37 @@ def get_embedding(text):
 
 #Simple ollama call with JSON response
 def call_ollama_generate(prompt, model=LLM_DECISION_MODEL):
-    """Calls the Ollama generate API, expecting a JSON response."""
-    full_prompt = config.L3_EDGE_SYSTEM_PROMPT.format(prompt=prompt)
+    """Calls the Ollama chat API, expecting a JSON response."""
     try:
-        response = requests.post(
-            OLLAMA_GENERATE_URL,
-            json={
-                "model": model,
-                "prompt": full_prompt,
-                "stream": False, # Ensure we get the full response at once
-                "format": "json" # Explicitly request JSON format if API supports it
-            },
+        messages = [
+            {"role": "system", "content": config.L3_EDGE_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
+        
+        response = ollama_client.chat(
+            model=model,
+            messages=messages,
+            stream=False,
+            format="json" # Explicitly request JSON format
         )
-        response.raise_for_status()
-        response_data = response.json()
-        # Ollama generate returns the JSON string within the 'response' key
-        json_string = response_data.get("response")
-        if not json_string:
-             raise ValueError("Ollama response did not contain a 'response' field.")
+        
+        response_content = response.get('message', {}).get('content', '')
+        if not response_content:
+             raise ValueError("Ollama response did not contain any content.")
 
-        # Attempt to parse the JSON string
+        # Attempt to parse the JSON string from the content
         try:
-            parsed_json = json.loads(json_string)
+            # The 'format="json"' parameter should make the content a valid JSON object already
+            parsed_json = json.loads(response_content)
             return parsed_json
         except json.JSONDecodeError as json_e:
-            olliePrint_simple(f"Failed to parse JSON response from Ollama: {json_string}. Error: {json_e}", level='error')
-            raise ValueError(f"LLM returned invalid JSON: {json_string}") from json_e
+            olliePrint_simple(f"Failed to parse JSON response from Ollama: {response_content}. Error: {json_e}", level='error')
+            raise ValueError(f"LLM returned invalid JSON: {response_content}") from json_e
 
-    except requests.exceptions.RequestException as e:
-        olliePrint_simple(f"Error contacting Ollama Generate API ({OLLAMA_GENERATE_URL}, level='error'): {e}")
-        raise ConnectionError(f"Failed to get decision from Ollama: {e}") from e
     except Exception as e:
-        olliePrint_simple(f"An unexpected error occurred during Ollama generation: {e}", level='error')
+        # Catching generic exception as ollama library might raise its own specific errors
+        olliePrint_simple(f"An unexpected error occurred during Ollama chat: {e}", level='error')
+        # Re-raise as a generic runtime error to signal failure to the caller
         raise RuntimeError(f"Unexpected error during LLM generation: {e}") from e
 
 
@@ -206,6 +200,8 @@ def determine_edge_type_llm(source_node_info, target_node_info):
         target_info=target_info,
         relationship_definitions=rel_definitions
     )
+    
+    # This call no longer includes the system prompt directly, as it's handled inside call_ollama_generate
     try:
         response_json = call_ollama_generate(prompt)
         rel_type = response_json.get("relationship_type")

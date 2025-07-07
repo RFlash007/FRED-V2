@@ -20,6 +20,25 @@ from ollie_print import olliePrint_simple
 # Import memory tools for complete_research functionality
 from Tools import tool_add_memory, tool_read_webpage, TOOL_FUNCTIONS
 
+# Create a single client instance for all Ollama interactions in this module
+ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
+
+def _log_synthesis_event(conversation_path: str, event_type: str, data: dict):
+    """Helper to log synthesis events to the correct directory."""
+    if not conversation_path:
+        return
+    try:
+        events_log_path = Path(conversation_path) / "research_events.jsonl"
+        event = {
+            "timestamp": datetime.now().isoformat(),
+            "event_type": event_type,
+            "data": data
+        }
+        with open(events_log_path, 'a', encoding='utf-8') as f:
+            f.write(json.dumps(event, ensure_ascii=False) + '\n')
+    except Exception as e:
+        olliePrint_simple(f"Failed to log synthesis event: {e}", level='error')
+
 class ArchDelveState:
     """State management for A.R.C.H./D.E.L.V.E. research conversations with thinking removal."""
     
@@ -36,7 +55,21 @@ class ArchDelveState:
         # Create conversation storage directory
         self.conversation_dir = Path(config.ARCH_DELVE_CONVERSATION_STORAGE_PATH) / task_id
         self.conversation_dir.mkdir(parents=True, exist_ok=True)
+        self.events_log_path = self.conversation_dir / "research_events.jsonl"
     
+    def log_event(self, event_type: str, data: dict):
+        """Logs a structured event to a JSONL file for the research task."""
+        try:
+            event = {
+                "timestamp": datetime.now().isoformat(),
+                "event_type": event_type,
+                "data": data
+            }
+            with open(self.events_log_path, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(event, ensure_ascii=False) + '\n')
+        except Exception as e:
+            olliePrint_simple(f"Failed to log research event: {e}", level='error')
+
     def extract_think_content(self, text):
         """Extract thinking content from <think>...</think> tags."""
         if not text:
@@ -64,15 +97,11 @@ class ArchDelveState:
             
             self.conversation_history.append(turn)
             
-            # Manage thinking context per model (5 messages each)
+            # Manage thinking context per model (no longer limited)
             if model_type == 'arch':
                 self.arch_context.append(turn)
-                if len(self.arch_context) > config.ARCH_DELVE_MAX_CONVERSATION_MESSAGES:
-                    self.arch_context = self.arch_context[-config.ARCH_DELVE_MAX_CONVERSATION_MESSAGES:]
             elif model_type == 'delve':
                 self.delve_context.append(turn)
-                if len(self.delve_context) > config.ARCH_DELVE_MAX_CONVERSATION_MESSAGES:
-                    self.delve_context = self.delve_context[-config.ARCH_DELVE_MAX_CONVERSATION_MESSAGES:]
     
     def get_context_for_model(self, model_type: str) -> List[Dict]:
         """Get conversation context for specific model with only final outputs for cross-model communication."""
@@ -90,9 +119,12 @@ class ArchDelveState:
                 if turn['role'] == 'user':
                     messages.append({"role": "user", "content": turn['content']})
                 elif turn['role'] == 'assistant':
-                    # Always use clean content without thinking blocks for inter-model communication
-                    clean_content = turn['content']
-                    messages.append({"role": "assistant", "content": clean_content})
+                    # CRITICAL FIX: Reconstruct the full content with the thinking block
+                    # for the model's own past turns to enable cumulative reasoning.
+                    full_content = turn['content']
+                    if turn.get('thinking'):
+                        full_content = f"<think>{turn['thinking']}</think>\n{full_content}"
+                    messages.append({"role": "assistant", "content": full_content})
             
             return messages
     
@@ -125,48 +157,48 @@ class ArchDelveState:
 
 def log_tool_result(tool_name: str, arguments: dict, result: dict):
     """Logs the output of a tool call in a readable format."""
-    print("\n" + "="*25 + f" 📖 TOOL RESULT: {tool_name} " + "="*25)
+    olliePrint_simple("\n" + "="*25 + f" 📖 TOOL RESULT: {tool_name} " + "="*25)
     
     query = arguments.get('query', arguments.get('url', 'N/A'))
-    print(f"  ➡️  Input: {query}")
+    olliePrint_simple(f"  ➡️  Input: {query}")
 
     if not isinstance(result, dict) or 'success' not in result:
-        print(f"  ❌ Status: Failed (Invalid result format)")
-        print(f"  Raw Result: {result}")
-        print("="*70)
+        olliePrint_simple(f"  ❌ Status: Failed (Invalid result format)", level='warning')
+        olliePrint_simple(f"  Raw Result: {result}")
+        olliePrint_simple("="*70)
         return
 
     success = result.get('success', False)
     status = "✅ Success" if success else "❌ Failed"
-    print(f"  Status: {status}")
+    olliePrint_simple(f"  Status: {status}")
 
     if not success:
-        print(f"  Error: {result.get('error', 'Unknown error')}")
+        olliePrint_simple(f"  Error: {result.get('error', 'Unknown error')}", level='warning')
     else:
         # Handle structured search results from any search tool
         if "results" in result and isinstance(result["results"], list):
             search_results = result["results"]
-            print(f"\n  📄 Found {len(search_results)} results:")
-            print("-" * 40)
+            olliePrint_simple(f"\n  📄 Found {len(search_results)} results:")
+            olliePrint_simple("-" * 40)
             if not search_results:
-                print("   (No results returned)")
+                olliePrint_simple("   (No results returned)")
             else:
                 for i, res in enumerate(search_results[:5]): # Limit print to first 5
-                    print(f"  {i+1}. {res.get('title', 'No Title')}")
-                    print(f"     URL: {res.get('url', 'N/A')}")
-                    print(f"     Snippet: {res.get('snippet', 'N/A')[:200]}...")
-            print("-" * 40)
+                    olliePrint_simple(f"  {i+1}. {res.get('title', 'No Title')}")
+                    olliePrint_simple(f"     URL: {res.get('url', 'N/A')}")
+                    olliePrint_simple(f"     Snippet: {res.get('snippet', 'N/A')[:200]}...")
+            olliePrint_simple("-" * 40)
 
         # Handle read_webpage
         elif tool_name == "read_webpage":
             content = result.get("content", "")
-            print("\n  📄 Page Content:")
-            print("-" * 40)
-            print(content if content.strip() else "   (No content extracted)")
-            print("-" * 40)
-            print(f"  🔗 Links Found on Page: {result.get('links_found', 0)}")
+            olliePrint_simple("\n  📄 Page Content:")
+            olliePrint_simple("-" * 40)
+            olliePrint_simple(content if content.strip() else "   (No content extracted)")
+            olliePrint_simple("-" * 40)
+            olliePrint_simple(f"  🔗 Links Found on Page: {result.get('links_found', 0)}")
 
-    print("="*70)
+    olliePrint_simple("="*70)
 
 # Global storage for active research sessions
 active_research_sessions: Dict[str, ArchDelveState] = {}
@@ -185,7 +217,7 @@ def prepare_arch_messages(session: ArchDelveState) -> List[Dict]:
     """Prepare messages for A.R.C.H. with system prompt and task injection."""
     current_time_iso = datetime.now().isoformat()
     current_date_readable = datetime.now().strftime("%B %d, %Y")
-    print(f"[SYSTEM TIME] {current_time_iso}")
+    olliePrint_simple(f"[SYSTEM TIME] {current_time_iso}")
     
     messages = [
         {
@@ -233,7 +265,7 @@ def prepare_delve_messages(session: ArchDelveState, arch_instruction: str) -> Li
     })
     
     # Simplified debug output
-    print(f"\n[D.E.L.V.E. CONTEXT] {len(context_messages)} previous messages | Instruction: '{arch_instruction}'")
+    olliePrint_simple(f"\n[D.E.L.V.E. CONTEXT] {len(context_messages)} previous messages | Instruction: '{arch_instruction}'")
     
     return messages
 
@@ -277,26 +309,26 @@ def run_arch_iteration(session: ArchDelveState, ollama_client: ollama.Client) ->
         clean_content = session.strip_think_tags(raw_content)
         
         # Show A.R.C.H. thinking and instruction
-        print(f"\n[A.R.C.H. THINKING]:\n{thinking}")
-        print(f"\n[A.R.C.H. → D.E.L.V.E.]:\n{clean_content}")
-        print("-" * 70)
+        olliePrint_simple(f"\n[A.R.C.H. THINKING]:\n{thinking}")
+        olliePrint_simple(f"\n[A.R.C.H. → D.E.L.V.E.]:\n{clean_content}")
+        olliePrint_simple("-" * 70)
         
         # Check for completion tool call
         research_complete = False
         if tool_calls:
             for tool_call in tool_calls:
-                print(f"\n[A.R.C.H. TOOL CALL DEBUG]:")
-                print(f"  Full tool_call: {tool_call}")
+                olliePrint_simple(f"\n[A.R.C.H. TOOL CALL DEBUG]:")
+                olliePrint_simple(f"  Full tool_call: {tool_call}")
                 
                 # Safely extract tool name
                 tool_name = None
                 try:
                     tool_name = tool_call.get('function', {}).get('name')
                     if not tool_name:
-                        print(f"  ERROR: No tool name found in tool_call")
+                        olliePrint_simple(f"  ERROR: No tool name found in tool_call")
                         continue
                 except Exception as e:
-                    print(f"  ERROR: Failed to extract tool name: {e}")
+                    olliePrint_simple(f"  ERROR: Failed to extract tool name: {e}")
                     continue
                 
                 if tool_name == 'complete_research':
@@ -306,8 +338,8 @@ def run_arch_iteration(session: ArchDelveState, ollama_client: ollama.Client) ->
                     try:
                         raw_arguments = tool_call.get('function', {}).get('arguments', {})
                         
-                        print(f"  Raw arguments: {raw_arguments}")
-                        print(f"  Arguments type: {type(raw_arguments)}")
+                        olliePrint_simple(f"  Raw arguments: {raw_arguments}")
+                        olliePrint_simple(f"  Arguments type: {type(raw_arguments)}")
                         
                         if isinstance(raw_arguments, str):
                             # Try to clean up common JSON formatting issues
@@ -319,40 +351,40 @@ def run_arch_iteration(session: ArchDelveState, ollama_client: ollama.Client) ->
                             # Try to parse the JSON
                             try:
                                 arguments = json.loads(cleaned_args)
-                                print(f"  Parsed arguments: {arguments}")
+                                olliePrint_simple(f"  Parsed arguments: {arguments}")
                             except json.JSONDecodeError as json_err:
-                                print(f"  JSON parse error: {json_err}")
+                                olliePrint_simple(f"  JSON parse error: {json_err}")
                                 # Try manual extraction for comprehensive_findings
                                 import re
                                 findings_match = re.search(r'"comprehensive_findings"\s*:\s*"([^"]*)"', cleaned_args)
                                 if findings_match:
                                     arguments = {"comprehensive_findings": findings_match.group(1)}
-                                    print(f"  Manual extraction successful: {arguments}")
+                                    olliePrint_simple(f"  Manual extraction successful: {arguments}")
                                 else:
-                                    print(f"  Manual extraction failed")
+                                    olliePrint_simple(f"  Manual extraction failed")
                                     arguments = {"comprehensive_findings": "Error: No findings provided in tool call"}
                         elif isinstance(raw_arguments, dict):
                             arguments = raw_arguments
-                            print(f"  Using dict arguments: {arguments}")
+                            olliePrint_simple(f"  Using dict arguments: {arguments}")
                         else:
-                            print(f"  Unexpected arguments format: {type(raw_arguments)}")
+                            olliePrint_simple(f"  Unexpected arguments format: {type(raw_arguments)}")
                             arguments = {"comprehensive_findings": "Error: Invalid arguments format"}
                         
                         # Get findings and validate
                         findings = arguments.get('comprehensive_findings', '')
                         if not findings or findings.strip() == '':
-                            print(f"  ERROR: Empty findings provided!")
+                            olliePrint_simple(f"  ERROR: Empty findings provided!")
                             findings = "Error: No comprehensive findings provided. A.R.C.H. completed research without providing findings."
                         
-                        print(f"  Findings length: {len(findings)} characters")
+                        olliePrint_simple(f"  Findings length: {len(findings)} characters")
                         
                         session.final_findings = findings
                         session.research_complete = True
                         
-                        print(f"[A.R.C.H.] Research complete! Findings: {len(findings)} chars")
+                        olliePrint_simple(f"[A.R.C.H.] Research complete! Findings: {len(findings)} chars")
                         
                     except Exception as e:
-                        print(f"  Failed to parse arguments: {e}")
+                        olliePrint_simple(f"  Failed to parse arguments: {e}")
                         import traceback
                         traceback.print_exc()
                         findings = f"Error parsing completion arguments: {str(e)}"
@@ -361,17 +393,17 @@ def run_arch_iteration(session: ArchDelveState, ollama_client: ollama.Client) ->
                     
                     break
                 else:
-                    print(f"  ERROR: Unknown tool name: {tool_name}")
-                    print(f"  Available tools: complete_research")
-                    print(f"  A.R.C.H. should only use complete_research tool!")
+                    olliePrint_simple(f"  ERROR: Unknown tool name: {tool_name}")
+                    olliePrint_simple(f"  Available tools: complete_research")
+                    olliePrint_simple(f"  A.R.C.H. should only use complete_research tool!")
         
         # Handle empty A.R.C.H. responses
         if not clean_content.strip():
             if tool_calls:
-                print(f"[ERROR] A.R.C.H. used tools without providing delegation instructions!")
+                olliePrint_simple(f"[ERROR] A.R.C.H. used tools without providing delegation instructions!")
                 return "ERROR: A.R.C.H. completed research without delegating to D.E.L.V.E. first", False
             else:
-                print(f"[ERROR] A.R.C.H. provided no instruction!")
+                olliePrint_simple(f"[ERROR] A.R.C.H. provided no instruction!")
                 return "ERROR: No instruction provided", False
         
         # Store A.R.C.H.'s response
@@ -450,12 +482,12 @@ def run_delve_iteration(session: ArchDelveState, arch_instruction: str, ollama_c
             
             # Show D.E.L.V.E.'s full response
             if current_thinking:
-                print(f"\n[D.E.L.V.E. THINKING]:\n{current_thinking}")
+                olliePrint_simple(f"\n[D.E.L.V.E. THINKING]:\n{current_thinking}")
             if clean_content:
-                print(f"\n[D.E.L.V.E. RESPONSE]:\n{clean_content}")
+                olliePrint_simple(f"\n[D.E.L.V.E. RESPONSE]:\n{clean_content}")
             if tool_calls:
-                print(f"\n[D.E.L.V.E. TOOL CALLS] {len(tool_calls)} calls")
-            print("=" * 70)
+                olliePrint_simple(f"\n[D.E.L.V.E. TOOL CALLS] {len(tool_calls)} calls")
+            olliePrint_simple("=" * 70)
             
             if 'role' not in response_message:
                 response_message['role'] = 'assistant'
@@ -471,11 +503,11 @@ def run_delve_iteration(session: ArchDelveState, arch_instruction: str, ollama_c
                 tool_results_for_next_iteration = []
 
                 for i, tool_call in enumerate(tool_calls):
-                    print(f"\n[TOOL CALL {i+1}]")
+                    olliePrint_simple(f"\n[TOOL CALL {i+1}]")
                     
                     tool_name = tool_call.get('function', {}).get('name')
                     if not tool_name:
-                        print(f"  ERROR: No tool name found")
+                        olliePrint_simple(f"  ERROR: No tool name found")
                         tool_results_for_next_iteration.append({
                             "role": "tool", "tool_call_id": tool_call.get('id'),
                             "content": json.dumps({"success": False, "error": "Tool name missing."})
@@ -492,7 +524,7 @@ def run_delve_iteration(session: ArchDelveState, arch_instruction: str, ollama_c
                         else:
                             raise ValueError(f"Unexpected arguments format: {type(raw_arguments)}")
                     except Exception as e:
-                        print(f"  ERROR: Failed to parse arguments for {tool_name}: {e}")
+                        olliePrint_simple(f"  ERROR: Failed to parse arguments for {tool_name}: {e}")
                         tool_results_for_next_iteration.append({
                             "role": "tool", "tool_call_id": tool_call.get('id'),
                             "content": json.dumps({"success": False, "error": f"Argument parsing failed: {e}"})
@@ -503,20 +535,27 @@ def run_delve_iteration(session: ArchDelveState, arch_instruction: str, ollama_c
                     if tool_name in TOOL_FUNCTIONS:
                         try:
                             tool_function = TOOL_FUNCTIONS[tool_name]
-                            print(f"  Executing {tool_name} with args: {arguments}")
+                            olliePrint_simple(f"  Executing {tool_name} with args: {arguments}")
                             
                             result = tool_function(**arguments)
                             log_tool_result(tool_name, arguments, result)
                             
+                            # Log the tool call event
+                            session.log_event('tool_call', {
+                                'tool_name': tool_name,
+                                'arguments': arguments,
+                                'result': result
+                            })
+                            
                             tool_output_content = json.dumps(result)
                             
                         except Exception as e:
-                            print(f"  ERROR: Tool {tool_name} execution failed: {e}")
+                            olliePrint_simple(f"  ERROR: Tool {tool_name} execution failed: {e}")
                             import traceback
                             traceback.print_exc()
                             tool_output_content = json.dumps({"success": False, "error": f"Tool execution failed: {str(e)}"})
                     else:
-                        print(f"  ERROR: Unknown tool name: {tool_name}")
+                        olliePrint_simple(f"  ERROR: Unknown tool name: {tool_name}")
                         tool_output_content = json.dumps({"success": False, "error": f"Tool '{tool_name}' not found."})
 
                     tool_results_for_next_iteration.append({
@@ -546,6 +585,7 @@ def run_delve_iteration(session: ArchDelveState, arch_instruction: str, ollama_c
 
 def conduct_iterative_research(task_id: str, original_task: str) -> Dict:
     """Main function to conduct iterative A.R.C.H./D.E.L.V.E. research."""
+    session = None
     try:
         olliePrint_simple(f"[RESEARCH] Starting A.R.C.H./D.E.L.V.E. investigation...")
         olliePrint_simple(f"   Task ID: {task_id}")
@@ -553,9 +593,6 @@ def conduct_iterative_research(task_id: str, original_task: str) -> Dict:
         
         # Create research session
         session = create_research_session(task_id, original_task)
-        
-        # Initialize Ollama client
-        client = ollama.Client(host=config.OLLAMA_BASE_URL)
         
         # Iterative research loop
         iteration_count = 0
@@ -566,7 +603,7 @@ def conduct_iterative_research(task_id: str, original_task: str) -> Dict:
             olliePrint_simple(f"[RESEARCH] Iteration {iteration_count}/{max_iterations}")
             
             # A.R.C.H. provides direction
-            arch_response, is_complete = run_arch_iteration(session, client)
+            arch_response, is_complete = run_arch_iteration(session, ollama_client)
             
             if is_complete:
                 olliePrint_simple(f"[RESEARCH] A.R.C.H. declared research complete!")
@@ -574,50 +611,91 @@ def conduct_iterative_research(task_id: str, original_task: str) -> Dict:
             
             # A.R.C.H. and D.E.L.V.E. responses are now logged inside their respective functions
             # D.E.L.V.E. executes research
-            delve_response = run_delve_iteration(session, arch_response, client)
+            delve_response = run_delve_iteration(session, arch_response, ollama_client)
+
+            # CRITICAL FIX: Add D.E.L.V.E.'s report to A.R.C.H.'s context so it can analyze the findings.
+            session.add_conversation_turn('user', delve_response, 'arch')
         
-        # Check if research was completed
+        # After loop completion, finalize results
+        final_result = {}
         if session.research_complete:
             olliePrint_simple(f"[SUCCESS] Research completed in {iteration_count} iterations")
-            return {
+            final_result = {
                 'success': True,
-                'task_id': task_id,
                 'findings': session.final_findings,
-                'conversation_path': str(session.conversation_dir),
-                'iterations': iteration_count
+                'reason': 'completed'
             }
         else:
             olliePrint_simple(f"[WARNING] Research reached max iterations without completion", level='warning')
-            # Force completion with current conversation
-            final_findings = f"Research conducted over {iteration_count} iterations. Investigation covered multiple aspects of: {original_task}. See conversation log for detailed findings."
-            
-            return {
+            final_findings = f"Research inconclusive after {iteration_count} iterations. Task: {original_task}. Review logs for details."
+            final_result = {
                 'success': False,
-                'task_id': task_id,
                 'findings': final_findings,
-                'conversation_path': str(session.conversation_dir),
-                'iterations': iteration_count,
                 'reason': 'max_iterations_reached'
             }
+
+        # Common result fields
+        final_result.update({
+            'task_id': task_id,
+            'original_task': original_task,
+            'conversation_path': str(session.conversation_dir),
+            'iterations': iteration_count
+        })
         
+        # Save final report and findings text file
+        try:
+            # Save final summary
+            summary_file = session.conversation_dir / "research_summary.json"
+            with open(summary_file, 'w', encoding='utf-8') as f:
+                json.dump(final_result, f, indent=2, ensure_ascii=False)
+            
+            # Save readable findings
+            findings_file = session.conversation_dir / "research_findings.txt"
+            with open(findings_file, 'w', encoding='utf-8') as f:
+                f.write(f"Research Task: {original_task}\n")
+                f.write(f"Task ID: {task_id}\n")
+                f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"Success: {final_result.get('success', False)}\n")
+                f.write(f"Iterations: {iteration_count}\n")
+                f.write("=" * 80 + "\n")
+                f.write("FINAL RESEARCH FINDINGS:\n")
+                f.write("=" * 80 + "\n")
+                f.write(final_result.get('findings', 'No findings available'))
+        except Exception as e:
+            olliePrint_simple(f"Failed to save final research reports: {e}", level='error')
+            
+        return final_result
+
     except Exception as e:
         olliePrint_simple(f"Research system error: {e}", level='error')
-        return {
+        import traceback
+        traceback.print_exc()
+        # Return a consistent error structure
+        error_result = {
             'success': False,
             'task_id': task_id,
             'findings': f"Research system encountered an error: {str(e)}",
-            'conversation_path': None,
+            'conversation_path': str(session.conversation_dir) if session else None,
             'iterations': 0,
             'reason': 'system_error'
         }
+        if session:
+            try:
+                summary_file = session.conversation_dir / "research_summary.json"
+                with open(summary_file, 'w', encoding='utf-8') as f:
+                    json.dump(error_result, f, indent=2, ensure_ascii=False)
+            except Exception as save_e:
+                olliePrint_simple(f"Additionally failed to save error summary: {save_e}", level='error')
+        return error_result
     
     finally:
         # Clean up session
-        if task_id in active_research_sessions:
+        if session and task_id in active_research_sessions:
             del active_research_sessions[task_id]
 
 def synthesize_research_to_memory(research_result: Dict, original_task: str) -> str:
     """Convert research findings to L3 memory node using S.A.G.E. synthesis."""
+    conversation_path = research_result.get('conversation_path')
     try:
         olliePrint_simple("[S.A.G.E.] Synthesizing research findings for L3 memory...")
         
@@ -627,28 +705,37 @@ def synthesize_research_to_memory(research_result: Dict, original_task: str) -> 
             research_findings=research_result['findings']
         )
         
-        # Call S.A.G.E. for synthesis
-        response = requests.post(
-            config.OLLAMA_GENERATE_URL,
-            json={
-                "model": config.SAGE_MODEL,
-                "prompt": f"System: {config.SAGE_SYSTEM_PROMPT}\n\nUser: {synthesis_prompt}",
-                "stream": False,
-                "format": "json"
-            },
-            timeout=config.OLLAMA_TIMEOUT
-        )
-        response.raise_for_status()
+        # Call S.A.G.E. for synthesis using the modern chat client
+        messages = [
+            {"role": "system", "content": config.SAGE_SYSTEM_PROMPT},
+            {"role": "user", "content": synthesis_prompt}
+        ]
         
-        response_text = response.json().get("response", "").strip()
+        response = ollama_client.chat(
+            model=config.SAGE_MODEL,
+            messages=messages,
+            stream=False,
+            format="json"
+        )
+        
+        response_text = response.get('message', {}).get('content', '').strip()
         if not response_text:
             olliePrint_simple("[S.A.G.E.] No response from synthesis model", level='error')
             return ""
         
         try:
             synthesis_result = json.loads(response_text)
+            _log_synthesis_event(conversation_path, 'synthesis_output', {
+                'model': config.SAGE_MODEL,
+                'output': synthesis_result
+            })
         except json.JSONDecodeError as e:
             olliePrint_simple(f"[S.A.G.E.] Failed to parse synthesis JSON: {e}", level='error')
+            _log_synthesis_event(conversation_path, 'synthesis_error', {
+                'error': 'JSONDecodeError',
+                'message': str(e),
+                'raw_response': response_text
+            })
             return ""
         
         # Extract synthesized components
@@ -664,6 +751,13 @@ def synthesize_research_to_memory(research_result: Dict, original_task: str) -> 
             text=memory_text,
             memory_type=memory_type
         )
+        
+        _log_synthesis_event(conversation_path, 'l3_memory_add_attempt', {
+            'label': memory_label,
+            'text_length': len(memory_text),
+            'memory_type': memory_type,
+            'result': result
+        })
         
         # tool_add_memory returns a string, not a dict
         if result and "added with ID" in result:
@@ -684,11 +778,21 @@ def synthesize_research_to_memory(research_result: Dict, original_task: str) -> 
         # Fallback to simple storage if S.A.G.E. fails
         olliePrint_simple("[S.A.G.E.] Falling back to direct storage...", level='warning')
         try:
+            label = f"Research: {original_task[:100]}..."
+            text = research_result['findings']
             result = tool_add_memory(
-                label=f"Research: {original_task[:100]}...",
-                text=research_result['findings'],
+                label=label,
+                text=text,
                 memory_type="Semantic"
             )
+            
+            _log_synthesis_event(conversation_path, 'l3_memory_add_attempt_fallback', {
+                'label': label,
+                'text_length': len(text),
+                'memory_type': "Semantic",
+                'result': result
+            })
+
             if result and "added with ID" in result:
                 try:
                     return result.split("ID ")[-1]
@@ -696,4 +800,4 @@ def synthesize_research_to_memory(research_result: Dict, original_task: str) -> 
                     return "created"
         except Exception as fallback_error:
             olliePrint_simple(f"[S.A.G.E.] Fallback also failed: {fallback_error}", level='error')
-        return "" 
+        return ""

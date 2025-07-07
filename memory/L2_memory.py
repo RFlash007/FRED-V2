@@ -10,6 +10,7 @@ import numpy as np
 import requests
 import threading
 import uuid
+import ollama
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 from sklearn.metrics.pairwise import cosine_similarity
@@ -18,6 +19,9 @@ from ollie_print import olliePrint_simple
 
 # L2 Database path
 L2_DB_PATH = "memory/L2_episodic_cache.db"
+
+# Create a single client instance for all Ollama interactions in this module
+ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
 
 # Thread-safe state for rolling embeddings
 class L2State:
@@ -134,13 +138,11 @@ def init_l2_db():
 def get_embedding(text: str) -> Optional[np.ndarray]:
     """Get embedding for text using Ollama."""
     try:
-        response = requests.post(
-            config.OLLAMA_EMBED_URL,
-            json={"model": config.EMBED_MODEL, "prompt": text},
-            timeout=config.OLLAMA_TIMEOUT
+        response = ollama_client.embeddings(
+            model=config.EMBED_MODEL,
+            prompt=text
         )
-        response.raise_for_status()
-        embedding = response.json().get("embedding", [])
+        embedding = response.get("embedding", [])
         if len(embedding) != config.EMBEDDING_DIM:
             raise ValueError(f"Embedding dimension mismatch: expected {config.EMBEDDING_DIM}, got {len(embedding)}")
         return np.array(embedding, dtype=np.float32)
@@ -173,19 +175,19 @@ def analyze_conversation_chunk(messages: List[Dict], turn_start: int, turn_end: 
             messages_text=messages_text
         )
 
-        response = requests.post(
-            config.OLLAMA_GENERATE_URL,
-            json={
-                "model": config.L2_ANALYSIS_MODEL,
-                "prompt": f"System: {config.L2_ANALYSIS_SYSTEM_PROMPT}\n\nUser: {prompt}",
-                "stream": False,
-                "format": "json"
-            },
-            timeout=config.OLLAMA_TIMEOUT
+        chat_messages = [
+            {"role": "system", "content": config.L2_ANALYSIS_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
+
+        response = ollama_client.chat(
+            model=config.L2_ANALYSIS_MODEL,
+            messages=chat_messages,
+            stream=False,
+            format="json"
         )
-        response.raise_for_status()
         
-        response_text = response.json().get("response", "").strip()
+        response_text = response.get('message', {}).get('content', '').strip()
         if not response_text:
             return None
         
