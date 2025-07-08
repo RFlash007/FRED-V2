@@ -1214,6 +1214,7 @@ def search_brave(query: str) -> dict:
         
         web_results = []
         news_results = []
+        seen_urls = set()
         
         headers = {
             'X-Subscription-Token': config.BRAVE_SEARCH_API_KEY,
@@ -1245,8 +1246,9 @@ def search_brave(query: str) -> dict:
                     title = result.get('title', 'No Title')
                     snippet = result.get('description', '')
                     url = result.get('url', '')
-                    if url:
+                    if url and url not in seen_urls:
                         web_results.append({"title": title, "snippet": snippet, "url": url, "source": "Brave Web"})
+                        seen_urls.add(url)
             olliePrint(f"[BRAVE] Web search completed: {len(web_results)} results", show_banner=False)
             
         except Exception as e:
@@ -1275,8 +1277,9 @@ def search_brave(query: str) -> dict:
                     title = result.get('title', 'No Title')
                     snippet = result.get('description', '')
                     url = result.get('url', '')
-                    if url:
+                    if url and url not in seen_urls:
                         news_results.append({"title": title, "snippet": snippet, "url": url, "source": "Brave News"})
+                        seen_urls.add(url)
             olliePrint(f"[BRAVE] News search completed: {len(news_results)} results", show_banner=False)
             
         except Exception as e:
