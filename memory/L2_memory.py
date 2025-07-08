@@ -10,18 +10,16 @@ import numpy as np
 import requests
 import threading
 import uuid
-import ollama
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
 from sklearn.metrics.pairwise import cosine_similarity
-from config import config
+from config import config, ollama_manager
 from ollie_print import olliePrint_simple
 
 # L2 Database path
 L2_DB_PATH = "memory/L2_episodic_cache.db"
 
-# Create a single client instance for all Ollama interactions in this module
-ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
+# Use centralized Ollama connection manager for all L2 operations
 
 # Thread-safe state for rolling embeddings
 class L2State:
@@ -138,7 +136,8 @@ def init_l2_db():
 def get_embedding(text: str) -> Optional[np.ndarray]:
     """Get embedding for text using Ollama."""
     try:
-        response = ollama_client.embeddings(
+        client = ollama_manager.get_client()
+        response = client.embeddings(
             model=config.EMBED_MODEL,
             prompt=text
         )
@@ -180,7 +179,7 @@ def analyze_conversation_chunk(messages: List[Dict], turn_start: int, turn_end: 
             {"role": "user", "content": prompt}
         ]
 
-        response = ollama_client.chat(
+        response = ollama_manager.chat_concurrent_safe(
             model=config.L2_ANALYSIS_MODEL,
             messages=chat_messages,
             stream=False,

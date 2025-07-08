@@ -6,17 +6,14 @@ from decimal import Decimal # Added import for Decimal
 from duckduckgo_search import DDGS # Uncommented DuckDuckGo import
 # Import the librarian module
 import memory.L3_memory as L3
-from config import config
+from config import config, ollama_manager
 from ollie_print import olliePrint
 import uuid
 import concurrent.futures
 import threading
 import io
 from trafilatura import fetch_url, extract
-import ollama
-
-# Create a single client instance to be reused
-ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
+# Use centralized Ollama connection manager for all tool functions
 
 # Explicitly export search functions for direct import
 __all__ = [
@@ -1090,7 +1087,7 @@ def gist_summarize_source(source: str) -> str:
             {"role": "user", "content": config.GIST_USER_PROMPT.format(source=source)}
         ]
         
-        response = ollama_client.chat(
+        response = ollama_manager.chat_concurrent_safe(
             model=config.GIST_SUMMARY_MODEL,
             messages=messages,
             stream=False
@@ -1104,25 +1101,31 @@ def gist_summarize_source(source: str) -> str:
 
 def tool_read_webpage(url: str) -> dict:
     """Extract text from webpages or PDFs."""
+    error_prefix = f"Failed to read URL '{url}'. **MOVE ON TO A DIFFERENT LINK**."
     if url.lower().endswith('.pdf'):
         try:
             import pdfplumber
             import requests
             response = requests.get(url)
+            response.raise_for_status()
             with pdfplumber.open(io.BytesIO(response.content)) as pdf:
                 text = "\n".join(page.extract_text() for page in pdf.pages if page.extract_text())
+            if not text:
+                return {"success": False, "error": f"{error_prefix} Reason: PDF contained no extractable text."}
             return {"success": True, "url": url, "content": gist_summarize_source(text), "links_found": len(text.split())}
         except Exception as e:
-            return {"success": False, "error": f"PDF extraction failed: {e}"}
+            return {"success": False, "error": f"{error_prefix} Reason: PDF extraction failed. Details: {e}"}
     else:
         try:
             downloaded = fetch_url(url)
+            if not downloaded:
+                return {"success": False, "error": f"{error_prefix} Reason: Failed to download webpage content."}
             content = extract(downloaded, include_links=False)
             if not content:
-                return {"success": False, "error": "No content extracted"}
+                return {"success": False, "error": f"{error_prefix} Reason: No main content could be extracted from the webpage."}
             return {"success": True, "url": url, "content": gist_summarize_source(content), "links_found": len(content.split())}
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            return {"success": False, "error": f"{error_prefix} Reason: General error during webpage processing. Details: {e}"}
 
 # --- Tool Registry (finalized) ---
 TOOL_FUNCTIONS = {

@@ -1,5 +1,4 @@
 import os
-import ollama
 from flask import Flask, request, jsonify, Response, render_template, send_from_directory
 from flask_socketio import SocketIO, emit
 import json
@@ -72,7 +71,7 @@ from ollie_print import olliePrint, olliePrint_simple
 
 apply_theme()
 import time
-from config import config
+from config import config, ollama_manager
 
 # Import L2 and Agenda modules
 import memory.L2_memory as L2
@@ -565,7 +564,8 @@ def chat_endpoint():
             # Add user message to history
             fred_state.add_conversation_turn('user', user_message)
             
-            client = ollama.Client(host=ollama_base_url)
+            # Use centralized connection manager for efficient concurrent calls
+            client = ollama_manager.get_client(ollama_base_url)
             
             # Enhanced message preparation with C.R.A.P. memory management
             from memory.crap import prepare_messages_with_memory_context
@@ -577,7 +577,8 @@ def chat_endpoint():
             # Tool iteration loop
             sleep_cycle_triggered = False  # Initialize variable
             for iteration in range(max_tool_iterations):
-                response = client.chat(
+                response = ollama_manager.chat_concurrent_safe(
+                    host=ollama_base_url,
                     model=model_name,
                     messages=messages,
                     tools=FRED_TOOLS,
@@ -703,6 +704,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             
             # Generate final response if needed
             if not assistant_response:
+                # Note: Streaming not supported by connection manager, use direct client
                 final_stream = client.chat(
                     model=model_name,
                     messages=messages,

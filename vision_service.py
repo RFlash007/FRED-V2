@@ -5,7 +5,7 @@ import time
 from PIL import Image
 import ollama
 import numpy as np
-from config import config
+from config import config, ollama_manager
 from ollietec_theme import apply_theme
 from ollie_print import olliePrint_simple
 from persona_service import persona_service
@@ -32,8 +32,8 @@ class VisionService:
         self.vision_processing_lock = None  # Created lazily when needed
         self.currently_processing_vision = False
         
-        # Ollama client
-        self.ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
+        # Use centralized Ollama connection manager for vision processing
+        self.ollama_client = ollama_manager.get_client()
         
         # Processing task
         self.processing_task = None

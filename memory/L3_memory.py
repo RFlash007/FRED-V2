@@ -6,10 +6,9 @@ import json
 import time
 import os # For potential environment variables later
 import threading
-import ollama
 from ollie_print import olliePrint_simple
 from contextlib import contextmanager
-from config import config # Import the config
+from config import config, ollama_manager # Import the config and connection manager
 
 # --- Configuration ---
 # Set default path inside the memory folder
@@ -18,8 +17,7 @@ EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
 LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M') # As requested
 EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
-# Create a single client instance for all Ollama interactions in this module
-ollama_client = ollama.Client(host=config.OLLAMA_BASE_URL)
+# Use centralized Ollama connection manager for all L3 operations
 
 # How many similar nodes to check for automatic edge creation
 AUTO_EDGE_SIMILARITY_CHECK_LIMIT = 3
@@ -118,7 +116,8 @@ def init_db():
 def get_embedding(text):
     """Gets the embedding for a given text using the Ollama Embedding API."""
     try:
-        response = ollama_client.embeddings(
+        client = ollama_manager.get_client()
+        response = client.embeddings(
             model=EMBED_MODEL,
             prompt=text
         )
@@ -140,7 +139,7 @@ def call_ollama_generate(prompt, model=LLM_DECISION_MODEL):
             {"role": "user", "content": prompt}
         ]
         
-        response = ollama_client.chat(
+        response = ollama_manager.chat_concurrent_safe(
             model=model,
             messages=messages,
             stream=False,

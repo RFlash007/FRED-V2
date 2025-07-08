@@ -1,12 +1,11 @@
 import os
-import ollama
 import re
 import json
 import threading
 from datetime import datetime
 from typing import List, Dict, Optional
 from ollie_print import olliePrint_simple
-from config import config
+from config import config, ollama_manager
 import memory.L2_memory as L2
 
 # Import memory tools directly
@@ -177,6 +176,25 @@ CRAP_TOOLS = [
         "parameters": {
             "type": "object", "properties": {"url": {"type": "string", "description": "The complete URL of the webpage to read."}}, "required": ["url"]
         }
+    },
+    {
+        "name": "addTaskToAgenda",
+        "description": "Adds a research task to the proactive learning agenda for later processing by the ARCH/DELVE pipeline. Use when the user wants comprehensive research done on a topic.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "task_description": {
+                    "type": "string",
+                    "description": "Detailed description of the research task to be performed."
+                },
+                "priority": {
+                    "type": "integer",
+                    "description": "Priority level (1=highest, 5=lowest). Defaults to 2.",
+                    "default": 2
+                }
+            },
+            "required": ["task_description"]
+        }
     }
 ]
 
@@ -336,7 +354,7 @@ def run_crap_analysis(user_message, conversation_history, ollama_client):
         total_tool_calls_made = 0
         
         for iteration in range(max_tool_iterations):
-            response = ollama_client.chat(
+            response = ollama_manager.chat_concurrent_safe(
                 model="hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M",
                 messages=messages,
                 tools=CRAP_TOOLS,
@@ -421,7 +439,7 @@ Current analysis time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
         
         # Get final response if needed
         if not assistant_response:
-            final_response = ollama_client.chat(
+            final_response = ollama_manager.chat_concurrent_safe(
                 model="hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M",
                 messages=messages,
                 stream=False,
