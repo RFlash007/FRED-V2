@@ -7,15 +7,31 @@ As specified in Memory Upgrade Plan Section 4
 import duckdb
 import json
 import uuid
+import numpy as np
 import requests
 import threading
 from datetime import datetime
 from typing import List, Dict, Optional
-from config import config
+from config import config, ollama_manager
 from ollie_print import olliePrint_simple
 
 # Use L3 database for agenda tables (part of librarian.py database)
 AGENDA_DB_PATH = "memory/memory.db"
+AGENDA_DUPLICATE_THRESHOLD = 0.95  # Similarity threshold for detecting duplicate tasks
+
+def _cosine_similarity(v1, v2):
+    """Compute cosine similarity between two vectors."""
+    if v1 is None or v2 is None:
+        return 0.0
+    v1 = np.array(v1)
+    v2 = np.array(v2)
+    if np.all(v1 == 0) or np.all(v2 == 0):
+        return 0.0
+    norm_v1 = np.linalg.norm(v1)
+    norm_v2 = np.linalg.norm(v2)
+    if norm_v1 == 0 or norm_v2 == 0:
+        return 0.0
+    return np.dot(v1, v2) / (norm_v1 * norm_v2)
 
 def init_agenda_db():
     """Initialize agenda and notification tables in L3 database."""
@@ -28,6 +44,7 @@ def init_agenda_db():
                     status VARCHAR DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
                     priority INTEGER DEFAULT 2 CHECK (priority IN (1, 2)),
                     content TEXT NOT NULL,
+                    embedding BLOB,
                     source_conversation_id VARCHAR DEFAULT 'default_conversation',
                     created_at TIMESTAMP DEFAULT current_timestamp,
                     completed_at TIMESTAMP,
@@ -60,20 +77,52 @@ def init_agenda_db():
         olliePrint_simple(f"Failed to initialize agenda database: {e}", level='error')
         raise
 
-def add_task_to_agenda(task_description: str, priority: int = 2) -> str:
-    """Add a new task to the agenda."""
+def _is_duplicate_task(new_task_embedding: np.ndarray) -> bool:
+    """Check if a task with a similar embedding already exists."""
     try:
-        # Validate priority
+        with duckdb.connect(AGENDA_DB_PATH) as conn:
+            results = conn.execute("""
+                SELECT embedding 
+                FROM agenda_tasks 
+                WHERE status IN ('pending', 'processing') AND embedding IS NOT NULL
+            """).fetchall()
+
+            if not results:
+                return False
+
+            for (existing_embedding_bytes,) in results:
+                existing_embedding = np.frombuffer(existing_embedding_bytes, dtype=np.float32)
+                similarity = _cosine_similarity(new_task_embedding, existing_embedding)
+                
+                if similarity > AGENDA_DUPLICATE_THRESHOLD:
+                    olliePrint_simple(f"Duplicate agenda task detected with similarity: {similarity:.2f}", level='warning')
+                    return True
+        return False
+    except Exception as e:
+        olliePrint_simple(f"Error checking for duplicate agenda tasks: {e}", level='error')
+        return False
+
+def add_task_to_agenda(task_description: str, priority: int = 2) -> Optional[str]:
+    """Add a new task to the agenda if it's not a duplicate."""
+    try:
         if priority not in [1, 2]:
-            priority = 2  # Default to normal priority
+            priority = 2
+        
+        olliePrint_simple("Generating embedding for new agenda task...")
+        embedding_list = ollama_manager.embeddings(model=config.DEFAULT_EMBEDDING_MODEL, prompt=task_description)
+        new_task_embedding = np.array(embedding_list['embedding'], dtype=np.float32)
+
+        if _is_duplicate_task(new_task_embedding):
+            olliePrint_simple(f"Rejected duplicate task: {task_description[:100]}...")
+            return None
         
         task_id = f"agenda_{uuid.uuid4().hex[:12]}"
         
         with duckdb.connect(AGENDA_DB_PATH) as conn:
             conn.execute("""
-                INSERT INTO agenda_tasks (task_id, content, priority)
-                VALUES (?, ?, ?)
-            """, (task_id, task_description, priority))
+                INSERT INTO agenda_tasks (task_id, content, priority, embedding)
+                VALUES (?, ?, ?, ?)
+            """, (task_id, task_description, priority, new_task_embedding.tobytes()))
         
         priority_text = "IMPORTANT" if priority == 1 else "Normal"
         olliePrint_simple(f"Added {priority_text} task to agenda: {task_description[:100]}...")
@@ -81,7 +130,7 @@ def add_task_to_agenda(task_description: str, priority: int = 2) -> str:
         
     except Exception as e:
         olliePrint_simple(f"Failed to add task to agenda: {e}", level='error')
-        return ""
+        return None
 
 def get_pending_agenda_tasks(limit: int = None) -> List[Dict]:
     """Get pending tasks from the agenda."""

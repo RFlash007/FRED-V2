@@ -150,27 +150,6 @@ CRAP_TOOLS = [
         }
     },
     {
-        "name": "search_news",
-        "description": "Search for recent news articles and current events.",
-        "parameters": {
-            "type": "object", "properties": {"query": {"type": "string", "description": "Search query for news"}}, "required": ["query"]
-        }
-    },
-    {
-        "name": "search_academic",
-        "description": "Search for academic papers and research articles.",
-        "parameters": {
-            "type": "object", "properties": {"query": {"type": "string", "description": "Search query for academic content"}}, "required": ["query"]
-        }
-    },
-    {
-        "name": "search_forums",
-        "description": "Search forums and community discussion platforms like Reddit and Stack Overflow.",
-        "parameters": {
-            "type": "object", "properties": {"query": {"type": "string", "description": "Search query for forum discussions"}}, "required": ["query"]
-        }
-    },
-    {
         "name": "read_webpage",
         "description": "Extract content from a specific URL. Use after a search to read promising sources.",
         "parameters": {
@@ -336,13 +315,14 @@ def get_pending_tasks_alert():
         pass
     return ""
 
-def run_crap_analysis(user_message, conversation_history, ollama_client):
+def run_crap_analysis(user_message, conversation_history):
     """Run C.R.A.P. memory analysis and return structured database content."""
     try:
         olliePrint_simple(f"[C.R.A.P.] Analyzing conversation ({len(conversation_history)} turns)...")
         
         # Prepare messages for C.R.A.P.
-        messages = crap_state.prepare_crap_messages(user_message, conversation_history, ollama_client)
+        # This no longer needs the ollama_client passed in
+        messages = crap_state.prepare_crap_messages(user_message, conversation_history)
         
         # Add CRAP_USER_PROMPT as the first user message for continuous instruction
         messages.insert(1, {"role": "user", "content": CRAP_USER_PROMPT})
@@ -511,81 +491,4 @@ Analysis system offline.
 
 SYSTEM STATUS:
 The current time is: {current_time}
-(END FRED DATABASE)"""
-
-def prepare_messages_with_memory_context(system_prompt, user_message, ollama_client, from_pi_glasses=False):
-    """Prepare messages with C.R.A.P.-managed memory context for F.R.E.D."""
-    try:
-        # Import here to avoid circular dependency
-        import app
-        conversation_history = app.fred_state.get_conversation_history()
-        
-        # Run C.R.A.P. analysis to get database content
-        database_content = run_crap_analysis(user_message, conversation_history, ollama_client)
-        
-        # Apply F.R.E.D.'s normal thinking context logic to conversation
-        messages = [{"role": "system", "content": system_prompt}]
-        
-        # Add conversation history with F.R.E.D.'s thinking context (normal F.R.E.D. limits)
-        for i, turn in enumerate(conversation_history):
-            age = len(conversation_history) - i
-            
-            if turn['role'] == 'user':
-                messages.append({"role": "user", "content": turn['content']})
-            elif turn['role'] == 'assistant':
-                content = turn['content']
-                thinking = turn.get('thinking', '')
-                
-                if age <= 3 and thinking:
-                    # Recent messages: include full thinking
-                    full_content = f"<think>\n{thinking}\n</think>\n{content}"
-                    messages.append({"role": "assistant", "content": full_content})
-                else:
-                    # Oldest messages: no thinking context
-                    messages.append({"role": "assistant", "content": content})
-        
-        # Add visual context if from Pi glasses
-        if from_pi_glasses:
-            # Import here to avoid circular dependency
-            from vision_service import vision_service
-            visual_context = vision_service.get_current_visual_context()
-            enhanced_database = database_content.replace(
-                "(FRED DATABASE)",
-                f"(FRED DATABASE)\nCurrent Visual Context (Pi Glasses): {visual_context}\n"
-            )
-            database_content = enhanced_database
-        
-        # Format final user message with C.R.A.P.-provided database content
-        formatted_input = f"""(USER INPUT)
-{user_message}
-(END OF USER INPUT)
-
-{database_content}"""
-        
-        messages.append({"role": "user", "content": formatted_input})
-        return messages
-        
-    except Exception as e:
-        olliePrint_simple(f"[C.R.A.P.] Failed to prepare memory context: {e}", level='error')
-        
-        # Fallback to minimal context
-        messages = [{"role": "system", "content": system_prompt}]
-        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        fallback_input = f"""(USER INPUT)
-{user_message}
-(END OF USER INPUT)
-
-(FRED DATABASE)
-RELEVANT MEMORIES:
-Memory system unavailable.
-
-RECENT CONTEXT:
-Context analysis unavailable.
-
-SYSTEM STATUS:
-The current time is: {current_time}
-(END FRED DATABASE)"""
-        
-        messages.append({"role": "user", "content": fallback_input})
-        return messages 
+(END FRED DATABASE)""" 

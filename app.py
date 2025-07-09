@@ -566,10 +566,47 @@ def chat_endpoint():
             
             # Use centralized connection manager for efficient concurrent calls
             client = ollama_manager.get_client(ollama_base_url)
+
+            # New G.A.T.E. Triage Integration
+            from memory import gate
+            database_content = gate.run_gate_analysis(user_message, fred_state.get_conversation_history())
+
+            # Prepare messages for F.R.E.D. using the context from G.A.T.E./C.R.A.P.
+            messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+            # Add conversation history with thinking context
+            for turn in fred_state.get_conversation_history():
+                if turn['role'] == 'user':
+                    messages.append({"role": "user", "content": turn['content']})
+                elif turn['role'] == 'assistant':
+                    content = turn['content']
+                    thinking = turn.get('thinking', '')
+                    # Always include thinking if present, model will use what it needs
+                    if thinking:
+                        full_content = f"<think>\n{thinking}\n</think>\n{content}"
+                        messages.append({"role": "assistant", "content": full_content})
+                    else:
+                        messages.append({"role": "assistant", "content": content})
             
-            # Enhanced message preparation with C.R.A.P. memory management
-            from memory.crap import prepare_messages_with_memory_context
-            messages = prepare_messages_with_memory_context(SYSTEM_PROMPT, user_message, client, from_pi_glasses)
+            # Add visual context if from Pi glasses
+            if from_pi_glasses:
+                from vision_service import vision_service
+                visual_context = vision_service.get_current_visual_context()
+                if "(FRED DATABASE)" in database_content:
+                    database_content = database_content.replace(
+                        "(FRED DATABASE)",
+                        f"(FRED DATABASE)\nCurrent Visual Context (Pi Glasses): {visual_context}\n"
+                    )
+                else: # Fallback if C.R.A.P. fails to format
+                    database_content = f"(FRED DATABASE)\nCurrent Visual Context (Pi Glasses): {visual_context}\n{database_content}\n(END FRED DATABASE)"
+
+            # Format final user message with the retrieved database content
+            formatted_input = f"""(USER INPUT)
+{user_message}
+(END OF USER INPUT)
+
+{database_content}"""
+            messages.append({"role": "user", "content": formatted_input})
             
             assistant_response = ""
             raw_thinking = ""
