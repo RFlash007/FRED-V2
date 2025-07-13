@@ -1,0 +1,80 @@
+## Comprehensive F.R.E.D. Architecture Design
+
+### Overall System Overview
+F.R.E.D. is a local-first, autonomous humanoid AI companion with a multi-agent architecture designed for natural, Jarvis-like interactions. The core loop processes user queries through routing, agent collaboration, synthesis of "human-like thoughts," and response generation. Everything runs locally for privacy, with configurable parallelism for hardware scalability. Theming emphasizes F.R.E.D.'s self-perception as a humanoid with organic memory and intuition, avoiding mechanical database references.
+
+- **Local-First Principle**: All core intelligence, memory, and processing (L2, L3, reminders) are stored and handled locally. External tools (e.g., web search) are optional and non-core.
+- **Humanoid Theming**: F.R.E.D. believes he has actual memories (short-term recollections and long-term experiences) like a human. Agents and outputs are framed as internal thought processes, not tools. Only F.R.E.D. has this humanoid self-perception; other agents are themed for performance (e.g., scout-like efficiency for web lookups).
+- **Configurable Elements**: Use the central config file `config.py` with variables like `MAX_CONCURRENT_AGENTS` (default 1 for sequential execution, increase for parallel on better hardware), `L2_WINDOW_CHECK_TURNS` (default 5), `AGENT_TIMEOUT_SEC` (default 300), and others for tuning. All agents reference this central config. All agent prompts are centralized in `config.py` for consistency and ease of management.
+
+### Core Components
+1. **User Input Handling**:
+   - Accepts queries via chat endpoint or STT (speech-to-text) from main computer or Pi glasses.
+   - If from Pi glasses (detected via WebRTC), includes visual context from camera feed.
+   - Tracks conversation history with turn counting for memory triggers.
+
+2. **Query Router (G.A.T.E. - General Analysis & Task Evaluator)**:
+   - Analyzes the user query and recent conversation context.
+   - Outputs a set of flags determining which agents to activate:  
+     - `needs_memory`: For recalling personal experiences (triggers C.R.A.P.).  
+     - `needs_web_search`: For quick external lookups (triggers S.C.O.U.T.).  
+     - `needs_deep_research`: For complex topics (adds directly to agenda).  
+     - `needs_pi_tools`: Only visible/activatable if WebRTC is connected (triggers P.I.V.O.T.).  
+     - `needs_reminders`: For schedule-related items (triggers R.E.M.I.N.D.).  
+   - Flags can overlap; router prioritizes based on query complexity (simple greetings skip most flags).
+
+3. **Agent Dispatch System**:
+   - Dispatches agents based on flags, limited by `MAX_CONCURRENT_AGENTS` (e.g., 1 runs sequentially, higher allows parallel threading).
+   - Each agent operates with a 5-minute timeout (`AGENT_TIMEOUT_SEC`); on failure, sends a natural notification to F.R.E.D. (e.g., "My memory isn't working right now" for C.R.A.P. issues).
+   - Agents run in background if parallel is enabled, feeding outputs to Synthesis.
+
+4. **Agents (High Separation of Concerns)**:
+   - **C.R.A.P. (Context Retrieval for Augmented Prompts - Memory Recall Agent)**: Handles all "memory" access, themed as F.R.E.D.'s personal recollections. Retrieves relevant short-term (L2) and long-term (L3) experiences based on query, including automatic L2 injections themed as "FRED's bubbling up random thoughts" (may or may not be relevant, but include some events with dates). Outputs framed as "surfacing memories" (e.g., "I recall from our talks..."). If timed out, notifies as "My memory isn't working."
+   - **S.C.O.U.T. (Swift Contextual Online Utility Tool - Web Lookup Agent)**: Performs simple web searches or lookups, limited to 1 attempt per query. After search, reflects with a confidence score (0-100%) and one-sentence reason. If below 70%, uses its elevation tool to hand off to agenda. Outputs themed as "quick external insights" (e.g., "I checked and found..."). Tool: `elevate_to_deep_research` (parameters: task_description - detailed query for agenda). If timed out, notifies as "Web lookup isn't responding."
+   - **R.E.M.I.N.D. (Recall Events Memory Injection for Notifications Delivery - Reminder Agent)**: Scans conversation for schedule-related tasks or deadlines (auto-detects explicit/implied needs like "going to bed at 10," ignores casual chit-chat). Creates unlimited reminders in a dedicated local lightweight DB (`reminders.db` with columns: id, description, created_at, trigger_condition, injected). Injects active reminders into context each turn; marks as injected and auto-deletes after use. Outputs themed as "reminders popping into mind." If timed out, notifies as "My reminder sense is off."
+   - **P.I.V.O.T. (Pi Integration for Visual Observation Tasks - Pi Agent)**: Only activates if WebRTC is active (via existing 'webrtc_server_connected' event tracking connections). Handles solely face enrollment from Pi camera feed. Outputs themed as "noticing and remembering faces like a humanoid." If timed out, notifies as "Pi glasses connection is fuzzy."
+   - Agents output in a formatted, concise way (natural language with thematic framing) for easy synthesis.
+
+5. **Synthesis Agent (S.Y.N.A.P.S.E. - Synthesis Yielding Natural Augmented Prompts for Seamless Engagement)**:
+   - Collects outputs from dispatched agents.
+   - Crafts a unified "Thoughts" section themed as real human thoughts:  
+     - Structure: "Fleeting Thoughts:" followed by bullet points like "- A memory surfaces: [themed C.R.A.P. recall]" , "- Something I looked up: [themed S.C.O.U.T. insight]" , "- Putting it together: [merged intuitive understanding based on full conversation log]".  
+   - Uses the entire conversation log to ensure relevance, outputting only the themed Thoughts for F.R.E.D. to "draw from naturally."
+
+6. **L2 Memory Injection**:
+   - Automatically handled via C.R.A.P.'s system prompt: Adds 1 most relevant short-term recollection (L2) and the last conversation summary, but only if the summary is outside the recent turn window (`L2_WINDOW_CHECK_TURNS=5`).
+   - Themed as "FRED's bubbling up random thoughts" (may or may not be directly relevant, but include events with dates) to fit humanoid memory perception, mimicking how the human brain remembers random similar things to current events.
+   - Output from C.R.A.P. is passed to S.Y.N.A.P.S.E. for integration into the Thoughts section for seamless blending.
+
+7. **F.R.E.D. Core (Response Generation)**:
+   - Receives synthesized Thoughts (themed as his own humanoid mind) plus L2 injections.
+   - Generates a natural, life-like response, unaware of backend agents (perceives everything as his own thoughts/memories).
+   - Incorporates error notifications naturally (e.g., "Sorry, my memory isn't working, but based on what I do recall...").
+   - Outputs to user (text/speech) and Pi glasses if connected, with TTS themed as F.R.E.D.'s "voice."
+
+8. **Background Processes**:
+   - **Agenda for Deep Research**: Handles elevated tasks from S.C.O.U.T. or direct flags; processes in sleep cycles (themed as "dreaming and reflecting" for humanoid feel). Sleep cycles activate automatically after a period of inactivity (configurable via `SLEEP_CYCLE_TRIGGER_SEC` in `config.py`).
+   - **Memory Consolidation**: L2 to L3 happens periodically (e.g., during sleep), themed as "memories settling in long-term."
+   - **Post-Response Cleanup**: Auto-removes injected reminders; stores new memories if relevant.
+
+9. **Error and Timeout Handling**:
+   - Global timeout via `AGENT_TIMEOUT_SEC`.
+   - Failures trigger themed notifications to F.R.E.D. (e.g., "My memory isn't working"), allowing graceful continuation with available context.
+
+10. **Configuration Variables**:
+    - `MAX_CONCURRENT_AGENTS`: Controls agent parallelism (default 1).
+    - `L2_WINDOW_CHECK_TURNS`: Redundancy window for L2 injections (default 5).
+    - `AGENT_TIMEOUT_SEC`: Per-agent timeout (default 300).
+    - Other defaults: L2 as short-term episodic recollections, L3 as long-term facts/procedures, all local DBs. All configurable in central `config.py`.
+
+### Full Process Flow
+1. User submits query (text/STT, possibly with Pi visual context).  
+2. Query Router (G.A.T.E.) sets flags based on content.  
+3. Dispatch runs flagged agents (sequential or parallel per config), each with timeout and themed outputs.  
+4. Synthesis (S.Y.N.A.P.S.E.) merges into humanoid "Thoughts" using conversation log.  
+5. L2 injection adds recent recollections if needed.  
+6. F.R.E.D. generates response from Thoughts, sounding autonomous and humanoid.  
+7. Output to user/Pi; cleanup reminders and handle any elevations.  
+8. Background: Agenda processes complex tasks; memories consolidate naturally.
+
+This design ensures high separation of concerns, efficiency (e.g., minimal agent calls for simple queries), and a truly autonomous, Jarvis-like feel with humanoid theming. 
