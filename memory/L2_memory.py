@@ -257,27 +257,33 @@ def create_l2_summary(conversation_history: List[Dict], chunk_start: int, chunk_
                 trigger_reason
             ))
         
-        # Check if we need to clean up old L2 memories
+        # Check if we need to manage L2 memory capacity (soft-cap)
         with duckdb.connect(L2_DB_PATH) as conn:
             count_result = conn.execute("SELECT COUNT(*) FROM l2_episodic_summaries").fetchone()
             if count_result and count_result[0] > config.L2_MAX_MEMORIES:
-                # Remove oldest memories
-                to_remove = count_result[0] - config.L2_MAX_MEMORIES
+                # Calculate how many oldest non-consolidated memories to flag for consolidation
+                to_flag = count_result[0] - config.L2_MAX_MEMORIES
+                
+                # Flag the oldest non-consolidated memories as eligible for consolidation
                 conn.execute("""
-                    DELETE FROM l2_episodic_summaries 
+                    UPDATE l2_episodic_summaries
+                    SET eligible_for_consolidation = true
                     WHERE l2_id IN (
-                        SELECT l2_id FROM l2_episodic_summaries 
-                        ORDER BY created_at ASC 
+                        SELECT l2_id FROM l2_episodic_summaries
+                        WHERE eligible_for_consolidation = false
+                        ORDER BY created_at ASC
                         LIMIT ?
                     )
-                """, (to_remove,))
-        
-        # Mark old L2 entries as eligible for consolidation
+                """, (to_flag,))
+                olliePrint_simple(f"L2 soft-cap triggered: Flagged {to_flag} oldest unconsolidated L2s for immediate consolidation.", level='warning')
+
+
+        # Mark old L2 entries as eligible for consolidation based on age
         cutoff_date = datetime.now() - timedelta(days=config.L2_CONSOLIDATION_DAYS)
         with duckdb.connect(L2_DB_PATH) as conn:
             conn.execute("""
-                UPDATE l2_episodic_summaries 
-                SET eligible_for_consolidation = true 
+                UPDATE l2_episodic_summaries
+                SET eligible_for_consolidation = true
                 WHERE created_at < ? AND eligible_for_consolidation = false
             """, (cutoff_date,))
         
