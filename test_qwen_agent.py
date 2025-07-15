@@ -4,7 +4,7 @@ import playwright.sync_api
 import re
 import io
 import sys
-import ollama # Import ollama directly for manual interaction
+import ollama
 
 # --- Configuration (Consistent with config.py style) ---
 OLLAMA_BASE_URL = 'http://localhost:11434'
