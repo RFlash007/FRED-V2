@@ -415,7 +415,10 @@ def fred_speak(text, mute_fred=False, target_device='local'):
                 pass
 
         threading.Thread(target=delayed_cleanup, daemon=True).start()
-        fred_state.last_played_wav = output_path
+        try:
+            setattr(fred_state, 'last_played_wav', output_path)
+        except Exception:
+            pass
 
     except Exception as e:
         olliePrint_simple(f"TTS error: {e}", level='error')
@@ -567,9 +570,19 @@ def chat_endpoint():
             # Use centralized connection manager for efficient concurrent calls
             client = ollama_manager.get_client(ollama_base_url)
 
-            # New G.A.T.E. Triage Integration
+            # Get visual context if from Pi glasses
+            visual_context = ""
+            if from_pi_glasses:
+                from vision_service import vision_service
+                visual_context = vision_service.get_current_visual_context()
+
+            # New G.A.T.E. Multi-Agent Integration
             from memory import gate
-            database_content = gate.run_gate_analysis(user_message, fred_state.get_conversation_history())
+            fred_database = gate.run_gate_analysis(
+                user_message, 
+                fred_state.get_conversation_history(),
+                visual_context
+            )
 
             # Prepare messages for F.R.E.D. using the context from G.A.T.E./C.R.A.P.
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -588,24 +601,13 @@ def chat_endpoint():
                     else:
                         messages.append({"role": "assistant", "content": content})
             
-            # Add visual context if from Pi glasses
-            if from_pi_glasses:
-                from vision_service import vision_service
-                visual_context = vision_service.get_current_visual_context()
-                if "(FRED DATABASE)" in database_content:
-                    database_content = database_content.replace(
-                        "(FRED DATABASE)",
-                        f"(FRED DATABASE)\nCurrent Visual Context (Pi Glasses): {visual_context}\n"
-                    )
-                else: # Fallback if C.R.A.P. fails to format
-                    database_content = f"(FRED DATABASE)\nCurrent Visual Context (Pi Glasses): {visual_context}\n{database_content}\n(END FRED DATABASE)"
 
             # Format final user message with the retrieved database content
             formatted_input = f"""(USER INPUT)
 {user_message}
 (END OF USER INPUT)
 
-{database_content}"""
+{fred_database}"""
             messages.append({"role": "user", "content": formatted_input})
             
             assistant_response = ""
@@ -950,7 +952,7 @@ def run_app():
         stt_service.initialize()
     
     try:
-        socketio.run(app, host=config.HOST, port=config.PORT, debug=False, use_reloader=False)
+        socketio.run(app, host=config.HOST, port=config.PORT, debug=False, use_reloader=False, log_output=False)
     except Exception as e:
         olliePrint_simple(f"[CRITICAL] Mainframe startup failure: {e}")
 

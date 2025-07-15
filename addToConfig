@@ -1,0 +1,29 @@
+# Configuration constants to add to config.py for FRED multi-agent architecture
+
+# Agent System Configuration
+MAX_CONCURRENT_AGENTS = 1
+
+# Agent Error Messages (shown to the model)
+AGENT_ERRORS = {
+    "memory_failure": "My memory isn't working right now.",
+    "search_failure": "The web search failed.",
+    "reminder_failure": "The reminder system is unavailable.",
+    "pi_tools_failure": "Pi tools are not responding.",
+    "synthesis_failure": "Context synthesis failed."
+}
+
+# Agent-specific thresholds and limits
+SCOUT_CONFIDENCE_THRESHOLD = 70  # Below this triggers deep research escalation
+L2_RETRIEVAL_THRESHOLD = 0.6     # Minimum similarity for L2 memory retrieval
+SYNAPSE_MAX_BULLETS = 8          # Maximum bullet points in FRED DATABASE
+
+# Reminder system configuration
+REMINDER_KEYWORDS = [
+    "remind me", "schedule", "appointment", "meeting", "deadline",
+    "tomorrow", "next week", "later", "don't forget", "remember to"
+]
+
+REMINDER_ACKNOWLEDGMENT_PHRASES = [
+    "thanks", "got it", "okay", "ok", "sure", "alright", "understood",
+    "will do", "noted", "roger", "copy that"
+]
