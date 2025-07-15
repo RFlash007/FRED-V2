@@ -1,27 +1,27 @@
 import os
 import json5
-from qwen_agent.agents import Assistant
-from qwen_agent.tools.base import BaseTool, register_tool
-from qwen_agent.utils.output_beautify import typewriter_print
 import playwright.sync_api
 import re
+import io
+import sys
+import ollama # Import ollama directly for manual interaction
 
-# Ollama config from your setup
-llm_cfg = {
-    'model': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M',
-    'model_server': 'http://localhost:11434/v1',
-    'api_key': 'EMPTY',
-    'generate_cfg': {
-        'temperature': 0.6,
-        'top_p': 0.95,
-        'top_k': 20,
-        'max_tokens': 2048
-    }
+# --- Configuration (Consistent with config.py style) ---
+OLLAMA_BASE_URL = 'http://localhost:11434'
+DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'
+LLM_GENERATION_OPTIONS = {
+    'temperature': 0.6,
+    'top_p': 0.95,
+    'top_k': 20,
+    'num_ctx': 4096, # Context window
 }
 
-# Custom Headless Browser Tool
-@register_tool('headless_browser')
-class HeadlessBrowser(BaseTool):
+SYSTEM_PROMPT = """You are a helpful AI assistant. You have access to the following tools: headless_browser and code_interpreter. Use them to answer questions and perform tasks. Always prioritize using the most appropriate tool for the task."""
+
+# --- Custom Tools ---
+
+class HeadlessBrowser:
+    """Headless browser to navigate and extract content based on prompt."""
     description = 'Headless browser to navigate and extract content based on prompt.'
     parameters = [{
         'name': 'prompt',
@@ -31,95 +31,166 @@ class HeadlessBrowser(BaseTool):
     }]
 
     def call(self, prompt: str, **kwargs) -> str:
-        url = re.search(r'https?://\S+', prompt).group() if re.search(r'https?://\S+', prompt) else 'https://example.com'
-        print(f"[LOG] Browser Prompt: {prompt}")
+        """Executes the browser action and returns the result."""
+        url_match = re.search(r'https?://\S+', prompt)
+        url = url_match.group() if url_match else 'https://example.com'
+        print(f"[LOG] HeadlessBrowser: Prompt: {prompt}")
+        print(f"[LOG] HeadlessBrowser: Navigating to: {url}")
         
         with playwright.sync_api.sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             try:
-                # Simple example: assume prompt is "browse to {url}"
-                print(f"[LOG] Navigating to: {url}")
                 page.goto(url, timeout=30000)
                 title = page.title()
-                content = page.content()[:500]  # Truncate for logging
-                result = f"Title: {title}\nContent Snippet: {content}"
+                # Capture up to 1000 characters of visible text content for better context
+                content_snippet = page.inner_text('body')[:1000] 
+                result = f"Title: {title}\nContent Snippet: {content_snippet}"
             except Exception as e:
                 result = f"Error: {str(e)}"
             finally:
                 browser.close()
         
-        print(f"[LOG] Browser Result: {result}")
+        print(f"[LOG] HeadlessBrowser: Result: {result}")
         return json5.dumps({'result': result})
 
-# Generate bigger sample file for RAG
-def create_sample_doc():
-    sample_text = "This is placeholder text for a long document. " * 2000  # ~10k words
-    with open('sample_long_doc.txt', 'w') as f:
-        f.write(sample_text)
-    print("[LOG] Created sample_long_doc.txt")
+class CodeInterpreterTool:
+    """Executes Python code and returns the output."""
+    description = 'Executes Python code and returns the output.'
+    parameters = [{
+        'name': 'code',
+        'type': 'string',
+        'description': 'The Python code to execute.',
+        'required': True
+    }]
 
-# Test RAG
-def test_rag():
-    print("\n=== RAG Test ===")
-    create_sample_doc()
-    tools = []
-    files = ['sample_long_doc.txt']
-    bot = Assistant(llm=llm_cfg, function_list=tools, files=files)
-    
-    messages = [{'role': 'user', 'content': 'Summarize the document content.'}]
-    print(f"[LOG] RAG User Prompt: {messages}")
-    full_response = []
-    for chunk in bot.run(messages=messages):
-        full_response.append(chunk)
-    print(f"[LOG] Full RAG Response: {full_response}")
-    response_plain = ''
-    if full_response and full_response[-1] and full_response[-1][-1].get('content'):
-        response_plain = typewriter_print(full_response[-1][-1]['content'], response_plain)
-    else:
-        print("[LOG] No valid content in response.")
+    def call(self, code: str, **kwargs) -> str:
+        """Executes the provided Python code and captures its output/errors."""
+        print(f"[LOG] CodeInterpreterTool: Executing Code:\n{code}")
+        old_stdout = sys.stdout
+        redirected_output = io.StringIO()
+        sys.stdout = redirected_output
+        try:
+            exec(code, globals())
+            output = redirected_output.getvalue()
+            print(f"[LOG] CodeInterpreterTool: Output:\n{output}")
+            return json5.dumps({'output': output})
+        except Exception as e:
+            error_msg = f"Error: {str(e)}"
+            print(f"[LOG] CodeInterpreterTool: Error:\n{error_msg}")
+            return json5.dumps({'error': error_msg})
+        finally:
+            sys.stdout = old_stdout
 
-# Test Code Interpreter
-def test_code_interpreter():
-    print("\n=== Code Interpreter Test ===")
-    tools = ['code_interpreter']
-    bot = Assistant(llm=llm_cfg, function_list=tools)
-    
-    messages = [{'role': 'user', 'content': 'Plot and save a line graph for y = 2x + 1.'}]
-    print(f"[LOG] Code Interpreter User Prompt: {messages}")
-    full_response = []
-    for chunk in bot.run(messages=messages):
-        full_response.append(chunk)
-    print(f"[LOG] Full Code Interpreter Response: {full_response}")
-    response_plain = ''
-    if full_response and full_response[-1] and full_response[-1][-1].get('content'):
-        response_plain = typewriter_print(full_response[-1][-1]['content'], response_plain)
-    else:
-        print("[LOG] No valid content in response.")
+# --- Tool Schemas for Ollama ---
+# Dynamically generate tool schemas from the tool classes
+TOOL_SCHEMAS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "headless_browser",
+            "description": HeadlessBrowser.description,
+            "parameters": {
+                "type": "object",
+                "properties": {param['name']: {k:v for k,v in param.items() if k != 'required'} for param in HeadlessBrowser.parameters},
+                "required": [param['name'] for param in HeadlessBrowser.parameters if param.get('required', False)]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "code_interpreter",
+            "description": CodeInterpreterTool.description,
+            "parameters": {
+                "type": "object",
+                "properties": {param['name']: {k:v for k,v in param.items() if k != 'required'} for param in CodeInterpreterTool.parameters},
+                "required": [param['name'] for param in CodeInterpreterTool.parameters if param.get('required', False)]
+            }
+        }
+    }
+]
 
-# Test Headless Browser
-def test_browser():
-    print("\n=== Headless Browser Test ===")
-    tools = ['headless_browser']
-    bot = Assistant(llm=llm_cfg, function_list=tools)
-    
-    user_prompt = input("Enter a browser prompt (e.g., 'browse to https://github.com'): ")
-    messages = [{'role': 'user', 'content': user_prompt}]
-    print(f"[LOG] Browser User Prompt: {messages}")
-    full_response = []
-    try:
-        for chunk in bot.run(messages=messages):
-            full_response.append(chunk)
-        print(f"[LOG] Full Browser Response: {full_response}")
-        response_plain = ''
-        if full_response and full_response[-1] and full_response[-1][-1].get('content'):
-            response_plain = typewriter_print(full_response[-1][-1]['content'], response_plain)
-        else:
-            print("[LOG] No valid content in response.")
-    except Exception as e:
-        print(f"[LOG] Browser Error: {str(e)}. Consider using async Playwright for compatibility.")
+# Map tool names to their instances for manual execution
+TOOL_FUNCTIONS_MAP = {
+    "headless_browser": HeadlessBrowser(),
+    "code_interpreter": CodeInterpreterTool()
+}
 
+# --- Main Prototyping Function ---
+
+def test_ollama_with_custom_tools():
+    """Tests Ollama's tool-calling capabilities with custom headless browser and code interpreter tools."""
+    print("\n=== Ollama with Custom Tools Test Environment ===")
+    print("Configuration:")
+    print(f"  Model: {DEFAULT_MODEL}")
+    print(f"  Ollama URL: {OLLAMA_BASE_URL}")
+    print(f"  Generation Options: {LLM_GENERATION_OPTIONS}")
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": "Plot y = x^2 using matplotlib and save it to 'parabola.png', then browse to https://www.python.org/ and tell me the title and a brief summary of the content."}
+    ]
+
+    max_iterations = 5
+    for iteration in range(max_iterations):
+        print(f"\n--- Iteration {iteration + 1}/{max_iterations} ---")
+        print("Sending messages to Ollama...")
+        
+        try:
+            # Make the chat call to Ollama with our custom tools
+            response = ollama.chat(
+                model=DEFAULT_MODEL,
+                messages=messages,
+                tools=TOOL_SCHEMAS, # Pass our custom tool schemas
+                options=LLM_GENERATION_OPTIONS
+            )
+            
+            response_message = response.get('message', {})
+            model_content = response_message.get('content')
+            tool_calls = response_message.get('tool_calls')
+
+            # If the model provides content, add it to history and print
+            if model_content:
+                print(f"Model Response: {model_content}")
+                messages.append({"role": "assistant", "content": model_content})
+
+            # If the model requested tool calls, execute them
+            if tool_calls:
+                print(f"Model requested {len(tool_calls)} tool(s).")
+                tool_outputs = []
+                for tool_call in tool_calls:
+                    function_name = tool_call['function']['name']
+                    tool_arguments = tool_call['function']['arguments']
+                    tool_call_id = tool_call['id'] # Capture tool call ID for response
+
+                    if function_name in TOOL_FUNCTIONS_MAP:
+                        tool_instance = TOOL_FUNCTIONS_MAP[function_name]
+                        print(f"Executing tool: {function_name} with args: {tool_arguments}")
+                        result_content = tool_instance.call(**tool_arguments)
+                        tool_outputs.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call_id, 
+                            "content": result_content
+                        })
+                    else:
+                        error_msg = f"Tool not found: {function_name}"
+                        print(f"Error: {error_msg}")
+                        tool_outputs.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": json5.dumps({'error': error_msg})
+                        })
+                # Add tool outputs to messages for the next turn
+                messages.extend(tool_outputs)
+            else:
+                print("No more tool calls. Conversation complete.")
+                break
+
+        except Exception as e:
+            print(f"An error occurred during Ollama interaction: {e}")
+            break
+
+# --- Script Entry Point ---
 if __name__ == "__main__":
-    #test_rag()
-    #test_code_interpreter()
-    test_browser()
+    test_ollama_with_custom_tools()

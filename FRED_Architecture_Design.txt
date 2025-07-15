@@ -1,86 +1,132 @@
-## Comprehensive F.R.E.D. Architecture Design (Clarified)
+1. Core Flow
+User Input Handling
 
-### Overall System Overview
-F.R.E.D. is a local‑first, autonomous humanoid AI assistant. Every query flows through a set of agents whose outputs are combined into “Thoughts,” giving F.R.E.D. the illusion of human memory and intuition. All data—L2 short‑term summaries, L3 long‑term memories, and reminders—reside locally. External searches are optional helpers. Configuration is centralized in `config.py`.
+Accepts chat or speech. If Pi glasses are connected via WebRTC, an image frame is processed by the Vision agent and the resulting description is injected into the FRED DATABASE.
 
-### Core Components
+Query Router (G.A.T.E.)
 
-1. **User Input Handling**
-   - Accepts chat or speech. If Pi glasses are connected (WebRTC), also provides visual context.
-   - Conversation turns are counted to trigger L2 and reminder checks.
+Examines the user query and recent conversation summaries.
 
-2. **Query Router (G.A.T.E.)**
-   - Runs first on every user query.
-   - Examines the query and recent conversation summaries.
-   - Returns a JSON object:
+Produces a JSON with flags: needs_memory, needs_web_search, needs_deep_research, needs_pi_tools, needs_reminders.
 
-     ```json
-     {
-       "needs_memory": true|false,
-       "needs_web_search": true|false,
-       "needs_deep_research": true|false,
-       "needs_pi_tools": true|false,
-       "needs_reminders": true|false
-     }
-     ```
+If needs_deep_research is flagged or S.C.O.U.T. escalates, the task is added to the agenda queue for processing during the next sleep cycle.
 
-   - These flags decide which agents the dispatcher activates.
+Agent Dispatch System
 
-3. **Agent Dispatch System**
-   - Spawns each required agent in its own thread (no additional per‑thread timeouts).
-   - Maximum parallel agents controlled by `MAX_CONCURRENT_AGENTS` in `config.py`.
-   - Any agent failure generates a natural notice for F.R.E.D. (e.g., “My memory isn’t working right now”).
+Launches required agents in parallel threads (up to MAX_CONCURRENT_AGENTS in config.py).
 
-4. **Agents**
+On failure or timeout, each agent produces an error string which F.R.E.D. can phrase naturally (e.g., “My memory isn’t working right now”).
+These error strings are customizable via new constants in config.py and are printed to the console for troubleshooting.
 
-   - **C.R.A.P. (Context Retrieval for Augmented Prompts)** – Memory recall. Pulls L2 short‑term memories and relevant L3 facts. Adds the single most relevant L2 summary plus the most recent summary. If C.R.A.P. runs, its output flows through S.Y.N.A.P.S.E. before reaching F.R.E.D.
+Agents
 
-   - **S.C.O.U.T. (Swift Contextual Online Utility Tool)** – Quick web lookup. Performs one search attempt and returns a short insight (one or more sentences) with a 0–100 confidence score. If confidence <70%, it automatically calls `elevate_to_deep_research` to add the query to the agenda.
+C.R.A.P.
 
-   - **R.E.M.I.N.D. (Recall Events Memory Injection for Notifications Delivery)** – Reminder manager. Parses conversation for schedule or task requests, supporting full CRUD. Timestamps use ISO format. Active reminders are injected into the FRED Database every turn until acknowledged, and F.R.E.D. brings them up at an opportune moment.
+Retrieves L2 summaries and relevant L3 memories.
 
-   - **P.I.V.O.T. (Pi Integration for Visual Observation Tasks)** – Pi‑only actions. Currently limited to `enroll_person` when the glasses are connected.
+It always injects the most recent L2 summary and one additional L2 summary that has the highest semantic similarity to the user’s query. No minimum similarity threshold is required; simply choose the top-scoring summary.
 
-5. **Synthesis Agent (S.Y.N.A.P.S.E. - Synthesis Yielding Natural Augmented Prompts for Seamless Engagement)**
-   - Runs every turn.
-   - Gathers outputs from all active agents (including L2-only routes).
-   - Produces bullet points as “Fleeting Thoughts:”  
-     - Each bullet references a memory, web lookup, or reminder.  
-     - Final bullet: “Putting it together…” summarizing the combined insight.
-   - This Thoughts block becomes F.R.E.D.’s internal context.
+Additional L3 memories are retrieved if their similarity is above L2_RETRIEVAL_THRESHOLD.
 
-6. **F.R.E.D. (Funny Rude Educated Droid) Core**
-   - Receives the Thoughts from S.Y.N.A.P.S.E. and any Pi visual description.
-   - Responds as a sarcastic but helpful assistant. Agent outputs are phrased as his own memories or observations—never mentioning the agents.
-   - When agenda research completes, F.R.E.D. says “I looked into it while you were away…” before sharing the findings.
+S.C.O.U.T.
 
-7. **L2 Memory Handling**
-   - L2 summaries are always routed through S.Y.N.A.P.S.E.  
-     - If C.R.A.P. is triggered, L2 feeds into C.R.A.P. first, then S.Y.N.A.P.S.E.  
-     - If not, L2 goes straight to S.Y.N.A.P.S.E.
-   - C.R.A.P. also adds any highly relevant L3 memories.
+Performs a single quick web search.
 
-8. **Background Processes**
-   - **Agenda & Deep Research** – Tasks from S.C.O.U.T. with low confidence (<70%) or direct user requests run offline via ARCH/DELVE. Results appear later in conversation as F.R.E.D.’s recollections.
-   - **Memory Consolidation** – Periodically moves older L2 memories into L3.
-   - **Reminder Cleanup** – After a reminder is acknowledged, R.E.M.I.N.D. deletes it from the database.
+Produces a 0–100 confidence score, estimated by the LLM, for its short answer.
 
-9. **Error & Timeout Handling**
-   - Global timeouts are defined in `config.py`. If any agent fails, F.R.E.D. mentions the issue in natural language but continues with available context.
+If confidence <70, it automatically calls elevate_to_deep_research to add the query to the agenda.
 
-10. **Persona Rules**
-    - F.R.E.D. treats agent outputs as his own memories. He never references the agents by name.
-    - When presenting finished research he says it was done “while you were away.”
+R.E.M.I.N.D.
 
-### Full Process Flow
+Monitors conversation text for scheduling or task language (e.g., “remind me to,” “schedule,” dates/times).
 
-1. User sends a query.
-2. G.A.T.E. returns routing flags.
-3. Dispatcher launches the necessary agents in parallel threads.
-4. Agents finish and send their outputs to S.Y.N.A.P.S.E.
-5. S.Y.N.A.P.S.E. compiles “Fleeting Thoughts” bullets.
-6. F.R.E.D. reads the Thoughts (and any visual context) and crafts a response.
-7. Completed reminders or research tasks are mentioned naturally.
-8. Background tasks (agenda research, memory consolidation) run between turns.
+Reminders persist in the database until the user says anything that implies acknowledgment—e.g., “thanks,” “got it,” or “okay.”
 
-This clarified plan ensures each agent’s role is unambiguous, L2 context always flows through S.Y.N.A.P.S.E., reminders persist until acknowledged, and deep research triggers automatically from low-confidence web lookups. The overall system provides a cohesive humanoid experience while remaining fully local.
+Acknowledged reminders are deleted automatically.
+
+P.I.V.O.T.
+
+Handles Pi‑specific commands (currently enroll_person only).
+
+S.Y.N.A.P.S.E.
+
+Runs every turn.
+
+Receives outputs from all active agents plus L2 summaries.
+
+Generates a Fleeting Thoughts block of bullet points that read like F.R.E.D.’s own passing thoughts:
+
+Bullets may mention recalled memories, web lookups, reminders, or visual observations.
+
+The final bullet is always “Putting it together…” summarizing the overall insight.
+
+The entire block forms the FRED DATABASE portion of the prompt.
+
+F.R.E.D. Core
+
+Receives the user text plus FRED DATABASE.
+
+Responds with a short, sarcastic but helpful answer, never mentioning agents.
+
+If new research findings are available from the agenda system, he begins with “I looked into it while you were away…” before explaining.
+
+Background Processes
+
+Agenda & Deep Research
+
+Items queued from S.C.O.U.T. or user requests run during the next sleep cycle.
+
+Results are stored automatically in L3 memory. A “Done” list maps agenda items to their resulting node IDs so F.R.E.D. can mention them later.
+
+Memory Consolidation
+
+Periodically moves older L2 summaries to L3.
+
+Reminder Cleanup
+
+Removes acknowledged reminders from the database.
+
+Visual Context Injection
+
+The Vision agent outputs a short scene description (2–3 sentences).
+
+This description is inserted into the FRED DATABASE together with memory and reminder bullets so that F.R.E.D. perceives it as part of his own recollection.
+
+2. Prompt Structure (“Humanoid” Style)
+A typical prompt to F.R.E.D. now resembles:
+
+[User query or previous dialog]
+
+(FRED DATABASE)
+• [Memory or reminder bullet]
+• [Web lookup insight]
+• [Visual observation, if any]
+• Putting it together... [short summary]
+(END FRED DATABASE)
+The bullet list reads like fleeting thoughts F.R.E.D. is recalling in his mind, reinforcing the illusion that he is accessing personal memories.
+
+3. Configuration Updates (config.py)
+Add strings for customizable error messages, e.g.:
+
+AGENT_ERRORS = {
+    "memory_failure": "My memory isn't working right now.",
+    "search_failure": "The web search failed."
+}
+Ensure MAX_CONCURRENT_AGENTS and any new constants are set here.
+
+4. Open Questions Resolved
+L2 Summary Selection: Always include the latest summary plus whichever summary has the highest semantic similarity; no additional filtering threshold is required.
+
+S.C.O.U.T. Elevation: Confidence <70 triggers elevate_to_deep_research automatically.
+
+Reminder Parsing: Based on conversation text. A simple “thanks” counts as acknowledgment.
+
+S.Y.N.A.P.S.E. Bullets: Format as F.R.E.D.’s own thoughts. No fixed ordering beyond the final “Putting it together…” bullet.
+
+Deep Research Queue: Unlimited tasks. They run during sleep cycles and results are stored in L3 with references in a “Done” list.
+
+Error Messages: Customizable via config.py, logged to console for debugging.
+
+Visual Context: Injected into the FRED DATABASE bullet list so F.R.E.D. perceives it as a memory.
+
+This finalized plan specifies every design choice necessary for implementation and aligns the entire system with the desired “humanoid” style of F.R.E.D.’s behavior.
