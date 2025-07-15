@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""
-A.R.C.H./D.E.L.V.E. Research System Test Script
-Simple console interface for testing the iterative research system
-"""
+"""A.R.C.H./D.E.L.V.E. research demo (not part of automated tests)."""
+
+import pytest
+pytest.skip("manual integration script", allow_module_level=True)
 
 import sys
 import uuid
