@@ -21,38 +21,81 @@ SYSTEM_PROMPT = """You are a helpful AI assistant. You have access to the follow
 # --- Custom Tools ---
 
 class HeadlessBrowser:
-    """Headless browser to navigate and extract content based on prompt."""
-    description = 'Headless browser to navigate and extract content based on prompt.'
-    parameters = [{
-        'name': 'prompt',
-        'type': 'string',
-        'description': 'Prompt like "go to URL and extract title"',
-        'required': True
-    }]
+    """Stateless headless browser with a small set of explicit actions."""
 
-    def call(self, prompt: str, **kwargs) -> str:
-        """Executes the browser action and returns the result."""
-        url_match = re.search(r'https?://\S+', prompt)
-        url = url_match.group() if url_match else 'https://example.com'
-        print(f"[LOG] HeadlessBrowser: Prompt: {prompt}")
-        print(f"[LOG] HeadlessBrowser: Navigating to: {url}")
-        
+    description = 'Headless browser that can load a page, optionally click an element, and return the text.'
+    parameters = [
+        {
+            'name': 'url',
+            'type': 'string',
+            'description': 'Page to open',
+            'required': True
+        },
+        {
+            'name': 'action',
+            'type': 'string',
+            'description': '"goto" (default) just loads the page, "click" clicks the first element matching selector',
+            'enum': ['goto', 'click'],
+            'required': False
+        },
+        {
+            'name': 'selector',
+            'type': 'string',
+            'description': 'CSS selector used with the "click" action',
+            'required': False
+        },
+        {
+            'name': 'extract',
+            'type': 'boolean',
+            'description': 'If true, return the visible text from the page body',
+            'required': False
+        }
+    ]
+
+    def call(
+        self,
+        url: str,
+        action: str = 'goto',
+        selector: str | None = None,
+        extract: bool = True,
+        **kwargs,
+    ) -> str:
+        """Launch a temporary browser, perform the action, and return page text."""
+
+        print(f"[LOG] HeadlessBrowser: action={action}, url={url}, selector={selector}, extract={extract}")
+
         with playwright.sync_api.sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             page = browser.new_page()
             try:
                 page.goto(url, timeout=30000)
-                title = page.title()
-                # Capture up to 1000 characters of visible text content for better context
-                content_snippet = page.inner_text('body')[:1000] 
-                result = f"Title: {title}\nContent Snippet: {content_snippet}"
+
+                # Follow a link or press a button if requested
+                if action == 'click' and selector:
+                    try:
+                        page.click(selector, timeout=5000)
+                    except Exception as e:
+                        browser.close()
+                        error_msg = f"Error during click: {str(e)}"
+                        print(f"[LOG] HeadlessBrowser: {error_msg}")
+                        return json5.dumps({'error': error_msg})
+
+                text_content = ''
+                if extract:
+                    # Limit returned text to keep tool output manageable
+                    text_content = page.inner_text('body')[:1000]
+
+                result = {
+                    'url': page.url,
+                    'content': text_content,
+                }
             except Exception as e:
-                result = f"Error: {str(e)}"
+                result = {'error': str(e)}
             finally:
                 browser.close()
-        
+
         print(f"[LOG] HeadlessBrowser: Result: {result}")
-        return json5.dumps({'result': result})
+        return json5.dumps(result)
 
 class CodeInterpreterTool:
     """Executes Python code and returns the output."""
