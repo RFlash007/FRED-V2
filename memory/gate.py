@@ -1,80 +1,112 @@
 
+import json
 from datetime import datetime
 from ollie_print import olliePrint_simple
 from config import config, ollama_manager
-import memory.L2_memory as L2
-import memory.crap as crap
+try:
+    import memory.L2_memory as L2
+except ImportError:
+    class MockL2:
+        @staticmethod
+        def query_l2_context(message):
+            return "No recent context available"
+    L2 = MockL2()
+from agents.dispatcher import AgentDispatcher
 
-def run_gate_analysis(user_message: str, conversation_history: list) -> str:
+agent_dispatcher = AgentDispatcher()
+
+def run_gate_analysis(user_message: str, conversation_history: list, visual_context: str = "") -> str:
     """
-    Runs the G.A.T.E. triage agent.
-    1. Fetches L2 context.
-    2. Asks G.A.T.E. LLM if L2 is sufficient.
-    3. If sufficient, returns the formatted L2 context.
-    4. If insufficient, escalates to C.R.A.P. and returns its result.
+    Runs the new G.A.T.E. routing system with multi-agent dispatch.
+    1. Analyzes user query to determine routing flags
+    2. Dispatches appropriate agents based on flags
+    3. Returns synthesized FRED DATABASE from S.Y.N.A.P.S.E.
     """
-    olliePrint_simple("[G.A.T.E.] Triage analysis initiated...")
-
-    # 1. Fetch L2 Context
-    l2_context_raw = L2.query_l2_context(user_message)
-    # Clean the context for the prompt, but keep the raw version for the final output
-    l2_context_clean = l2_context_raw.replace("(L2 EPISODIC CONTEXT)", "").replace("(END L2 EPISODIC CONTEXT)", "").strip()
-    if not l2_context_clean:
-        l2_context_clean = "No relevant recent context found."
-
-    # 2. Prepare and call G.A.T.E. LLM
-    prompt = config.GATE_USER_PROMPT.format(
-        user_query=user_message,
-        l2_context=l2_context_clean
-    )
-
-    messages = [
-        {"role": "system", "content": config.GATE_SYSTEM_PROMPT},
-        {"role": "user", "content": prompt}
-    ]
+    olliePrint_simple("[G.A.T.E.] Multi-agent routing initiated...")
 
     try:
+        l2_context_raw = L2.query_l2_context(user_message)
+        l2_context_clean = l2_context_raw.replace("(L2 EPISODIC CONTEXT)", "").replace("(END L2 EPISODIC CONTEXT)", "").strip()
+        if not l2_context_clean:
+            l2_context_clean = "No relevant recent context found."
+
+        # 2. Get routing flags from G.A.T.E. LLM
+        routing_flags = _get_routing_flags(user_message, l2_context_clean)
+        
+        olliePrint_simple(f"[G.A.T.E.] Routing flags: {routing_flags}")
+
+        database_content = agent_dispatcher.dispatch_agents(
+            routing_flags=routing_flags,
+            user_message=user_message,
+            conversation_history=conversation_history,
+            visual_context=visual_context
+        )
+
+        return database_content
+
+    except Exception as e:
+        olliePrint_simple(f"[G.A.T.E.] Critical failure during routing: {e}. Using fallback.", level='error')
+        # Fallback to basic database
+        return _generate_fallback_database(user_message)
+
+def _get_routing_flags(user_message: str, l2_context: str) -> dict:
+    """Get routing flags from G.A.T.E. LLM analysis."""
+    try:
+        prompt = config.GATE_ROUTING_USER_PROMPT.format(
+            user_query=user_message,
+            l2_context=l2_context
+        )
+
+        messages = [
+            {"role": "system", "content": config.GATE_ROUTING_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt}
+        ]
+
         response = ollama_manager.chat_concurrent_safe(
-            model=config.LLM_DECISION_MODEL, # Using a capable model for routing
+            model=config.LLM_DECISION_MODEL,
             messages=messages,
-            tools=config.GATE_TOOLS,
             stream=False
         )
 
-        response_message = response.get('message', {})
-        tool_calls = response_message.get('tool_calls')
-        final_content = response_message.get('content', '')
-
-        # 3. Decision Point
-        if tool_calls:
-            # Escalation needed
-            tool_call = tool_calls[0] # Assuming one tool call
-            if tool_call.get('function', {}).get('name') == 'escalate_to_crap':
-                olliePrint_simple("[G.A.T.E.] Decision: L2 insufficient. Escalating to C.R.A.P.")
-                # 4. Escalate to C.R.A.P.
-                # We pass the original user_message and conversation_history
-                return crap.run_crap_analysis(user_message, conversation_history)
-            else:
-                 olliePrint_simple(f"[G.A.T.E.] Warning: Unknown tool '{tool_call.get('function', {}).get('name')}' called. Defaulting to C.R.A.P.", level='warning')
-                 return crap.run_crap_analysis(user_message, conversation_history)
-        else:
-            # L2 is sufficient. The LLM has synthesized the relevant context text.
-            olliePrint_simple("[G.A.T.E.] Decision: L2 context is sufficient. Wrapping synthesized context.")
-            # Manually wrap the synthesized content in the required database block.
-            synthesized_context = final_content.strip()
-
-            # Construct the final database block.
-            # If the LLM returns nothing, the RELEVANT MEMORIES section will be empty.
-            database_block = f"""(FRED DATABASE)
-RELEVANT MEMORIES:
-{synthesized_context}
-
-SYSTEM STATUS:
-The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-(END FRED DATABASE)"""
-            return database_block
+        response_content = response.get('message', {}).get('content', '').strip()
+        
+        try:
+            routing_flags = json.loads(response_content)
+            
+            required_keys = ['needs_memory', 'needs_web_search', 'needs_deep_research', 'needs_pi_tools', 'needs_reminders']
+            for key in required_keys:
+                if key not in routing_flags:
+                    routing_flags[key] = False
+            
+            return routing_flags
+            
+        except json.JSONDecodeError as e:
+            olliePrint_simple(f"[G.A.T.E.] JSON parse error: {e}. Using default flags.", level='warning')
+            return _get_default_routing_flags()
 
     except Exception as e:
-        olliePrint_simple(f"[G.A.T.E.] Critical failure during analysis: {e}. Defaulting to full C.R.A.P. analysis.", level='error')
-        # Fallback to C.R.A.P. on any error
-        return crap.run_crap_analysis(user_message, conversation_history) 
+        olliePrint_simple(f"[G.A.T.E.] Routing analysis error: {e}. Using default flags.", level='error')
+        return _get_default_routing_flags()
+
+def _get_default_routing_flags() -> dict:
+    """Get default routing flags when analysis fails."""
+    return {
+        "needs_memory": True,
+        "needs_web_search": False,
+        "needs_deep_research": False,
+        "needs_pi_tools": False,
+        "needs_reminders": True
+    }
+
+def _generate_fallback_database(user_message: str) -> str:
+    """Generate fallback FRED DATABASE when routing fails."""
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    
+    return f"""(FRED DATABASE)
+• Processing your query: {user_message[:100]}...
+• My routing systems are working to analyze your request
+• Putting it together... ready to help with what I know
+
+SYSTEM STATUS:
+The current time is: {current_time}
+(END FRED DATABASE)"""   
