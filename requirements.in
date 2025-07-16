@@ -1,32 +1,46 @@
-# Base requirements
-aiohttp
-aiohttp_jinja2
-Pillow
-uvloop
-python-socketio
-eventlet
-ollama
-numpy
-# For WebRTC
-aiortc
-# For speech synthesis (if using Coqui TTS)
-TTS
-# For voice activity detection (if using Silero VAD)
-torch
-torchaudio
-# For persona recognition
-face_recognition # Note: Requires dlib which may need manual installation of cmake and C++ compiler
-dlib
+# FRED Main Server Requirements
+# Web framework
 flask
 flask-socketio
+python-socketio
+
+# HTTP and async
+aiohttp
 requests
+
+# LLM and AI
+ollama
+torch
+torchaudio
+
+# TTS and voice (using compatible versions)
+coqui-tts>=0.22.0
 playsound
-Coqui-TTS
-python-dotenv
-duckdb
-psutil
+
+# Vision and face recognition
+Pillow
+face_recognition
+dlib
+
+# Audio processing
 sounddevice
 vosk
+librosa
+scipy
+numpy
+
+# WebRTC (for Pi communication)
+aiortc
+av
+
+# Database and search
+duckdb
 duckduckgo-search
-youtube-transcript-api
-scipy 
+
+# Web scraping and content extraction
+trafilatura
+
+# Utilities
+python-dotenv
+psutil
+youtube-transcript-api      

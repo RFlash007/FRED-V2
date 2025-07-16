@@ -1,7 +1,13 @@
 import sqlite3
-import face_recognition
 import numpy as np
 from ollie_print import olliePrint_simple
+
+try:
+    import face_recognition
+    FACE_RECOGNITION_AVAILABLE = True
+except ImportError:
+    FACE_RECOGNITION_AVAILABLE = False
+    olliePrint_simple("face_recognition not available - persona recognition disabled", "warning")
 
 class PersonaService:
     def __init__(self, db_path="persona_memory.db"):
@@ -60,6 +66,9 @@ class PersonaService:
         Recognize faces in a given frame and return their names and locations.
         This is the primary method to be called by the VisionService.
         """
+        if not FACE_RECOGNITION_AVAILABLE:
+            return []
+            
         face_locations = face_recognition.face_locations(frame_array)
         face_embeddings = face_recognition.face_encodings(frame_array, face_locations)
 
@@ -133,6 +142,9 @@ class PersonaService:
 
     def enroll_person(self, frame_array, name):
         """Enroll a new person from a frame."""
+        if not FACE_RECOGNITION_AVAILABLE:
+            return "Face recognition not available."
+            
         face_locations = face_recognition.face_locations(frame_array)
         if not face_locations:
             olliePrint_simple("No faces found in the enrollment frame.", "warning")
@@ -168,4 +180,4 @@ class PersonaService:
                        (persona_id, embedding.tobytes()))
 
 # Global persona service instance
-persona_service = PersonaService() 
+persona_service = PersonaService()  

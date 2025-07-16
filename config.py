@@ -14,7 +14,7 @@ class Config:
     """Centralized configuration class for F.R.E.D."""
     
     # Flask Configuration
-    SECRET_KEY = 'fred_secret_key_2024'  # Secret key for Flask session management and other security-related operations.
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'fred_secret_key_2024_dev_only')  # Use env var in production
     PORT = int(os.environ.get('PORT', 5000))  # Port on which the Flask web server will listen for incoming HTTP requests.
     HOST = '0.0.0.0'  # Host address for the Flask server, binding to all available network interfaces.
     DEBUG = False  # Enables/disables Flask's debug mode; set to False for production environments for security.
@@ -24,12 +24,12 @@ class Config:
     WEBRTC_HOST = '0.0.0.0'  # Host address for the WebRTC server, allowing connections from any network interface.
     
     # Security Configuration
-    FRED_AUTH_TOKEN = os.environ.get('FRED_AUTH_TOKEN', 'fred_pi_glasses_2024')  # Authentication token used by the Raspberry Pi client to connect securely to the F.R.E.D. server.
+    FRED_AUTH_TOKEN = os.environ.get('FRED_AUTH_TOKEN', 'fred_pi_glasses_2024_dev_only')  # Use env var in production
     MAX_PI_CONNECTIONS = int(os.environ.get('MAX_PI_CONNECTIONS', 3))  # Maximum number of concurrent Raspberry Pi client connections allowed to the WebRTC server.
     
     # ngrok Configuration
     NGROK_ENABLED = os.environ.get('NGROK_ENABLED', 'true').lower() == 'true'  # Boolean flag to enable or disable ngrok tunneling for external access to F.R.E.D.
-    NGROK_AUTH_TOKEN = os.environ.get('NGROK_AUTH_TOKEN', '2yCKXFFreg1EEaQK6RGb3Kbdt6f_4owEF1Xji51DMheaKDV5U')  # ngrok authentication token required to establish secure tunnels.
+    NGROK_AUTH_TOKEN = os.environ.get('NGROK_AUTH_TOKEN', '')  # Must be set via environment variable
     
     # ICE/STUN Configuration for WebRTC
     ICE_SERVERS = [
