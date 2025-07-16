@@ -218,4 +218,8 @@ BRAVE_SEARCH_API_KEY
 SEARCHAPI_API_KEY
 NEWS_API_KEY
 
+# Additional security
 .env
+.env.*
+config_local.py
+secrets.json
