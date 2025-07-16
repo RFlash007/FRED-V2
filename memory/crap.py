@@ -205,7 +205,7 @@ class CrapState:
             return ""
         return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
     
-    def prepare_crap_messages(self, user_message, conversation_history, ollama_client):
+    def prepare_crap_messages(self, user_message, conversation_history):
         """Prepare messages for C.R.A.P. with aggressive truncation but NO F.R.E.D. thinking context."""
         messages = [{"role": "system", "content": CRAP_SYSTEM_PROMPT}]
         
@@ -491,4 +491,4 @@ Analysis system offline.
 
 SYSTEM STATUS:
 The current time is: {current_time}
-(END FRED DATABASE)""" 
+(END FRED DATABASE)"""  
