@@ -124,8 +124,6 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
-# Config.py secrets and sensitive data
-config.py
 .env
 .env.*
 secrets.py
@@ -197,7 +195,6 @@ Ranking.txt
 features.txt
 incrementaluprgades
 
-config.py
 
 *.db
 Sermon.txt
