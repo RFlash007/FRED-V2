@@ -124,6 +124,47 @@ venv.bak/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+# Config.py secrets and sensitive data
+config.py
+.env
+.env.*
+secrets.py
+*.key
+*.pem
+*.cert
+*.crt
+*.secret
+credentials.json
+service_account.json
+oauth2client.json
+client_secret_*.json
+# Ollama related
+ollama_config.json
+ollama_credentials.json
+# Database credentials
+database.ini
+# API keys
+api_keys.ini
+# JWT tokens
+jwt_secret.key
+# Session data
+session_data.bin
+# Encryption keys
+encryption.key
+# Backup files
+*.bak
+# Temporary files
+*.tmp
+*.temp
+# Local overrides
+local_settings.py
+# Test files with sensitive data
+test_credentials.py
+# FRED specific
+fred_config.ini
+fred_secrets.json
+# Ollie-Tech specific
+ollie_tech_credentials.ini
 
 # Pyre type checker
 .pyre/
