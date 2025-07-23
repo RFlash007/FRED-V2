@@ -27,18 +27,25 @@ class AgentDispatcher:
         self.max_concurrent = getattr(config, 'MAX_CONCURRENT_AGENTS', 1)
         self.timeout_seconds = 30  # Agent timeout
         
-        self.agents = {
-            'scout': ScoutAgent(),
-            'remind': RemindAgent(),
-            'pivot': PivotAgent(),
-            'synapse': SynapseAgent()
-        }
-        
-        olliePrint_simple(f"[DISPATCHER] Initialized with {len(self.agents)} agents, max concurrent: {self.max_concurrent}")
+        # Remove persistent agent instances - create them per-request instead
+        olliePrint_simple(f"[DISPATCHER] Initialized, max concurrent: {self.max_concurrent}")
+    
+    def _create_agent(self, agent_type: str):
+        """Create agent instance on-demand for proper memory management."""
+        if agent_type == 'scout':
+            return ScoutAgent()
+        elif agent_type == 'remind':
+            return RemindAgent()
+        elif agent_type == 'pivot':
+            return PivotAgent()
+        elif agent_type == 'synapse':
+            return SynapseAgent()
+        else:
+            raise ValueError(f"Unknown agent type: {agent_type}")
     
     def dispatch_agents(self, routing_flags: Dict, user_message: str, conversation_history: List[Dict], visual_context: str = "") -> str:
         """
-        Dispatch agents based on G.A.T.E. routing flags and return synthesized FRED DATABASE.
+        Dispatch agents based on G.A.T.E. routing flags and return synthesized NEURAL PROCESSING CORE.
         
         Args:
             routing_flags: Dict with needs_memory, needs_web_search, needs_deep_research, needs_pi_tools, needs_reminders
@@ -47,7 +54,7 @@ class AgentDispatcher:
             visual_context: Visual context from Pi glasses if available
         
         Returns:
-            Formatted FRED DATABASE content
+            Formatted NEURAL PROCESSING CORE content
         """
         try:
             olliePrint_simple(f"[DISPATCHER] Dispatching agents for flags: {routing_flags}")
@@ -62,12 +69,17 @@ class AgentDispatcher:
             
             l2_summaries = self._get_l2_context(user_message)
             
-            synapse_result = self.agents['synapse'].synthesize_context(
+            # Create SYNAPSE agent for this request
+            synapse_agent = self._create_agent('synapse')
+            synapse_result = synapse_agent.synthesize_context(
                 agent_outputs=agent_outputs,
                 l2_summaries=l2_summaries,
                 user_query=user_message,
                 visual_context=visual_context
             )
+            
+            # Explicitly clean up SYNAPSE agent
+            del synapse_agent
             
             return synapse_result
             
@@ -86,19 +98,19 @@ class AgentDispatcher:
         
         if routing_flags.get('needs_web_search', False):
             def run_scout():
-                return self.agents['scout'].search_and_assess(user_message)
+                return self._create_agent('scout').search_and_assess(user_message)
             tasks.append(('scout', run_scout))
         
         if routing_flags.get('needs_reminders', True):  # Default to True
             def run_remind():
-                return self.agents['remind'].process_conversation_turn(user_message)
+                return self._create_agent('remind').process_conversation_turn(user_message)
             tasks.append(('remind', run_remind))
         
         if routing_flags.get('needs_pi_tools', False):
             pi_command, pi_params = self._extract_pi_command(user_message)
             if pi_command:
                 def run_pivot():
-                    return self.agents['pivot'].process_pi_command(pi_command, pi_params)
+                    return self._create_agent('pivot').process_pi_command(pi_command, pi_params)
                 tasks.append(('pivot', run_pivot))
         
         if routing_flags.get('needs_deep_research', False):
@@ -153,11 +165,11 @@ class AgentDispatcher:
             
             crap_result = crap.run_crap_analysis(user_message, conversation_history)
             
-            if isinstance(crap_result, str) and "(FRED DATABASE)" in crap_result:
-                start = crap_result.find("(FRED DATABASE)")
-                end = crap_result.find("(END FRED DATABASE)")
+            if isinstance(crap_result, str) and "(MEMORY CONTEXT)" in crap_result:
+                start = crap_result.find("(MEMORY CONTEXT)")
+                end = crap_result.find("(END MEMORY CONTEXT)")
                 if start != -1 and end != -1:
-                    database_content = crap_result[start:end + len("(END FRED DATABASE)")]
+                    database_content = crap_result[start:end + len("(END MEMORY CONTEXT)")]
                     return {"memories": database_content, "raw_output": crap_result}
             
             return {"memories": crap_result, "raw_output": crap_result}
@@ -203,15 +215,15 @@ class AgentDispatcher:
             return []
     
     def _generate_fallback_database(self, user_message: str, visual_context: str = "") -> str:
-        """Generate fallback FRED DATABASE when agent dispatch fails."""
+        """Generate fallback NEURAL PROCESSING CORE when agent dispatch fails."""
         from datetime import datetime
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        return f"""(FRED DATABASE)
+        return f"""(NEURAL PROCESSING CORE)
 • Processing your query: {user_message[:100]}...
 • My agent systems are working to gather information
 • Putting it together... ready to help with what I know
 
 SYSTEM STATUS:
 The current time is: {current_time}
-(END FRED DATABASE)"""
+(END NEURAL PROCESSING CORE)"""

@@ -3,6 +3,7 @@ import json
 from datetime import datetime
 from ollie_print import olliePrint_simple
 from config import config, ollama_manager
+from app import strip_think_tags
 try:
     import memory.L2_memory as L2
 except ImportError:
@@ -20,7 +21,7 @@ def run_gate_analysis(user_message: str, conversation_history: list, visual_cont
     Runs the new G.A.T.E. routing system with multi-agent dispatch.
     1. Analyzes user query to determine routing flags
     2. Dispatches appropriate agents based on flags
-    3. Returns synthesized FRED DATABASE from S.Y.N.A.P.S.E.
+    3. Returns synthesized NEURAL PROCESSING CORE from S.Y.N.A.P.S.E.
     """
     olliePrint_simple("[G.A.T.E.] Multi-agent routing initiated...")
 
@@ -30,8 +31,25 @@ def run_gate_analysis(user_message: str, conversation_history: list, visual_cont
         if not l2_context_clean:
             l2_context_clean = "No relevant recent context found."
 
+        # Get G.A.T.E. Specific Context - last 5 messages with thinking content removed
+        recent_history_for_prompt = []
+        # Ensure we only get the last 5 relevant turns
+        for turn in conversation_history[-config.GATE_MAX_CONVERSATION_MESSAGES:]: 
+            # Filter out assistant's internal thinking before adding to history for G.A.T.E.
+            clean_content = strip_think_tags(turn["content"]) 
+            if clean_content:  # Only include if content remains after stripping
+                recent_history_for_prompt.append({
+                    "role": turn["role"],
+                    "content": clean_content
+                })
+        
+        # Log inputs for _get_routing_flags
+        olliePrint_simple(f"[G.A.T.E.] User Message Input: {user_message}", level='debug')
+        olliePrint_simple(f"[G.A.T.E.] L2 Context Input: {l2_context_clean}", level='debug')
+        olliePrint_simple(f"[G.A.T.E.] Recent History Input: {recent_history_for_prompt}", level='debug')
+
         # 2. Get routing flags from G.A.T.E. LLM
-        routing_flags = _get_routing_flags(user_message, l2_context_clean)
+        routing_flags = _get_routing_flags(user_message, l2_context_clean, recent_history_for_prompt)
         
         olliePrint_simple(f"[G.A.T.E.] Routing flags: {routing_flags}")
 
@@ -42,6 +60,7 @@ def run_gate_analysis(user_message: str, conversation_history: list, visual_cont
             visual_context=visual_context
         )
 
+        olliePrint_simple(f"[G.A.T.E.] Final Neural Processing Core Content: {database_content}", level='debug')
         return database_content
 
     except Exception as e:
@@ -49,23 +68,28 @@ def run_gate_analysis(user_message: str, conversation_history: list, visual_cont
         # Fallback to basic database
         return _generate_fallback_database(user_message)
 
-def _get_routing_flags(user_message: str, l2_context: str) -> dict:
+def _get_routing_flags(user_message: str, l2_context: str, recent_history: list) -> dict:
     """Get routing flags from G.A.T.E. LLM analysis."""
     try:
-        prompt = config.GATE_ROUTING_USER_PROMPT.format(
+        # Format recent_history for the prompt
+        formatted_recent_history = "\n".join([f"{msg['role'].title()}: {msg['content']}" for msg in recent_history])
+        
+        prompt = config.GATE_USER_PROMPT.format(
             user_query=user_message,
-            l2_context=l2_context
+            l2_context=l2_context,
+            recent_history=formatted_recent_history
         )
 
         messages = [
-            {"role": "system", "content": config.GATE_ROUTING_SYSTEM_PROMPT},
+            {"role": "system", "content": config.GATE_SYSTEM_PROMPT},
             {"role": "user", "content": prompt}
         ]
 
         response = ollama_manager.chat_concurrent_safe(
             model=config.LLM_DECISION_MODEL,
             messages=messages,
-            stream=False
+            options=config.THINKING_MODE_OPTIONS,
+            format="json"  # Ensure JSON output
         )
 
         response_content = response.get('message', {}).get('content', '').strip()
@@ -99,14 +123,14 @@ def _get_default_routing_flags() -> dict:
     }
 
 def _generate_fallback_database(user_message: str) -> str:
-    """Generate fallback FRED DATABASE when routing fails."""
+    """Generate fallback NEURAL PROCESSING CORE when routing fails."""
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
-    return f"""(FRED DATABASE)
+    return f"""(NEURAL PROCESSING CORE)
 • Processing your query: {user_message[:100]}...
 • My routing systems are working to analyze your request
 • Putting it together... ready to help with what I know
 
 SYSTEM STATUS:
 The current time is: {current_time}
-(END FRED DATABASE)"""   
+(END NEURAL PROCESSING CORE)"""   

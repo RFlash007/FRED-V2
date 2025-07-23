@@ -9,6 +9,7 @@ import threading
 from ollie_print import olliePrint_simple
 from contextlib import contextmanager
 from config import config, ollama_manager # Import the config and connection manager
+from typing import List, Dict, Optional, Tuple, Set, Any
 
 # --- Configuration ---
 # Set default path inside the memory folder
@@ -21,6 +22,8 @@ EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
 # How many similar nodes to check for automatic edge creation
 AUTO_EDGE_SIMILARITY_CHECK_LIMIT = 3
+
+# Configuration constants now imported from config.py
 
 # Connection pooling
 _connection_lock = threading.Lock()
@@ -116,8 +119,8 @@ def init_db():
 def get_embedding(text):
     """Gets the embedding for a given text using the Ollama Embedding API."""
     try:
-        client = ollama_manager.get_client()
-        response = client.embeddings(
+        # CENTRALIZED CONNECTION: Use connection manager instead of direct client
+        response = ollama_manager.embeddings(
             model=EMBED_MODEL,
             prompt=text
         )
@@ -168,56 +171,321 @@ def call_ollama_generate(prompt, model=LLM_DECISION_MODEL):
 
 # --- LLM Decision Functions ---
 
-def determine_edge_type_llm(source_node_info, target_node_info):
-    """Determines the relationship type between two nodes using an LLM."""
-    # Define relationship types for clarity in the prompt
-    rel_definitions = """
-    - instanceOf: A specific example of a general concept (e.g., "Fido" instanceOf "Dog").
-    - relatedTo: General association (use sparingly).
-    - updates: Newer version modifies an existing one (e.g., "v2" updates "v1").
-    - contains: One entity holds another (e.g., "Folder" contains "File").
-    - partOf: An entity is a component of a whole (e.g., "Wheel" partOf "Car").
-    - precedes: Comes before in sequence/time (e.g., "Step 1" precedes "Step 2").
-    - causes: Directly leads to another (e.g., "Rain" causes "Wet Ground").
-    - createdBy: Made or produced by (e.g., "Book" createdBy "Author").
-    - hasOwner: Belongs to or possessed by (e.g., "Car" hasOwner "Person").
-    - locatedAt: Exists at a specific place (e.g., "Statue" locatedAt "Park").
-    - dependsOn: Requires another to function/exist (e.g., "App" dependsOn "OS").
-    - servesPurpose: Used to achieve a goal (e.g., "Hammer" servesPurpose "Driving Nails").
-    - occursDuring: Happens within the timeframe of another (e.g., "Meeting" occursDuring "Workday").
-    - enablesGoal: Makes a goal possible (e.g., "Funding" enablesGoal "Research").
-    - activatesIn: Becomes relevant in a specific context (e.g., "Alarm" activatesIn "Emergency").
-    - contextualAnalog: Similar role in different contexts (e.g., "Captain" contextualAnalog "CEO").
-    - sourceAttribution: Information originates from a source (e.g., "Quote" sourceAttribution "Book").
+def discover_relationships_advanced(node_id: int, context_window: int = 5, 
+                                   min_confidence: float = config.RELATIONSHIP_CONFIDENCE_THRESHOLD) -> List[Dict[str, Any]]:
     """
-
-    source_info = f"Label: {source_node_info['label']}, Type: {source_node_info['type']}, Text: {source_node_info['text']}"
-    target_info = f"Label: {target_node_info['label']}, Type: {target_node_info['type']}, Text: {target_node_info['text']}"
+    MCP-inspired enhanced relationship discovery with context-aware analysis.
     
-    prompt = config.L3_EDGE_TYPE_PROMPT.format(
-        source_info=source_info,
-        target_info=target_info,
-        relationship_definitions=rel_definitions
-    )
+    This function provides sophisticated relationship discovery that considers broader
+    context and provides confidence scoring for discovered relationships, improving
+    upon the existing LLM-based relationship determination.
     
-    # This call no longer includes the system prompt directly, as it's handled inside call_ollama_generate
+    Args:
+        node_id (int): The node ID to discover relationships for
+        context_window (int): Number of related nodes to consider for context
+        min_confidence (float): Minimum confidence threshold for relationships
+        
+    Returns:
+        List[Dict[str, Any]]: List of discovered relationships with confidence scores:
+            - target_node_id: ID of the target node
+            - relationship_type: Suggested relationship type
+            - confidence: Confidence score (0.0-1.0)
+            - reasoning: Explanation for the relationship
+            - context_nodes: Nodes that influenced this decision
+    """
     try:
-        response_json = call_ollama_generate(prompt)
-        rel_type = response_json.get("relationship_type")
+        with get_db_connection() as con:
+            # Get the source node details
+            source_query = """
+                SELECT nodeid, type, label, text, created_at
+                FROM nodes 
+                WHERE nodeid = ? AND superseded_at IS NULL
+            """
+            source_result = con.execute(source_query, [node_id]).fetchone()
+            
+            if not source_result:
+                return []
+            
+            source_node = {
+                'nodeid': source_result[0],
+                'type': source_result[1], 
+                'label': source_result[2],
+                'text': source_result[3],
+                'created_at': source_result[4]
+            }
+            
+            # Get potential target nodes (most similar nodes)
+            similar_nodes_query = """
+                SELECT nodeid, type, label, text, created_at,
+                       array_cosine_similarity(embedding, (
+                           SELECT embedding FROM nodes WHERE nodeid = ?
+                       )) as similarity
+                FROM nodes 
+                WHERE nodeid != ? AND superseded_at IS NULL
+                AND embedding IS NOT NULL
+                ORDER BY similarity DESC
+                LIMIT ?
+            """
+            
+            similar_results = con.execute(similar_nodes_query, 
+                                        [node_id, node_id, context_window * 2]).fetchall()
+            
+            discovered_relationships = []
+            
+            for target_result in similar_results:
+                target_node = {
+                    'nodeid': target_result[0],
+                    'type': target_result[1],
+                    'label': target_result[2], 
+                    'text': target_result[3],
+                    'created_at': target_result[4],
+                    'similarity': target_result[5]
+                }
+                
+                # Skip if relationship already exists
+                existing_query = """
+                    SELECT COUNT(*) FROM edges 
+                    WHERE (sourceid = ? AND targetid = ?) OR (sourceid = ? AND targetid = ?)
+                """
+                existing_count = con.execute(existing_query, 
+                                           [node_id, target_node['nodeid'], 
+                                            target_node['nodeid'], node_id]).fetchone()[0]
+                
+                if existing_count > 0:
+                    continue
+                
+                # Use enhanced LLM analysis with context
+                relationship_analysis = determine_edge_type_llm_enhanced(
+                    source_node, target_node, similar_results[:context_window]
+                )
+                
+                if relationship_analysis and relationship_analysis.get('confidence', 0.0) >= min_confidence:
+                    discovered_relationships.append({
+                        'target_node_id': target_node['nodeid'],
+                        'relationship_type': relationship_analysis['relationship_type'],
+                        'confidence': relationship_analysis['confidence'],
+                        'reasoning': relationship_analysis.get('reasoning', ''),
+                        'context_nodes': [n[0] for n in similar_results[:context_window]],
+                        'similarity_score': target_node['similarity']
+                    })
+            
+            return discovered_relationships
+            
+    except Exception as e:
+        olliePrint_simple(f"Error in advanced relationship discovery for node {node_id}: {e}", level='error')
+        return []
 
-        if rel_type in VALID_REL_TYPES:
-            return rel_type
-        else:
-            olliePrint_simple(f"LLM returned invalid relationship type: {rel_type}. Valid types: {VALID_REL_TYPES}. Response: {response_json}", level='error')
-            raise ValueError(f"LLM returned invalid relationship type: {rel_type}")
-    except (ConnectionError, ValueError, RuntimeError) as e:
-        olliePrint_simple(f"Failed to determine relationship type using LLM: {e}", level='error')
-        raise # Re-raise the error as requested
+def determine_edge_type_llm_enhanced(source_node_info: Dict[str, Any], 
+                                   target_node_info: Dict[str, Any],
+                                   context_nodes: List[Tuple] = None) -> Optional[Dict[str, Any]]:
+    """
+    Enhanced LLM-based relationship determination with context awareness and confidence scoring.
+    
+    This function improves upon the original determine_edge_type_llm by incorporating
+    broader context and providing confidence scores for relationship predictions.
+    
+    Args:
+        source_node_info (Dict): Source node information
+        target_node_info (Dict): Target node information  
+        context_nodes (List[Tuple], optional): Additional context nodes for better analysis
+        
+    Returns:
+        Dict[str, Any]: Relationship analysis with confidence score:
+            - relationship_type: Suggested relationship type
+            - confidence: Confidence score (0.0-1.0)
+            - reasoning: Explanation for the relationship
+    """
+    try:
+        # Prepare context information
+        context_info = ""
+        if context_nodes:
+            context_info = "\n\nRELATED CONTEXT NODES:\n"
+            for i, ctx_node in enumerate(context_nodes[:3], 1):  # Limit context to prevent token overflow
+                context_info += f"{i}. {ctx_node[2]} ({ctx_node[1]}): {ctx_node[3][:100]}...\n"
+        
+        # Enhanced prompt with confidence scoring
+        enhanced_prompt = f"""Analyze the relationship between these two memory nodes and provide a confidence score.
+
+SOURCE NODE:
+Type: {source_node_info['type']}
+Label: {source_node_info['label']}
+Text: {source_node_info['text'][:200]}...
+Created: {source_node_info['created_at']}
+
+TARGET NODE:
+Type: {target_node_info['type']}
+Label: {target_node_info['label']}
+Text: {target_node_info['text'][:200]}...
+Created: {target_node_info['created_at']}{context_info}
+
+VALID RELATIONSHIP TYPES: {', '.join(VALID_REL_TYPES)}
+
+Analyze the semantic relationship between these nodes considering:
+1. Content similarity and thematic connections
+2. Temporal relationships (creation dates, event sequences)
+3. Hierarchical or categorical relationships
+4. Causal or dependency relationships
+5. Context from related nodes
+
+Respond with ONLY a JSON object containing:
+{{
+    "relationship_type": "<one of the valid types or null>",
+    "confidence": <float between 0.0 and 1.0>,
+    "reasoning": "<brief explanation for the relationship and confidence level>"
+}}
+
+If no clear relationship exists, use null for relationship_type and low confidence."""
+        
+        # Get LLM response
+        response = ollama_manager.chat_concurrent_safe(
+            model=LLM_DECISION_MODEL,
+            messages=[{"role": "user", "content": enhanced_prompt}],
+            stream=False,
+            options={"temperature": 0.1}  # Low temperature for consistent analysis
+        )
+        
+        response_text = response.get('message', {}).get('content', '').strip()
+        
+        # Parse JSON response
+        try:
+            analysis = json.loads(response_text)
+            
+            # Validate response structure
+            if not isinstance(analysis, dict):
+                return None
+                
+            relationship_type = analysis.get('relationship_type')
+            confidence = analysis.get('confidence', 0.0)
+            reasoning = analysis.get('reasoning', '')
+            
+            # Validate relationship type
+            if relationship_type and relationship_type not in VALID_REL_TYPES:
+                olliePrint_simple(f"Invalid relationship type suggested: {relationship_type}", level='warning')
+                return None
+            
+            # Validate confidence score
+            if not isinstance(confidence, (int, float)) or confidence < 0.0 or confidence > 1.0:
+                confidence = 0.0
+            
+            return {
+                'relationship_type': relationship_type,
+                'confidence': float(confidence),
+                'reasoning': reasoning
+            }
+            
+        except json.JSONDecodeError:
+            olliePrint_simple(f"Failed to parse LLM relationship analysis: {response_text}", level='warning')
+            return None
+            
+    except Exception as e:
+        olliePrint_simple(f"Error in enhanced LLM relationship determination: {e}", level='error')
+        return None
+
+# Legacy determine_edge_type_llm function removed - functionality now handled by determine_edge_type_llm_enhanced
+# All calls have been migrated to use the MCP-inspired enhanced relationship discovery system
 
 # --- Core Memory Functions ---
 
-def add_memory(label, text, memory_type, parent_id=None, target_date=None):
-    """Adds a new memory node, classifies it, gets embedding, and attempts automatic edge creation."""
+def add_memory_with_observations(label: str, text: str, memory_type: str, 
+                               observations: Optional[List[str]] = None, 
+                               parent_id: Optional[int] = None, 
+                               target_date: Optional[str] = None, 
+                               metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """
+    MCP-inspired memory addition with observation-style metadata support.
+    
+    This function extends the core add_memory functionality with structured observations
+    and metadata, similar to industry-standard MCP memory servers while maintaining
+    full backward compatibility with the existing system.
+    
+    Args:
+        label (str): Concise label or title for the memory node
+        text (str): Main text content of the memory
+        memory_type (str): Memory type ('Semantic', 'Episodic', 'Procedural')
+        observations (List[str], optional): List of observation statements about this memory
+        parent_id (int, optional): ID of parent node for hierarchical relationships
+        target_date (str, optional): ISO format date for future events
+        metadata (Dict[str, Any], optional): Additional structured metadata
+        
+    Returns:
+        Dict[str, Any]: Enhanced result with observation and metadata information:
+            - nodeid: ID of created node
+            - success: Whether operation succeeded
+            - observations_added: Number of observations processed
+            - metadata_keys: List of metadata keys stored
+            - relationships_created: Number of automatic relationships created
+    """
+    # Prepare enhanced text content with observations
+    enhanced_text = text
+    
+    if observations:
+        # Append observations in a structured format
+        observations_section = "\n\n[OBSERVATIONS]\n"
+        for i, obs in enumerate(observations, 1):
+            observations_section += f"{i}. {obs}\n"
+        enhanced_text += observations_section
+    
+    if metadata:
+        # Append metadata in a structured format
+        metadata_section = "\n\n[METADATA]\n"
+        for key, value in metadata.items():
+            metadata_section += f"{key}: {value}\n"
+        enhanced_text += metadata_section
+    
+    # Call the existing add_memory function with enhanced text
+    result = add_memory(label, enhanced_text, memory_type, parent_id, target_date)
+    
+    # Return enhanced result information
+    return {
+        'nodeid': result,
+        'success': result is not None,
+        'observations_added': len(observations) if observations else 0,
+        'metadata_keys': list(metadata.keys()) if metadata else [],
+        'relationships_created': 0,  # Will be updated by automatic edge creation
+        'enhanced_text_length': len(enhanced_text),
+        'original_text_length': len(text)
+    }
+
+def add_memory(label: str, text: str, memory_type: str, parent_id: Optional[int] = None, 
+              target_date: Optional[str] = None, observations: Optional[List[str]] = None, 
+              metadata: Optional[Dict[str, Any]] = None) -> Optional[int]:
+    """
+    Enhanced memory addition with MCP-inspired observation and metadata support.
+    
+    This unified function combines the original add_memory functionality with structured
+    observations and metadata capabilities, providing a single interface for CRAP.
+    
+    Args:
+        label (str): Concise label or title for the memory node
+        text (str): Main text content of the memory
+        memory_type (str): Memory type ('Semantic', 'Episodic', 'Procedural')
+        parent_id (int, optional): ID of parent node for hierarchical relationships
+        target_date (str, optional): ISO format date for future events
+        observations (List[str], optional): List of observation statements about this memory
+        metadata (Dict[str, Any], optional): Additional structured metadata
+        
+    Returns:
+        Optional[int]: ID of created node, or None if creation failed
+    """
+    # If observations or metadata provided, use enhanced text formatting
+    if observations or metadata:
+        enhanced_text = text
+        
+        if observations:
+            # Append observations in a structured format
+            observations_section = "\n\n[OBSERVATIONS]\n"
+            for i, obs in enumerate(observations, 1):
+                observations_section += f"{i}. {obs}\n"
+            enhanced_text += observations_section
+        
+        if metadata:
+            # Append metadata in a structured format
+            metadata_section = "\n\n[METADATA]\n"
+            for key, value in metadata.items():
+                metadata_section += f"{key}: {value}\n"
+            enhanced_text += metadata_section
+        
+        text = enhanced_text
     olliePrint_simple(f"Attempting to add memory with label: {label}")
     try:
         # 1. Get Embedding
@@ -435,10 +703,11 @@ def add_edge(sourceid: int, targetid: int, rel_type: str | None = None, con: duc
         # Determine relationship type if not provided
         determined_rel_type = rel_type # Use a different variable name
         if determined_rel_type is None:
-            olliePrint_simple(f"Relationship type not provided for edge {sourceid} -> {targetid}. Determining using LLM.")
+            olliePrint_simple(f"Relationship type not provided for edge {sourceid} -> {targetid}. Determining using enhanced LLM analysis.")
             # This call can raise errors (ConnectionError, ValueError, RuntimeError), which will propagate up
-            determined_rel_type = determine_edge_type_llm(source_node_info, target_node_info)
-            olliePrint_simple(f"LLM determined relationship type: {determined_rel_type}")
+            relationship_analysis = determine_edge_type_llm_enhanced(source_node_info, target_node_info)
+            determined_rel_type = relationship_analysis.get('relationship_type', 'relatedTo')
+            olliePrint_simple(f"Enhanced LLM determined relationship type: {determined_rel_type} (confidence: {relationship_analysis.get('confidence', 'unknown')})")
         elif determined_rel_type not in VALID_REL_TYPES:
              # Validate explicitly provided type
              raise ValueError(f"Provided relationship type '{determined_rel_type}' is not valid. Must be one of: {VALID_REL_TYPES}")
@@ -469,20 +738,54 @@ def add_edge(sourceid: int, targetid: int, rel_type: str | None = None, con: duc
          raise RuntimeError(f"Unexpected error adding edge: {e}") from e
 
 
-def search_memory(query_text, memory_type=None, limit=10, future_events_only=False, include_past_events=True, use_keyword_search=False, include_connections=False, start_date=None, end_date=None):
-    """Searches memory nodes using cosine similarity and/or keyword matching.
+# search_memory_advanced functionality now integrated into unified search_memory function
 
-    Args:
-        query_text: The text to search for.
-        memory_type: Optional filter by memory type.
-        limit: Maximum number of results to return.
-        future_events_only: If True, only returns nodes with target_date in the future.
-        include_past_events: If False, excludes nodes with target_date in the past.
-        use_keyword_search: If True, performs a keyword search. If False (default), performs semantic search.
-        include_connections: If True, includes edge connections for each result node.
-        start_date: Optional start date for filtering results based on created_at timestamp.
-        end_date: Optional end date for filtering results based on created_at timestamp.
+def search_memory(query_text: str, memory_type: Optional[str] = None, limit: int = 3, 
+                 future_events_only: bool = False, include_past_events: bool = True, 
+                 use_keyword_search: bool = False, include_connections: bool = False, 
+                 start_date: Optional[str] = None, end_date: Optional[str] = None,
+                 filters: Optional[Dict[str, Any]] = None, sort_by: str = "relevance") -> List[Dict[str, Any]]:
     """
+    Enhanced memory search with MCP-inspired capabilities while maintaining backward compatibility.
+    
+    This unified search function combines the original search_memory functionality with
+    advanced MCP-inspired features, providing a single, powerful interface for CRAP.
+    
+    Args:
+        query_text (str): The text to search for
+        memory_type (str, optional): Filter by memory type ('Semantic', 'Episodic', 'Procedural')
+        limit (int): Maximum number of results to return
+        future_events_only (bool): Only return memories with future target_date
+        include_past_events (bool): Include memories with past target_date
+        use_keyword_search (bool): Use keyword instead of semantic search
+        include_connections (bool): Include relationship information
+        start_date (str, optional): Start date filter (ISO format)
+        end_date (str, optional): End date filter (ISO format)
+        filters (Dict, optional): Advanced filtering options for enhanced capabilities
+        sort_by (str): Sorting method ('relevance', 'date_created', 'date_accessed', 'similarity')
+        
+    Returns:
+        List[Dict[str, Any]]: Search results with enhanced metadata when filters are used
+    """
+    # If advanced filters are provided, use the enhanced search capabilities
+    if filters is not None:
+        # Merge legacy parameters into filters for unified processing
+        combined_filters = dict(filters)
+        combined_filters.update({
+            'memory_type': memory_type,
+            'future_events_only': future_events_only,
+            'include_past_events': include_past_events,
+            'use_keyword_search': use_keyword_search,
+            'include_connections': include_connections,
+            'start_date': start_date,
+            'end_date': end_date
+        })
+        
+        # Use advanced search and return just the results for backward compatibility
+        advanced_result = search_memory_advanced(query_text, combined_filters, sort_by, limit)
+        return advanced_result.get('results', [])
+    
+    # Original search logic for backward compatibility
     results = []
     node_ids_updated = set() # Track updated nodes to avoid duplicate updates
     now = datetime.datetime.now()
@@ -677,8 +980,267 @@ def search_memory(query_text, memory_type=None, limit=10, future_events_only=Fal
     return formatted_results
 
 
-def get_graph_data(center_nodeid, depth=1):
-    """Retrieves nodes and edges for graph visualization within a certain depth."""
+def get_subgraph(center_node_id: int, depth: int = 2, relationship_types: Optional[List[str]] = None,
+                max_nodes: int = config.MAX_SUBGRAPH_NODES, include_metadata: bool = True) -> Dict[str, Any]:
+    """
+    MCP-inspired subgraph retrieval with advanced traversal and filtering capabilities.
+    
+    This function provides sophisticated subgraph extraction similar to Neo4j MCP servers,
+    enabling complex graph queries and relationship analysis while maintaining performance.
+    
+    Args:
+        center_node_id (int): The central node ID to build subgraph around
+        depth (int): Maximum traversal depth (capped at MAX_SUBGRAPH_DEPTH)
+        relationship_types (List[str], optional): Filter by specific relationship types
+        max_nodes (int): Maximum nodes to include (prevents memory issues)
+        include_metadata (bool): Include detailed node and edge metadata
+        
+    Returns:
+        Dict[str, Any]: Comprehensive subgraph information:
+            - nodes: List of nodes with full details and metadata
+            - edges: List of edges with relationship information
+            - paths: Notable paths and connection patterns
+            - statistics: Subgraph analysis metrics
+            - center_node: Detailed information about the central node
+    """
+    # Ensure depth doesn't exceed maximum
+    depth = min(depth, config.MAX_SUBGRAPH_DEPTH)
+    
+    # Filter relationship types if specified
+    valid_rel_types = relationship_types if relationship_types else VALID_REL_TYPES
+    
+    try:
+        with get_db_connection() as con:
+            # Get center node details
+            center_query = """
+                SELECT nodeid, type, label, text, created_at, last_access, 
+                       superseded_at, parent_id, target_date
+                FROM nodes 
+                WHERE nodeid = ? AND superseded_at IS NULL
+            """
+            center_result = con.execute(center_query, [center_node_id]).fetchone()
+            
+            if not center_result:
+                return {
+                    'error': f'Center node {center_node_id} not found or superseded',
+                    'nodes': [],
+                    'edges': [],
+                    'paths': [],
+                    'statistics': {},
+                    'center_node': None
+                }
+            
+            # Convert center node to dictionary
+            center_node = {
+                'nodeid': center_result[0],
+                'type': center_result[1],
+                'label': center_result[2],
+                'text': center_result[3],
+                'created_at': center_result[4],
+                'last_access': center_result[5],
+                'superseded_at': center_result[6],
+                'parent_id': center_result[7],
+                'target_date': center_result[8],
+                'distance_from_center': 0
+            }
+            
+            # Collect all nodes and edges through BFS traversal
+            visited_nodes = {center_node_id: center_node}
+            all_edges = []
+            current_level = [center_node_id]
+            
+            for current_depth in range(depth):
+                if len(visited_nodes) >= max_nodes:
+                    break
+                    
+                next_level = []
+                
+                # Get all edges from current level nodes
+                if current_level:
+                    placeholders = ','.join(['?' for _ in current_level])
+                    rel_filter = f"AND rel_type IN ({','.join(['?' for _ in valid_rel_types])})" if relationship_types else ""
+                    
+                    edge_query = f"""
+                        SELECT DISTINCT e.sourceid, e.targetid, e.rel_type, e.created_at,
+                               n1.label as source_label, n2.label as target_label,
+                               n1.type as source_type, n2.type as target_type
+                        FROM edges e
+                        JOIN nodes n1 ON e.sourceid = n1.nodeid
+                        JOIN nodes n2 ON e.targetid = n2.nodeid
+                        WHERE (e.sourceid IN ({placeholders}) OR e.targetid IN ({placeholders}))
+                        AND n1.superseded_at IS NULL AND n2.superseded_at IS NULL
+                        {rel_filter}
+                        ORDER BY e.created_at DESC
+                    """
+                    
+                    query_params = current_level + current_level
+                    if relationship_types:
+                        query_params.extend(valid_rel_types)
+                    
+                    edge_results = con.execute(edge_query, query_params).fetchall()
+                    
+                    for edge in edge_results:
+                        source_id, target_id, rel_type, edge_created = edge[0], edge[1], edge[2], edge[3]
+                        
+                        # Add edge to collection
+                        edge_info = {
+                            'sourceid': source_id,
+                            'targetid': target_id,
+                            'rel_type': rel_type,
+                            'created_at': edge_created,
+                            'source_label': edge[4],
+                            'target_label': edge[5],
+                            'source_type': edge[6],
+                            'target_type': edge[7]
+                        }
+                        all_edges.append(edge_info)
+                        
+                        # Add connected nodes to next level if not visited
+                        for node_id in [source_id, target_id]:
+                            if node_id not in visited_nodes and len(visited_nodes) < max_nodes:
+                                # Get node details
+                                node_query = """
+                                    SELECT nodeid, type, label, text, created_at, last_access,
+                                           superseded_at, parent_id, target_date
+                                    FROM nodes
+                                    WHERE nodeid = ? AND superseded_at IS NULL
+                                """
+                                node_result = con.execute(node_query, [node_id]).fetchone()
+                                
+                                if node_result:
+                                    node_info = {
+                                        'nodeid': node_result[0],
+                                        'type': node_result[1],
+                                        'label': node_result[2],
+                                        'text': node_result[3],
+                                        'created_at': node_result[4],
+                                        'last_access': node_result[5],
+                                        'superseded_at': node_result[6],
+                                        'parent_id': node_result[7],
+                                        'target_date': node_result[8],
+                                        'distance_from_center': current_depth + 1
+                                    }
+                                    visited_nodes[node_id] = node_info
+                                    next_level.append(node_id)
+                
+                current_level = next_level
+            
+            # Generate statistics
+            node_types = {}
+            relationship_types_count = {}
+            
+            for node in visited_nodes.values():
+                node_type = node['type']
+                node_types[node_type] = node_types.get(node_type, 0) + 1
+            
+            for edge in all_edges:
+                rel_type = edge['rel_type']
+                relationship_types_count[rel_type] = relationship_types_count.get(rel_type, 0) + 1
+            
+            # Find notable paths (simple implementation)
+            notable_paths = []
+            if len(visited_nodes) > 2:
+                # Find paths of length 2-3 from center
+                for edge1 in all_edges:
+                    if edge1['sourceid'] == center_node_id:
+                        for edge2 in all_edges:
+                            if edge2['sourceid'] == edge1['targetid'] and edge2['targetid'] != center_node_id:
+                                path = {
+                                    'path_length': 2,
+                                    'nodes': [center_node_id, edge1['targetid'], edge2['targetid']],
+                                    'relationships': [edge1['rel_type'], edge2['rel_type']],
+                                    'description': f"{center_node['label']} -> {edge1['target_label']} -> {edge2['target_label']}"
+                                }
+                                notable_paths.append(path)
+                                if len(notable_paths) >= 5:  # Limit paths to prevent overwhelming output
+                                    break
+                        if len(notable_paths) >= 5:
+                            break
+            
+            return {
+                'nodes': list(visited_nodes.values()),
+                'edges': all_edges,
+                'paths': notable_paths,
+                'statistics': {
+                    'total_nodes': len(visited_nodes),
+                    'total_edges': len(all_edges),
+                    'max_depth_reached': depth,
+                    'node_type_distribution': node_types,
+                    'relationship_type_distribution': relationship_types_count,
+                    'center_node_id': center_node_id,
+                    'traversal_complete': len(visited_nodes) < max_nodes
+                },
+                'center_node': center_node
+            }
+            
+    except Exception as e:
+        olliePrint_simple(f"Error retrieving subgraph for node {center_node_id}: {e}", level='error')
+        return {
+            'error': str(e),
+            'nodes': [],
+            'edges': [],
+            'paths': [],
+            'statistics': {},
+            'center_node': None
+        }
+
+def get_graph_data(center_nodeid: int, depth: int = 1) -> Dict[str, Any]:
+    """
+    Enhanced graph data retrieval with MCP-inspired subgraph capabilities.
+    
+    This function now uses the advanced get_subgraph functionality while maintaining
+    backward compatibility for existing code that expects the old format.
+    
+    Args:
+        center_nodeid (int): The central node ID to build graph around
+        depth (int): Maximum traversal depth
+        
+    Returns:
+        Dict[str, Any]: Graph data in backward-compatible format with enhanced information
+    """
+    # Use the enhanced subgraph retrieval
+    subgraph_result = get_subgraph(center_nodeid, depth)
+    
+    # Handle error cases
+    if 'error' in subgraph_result:
+        return {'nodes': [], 'edges': []}
+    
+    # Convert nodes to backward-compatible LIST format (maintains previous behavior expected by Tools.py)
+    nodes_list = []
+    for node in subgraph_result.get('nodes', []):
+        # Provide both the new canonical key ('id') and legacy key ('nodeid')
+        nodes_list.append({
+            'id': node['nodeid'],          # canonical for downstream callers
+            'nodeid': node['nodeid'],      # legacy for older callers
+            'type': node['type'],
+            'label': node['label'],
+            'text': node['text'],
+            'created_at': node['created_at'],
+            'last_access': node['last_access'],
+            'superseded_at': node['superseded_at'],
+            'parent_id': node['parent_id'],
+            'target_date': node['target_date']
+        })
+    
+    # Convert edges to backward-compatible LIST format with both canonical and legacy keys
+    edges_list = []
+    for edge in subgraph_result.get('edges', []):
+        edges_list.append({
+            'source': edge['sourceid'],     # canonical
+            'target': edge['targetid'],     # canonical
+            'sourceid': edge['sourceid'],   # legacy
+            'targetid': edge['targetid'],
+            'rel_type': edge['rel_type'],
+            'created_at': edge['created_at']
+        })
+    
+    # Final, backward-compatible response
+    return {
+        'nodes': nodes_list,
+        'edges': edges_list,
+        'statistics': subgraph_result.get('statistics', {}),
+        'paths': subgraph_result.get('paths', [])
+    }
     nodes = {}
     edges = []
     # nodes_to_fetch = {center_nodeid} # Will be set after validation
@@ -1055,10 +1617,12 @@ def process_pending_edges(limit_per_run=5):
                         
                         target_node_info = {"label": target_node_valid_res[0], "text": target_node_valid_res[1], "type": target_node_valid_res[2]}
 
-                        olliePrint_simple(f"Checking relationship between node {node_id_to_process} and similar node {similar_nodeid}...")
+                        olliePrint_simple(f"Analyzing relationship between node {node_id_to_process} and similar node {similar_nodeid} using enhanced context analysis...")
                         
-                        determined_rel_type = determine_edge_type_llm(source_node_info, target_node_info) # Can raise
-                        olliePrint_simple(f"LLM determined relationship from {node_id_to_process} to {similar_nodeid} as: {determined_rel_type}")
+                        relationship_analysis = determine_edge_type_llm_enhanced(source_node_info, target_node_info) # Can raise
+                        determined_rel_type = relationship_analysis.get('relationship_type', 'relatedTo')
+                        confidence = relationship_analysis.get('confidence', 'unknown')
+                        olliePrint_simple(f"Enhanced analysis: relationship from {node_id_to_process} to {similar_nodeid} = {determined_rel_type} (confidence: {confidence})")
                         
                         summary["edges_attempted_this_run"] += 1
                         add_edge(sourceid=node_id_to_process,

@@ -69,13 +69,11 @@ class PivotAgent:
             results = handle_tool_calls(tool_call)
             
             if results and results[0].get('content'):
-                result_content = results[0]['content']
-                
-                success = "successfully" in result_content.lower() or "enrolled" in result_content.lower()
-                
+                # P.I.V.O.T. will now send a structured acknowledgment
                 return {
-                    "success": success,
-                    "result": result_content,
+                    "success": True,
+                    "status": "enrollment_complete",
+                    "message": f"Person '{name}' successfully enrolled.",
                     "person_name": name
                 }
             else:

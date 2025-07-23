@@ -1,6 +1,6 @@
 """
 S.Y.N.A.P.S.E. (Synthesis & Yielding Neural Analysis for Prompt Structure Enhancement)
-Generates the "Fleeting Thoughts" FRED DATABASE section from agent outputs
+Generates the "Fleeting Thoughts" NEURAL PROCESSING CORE section from agent outputs
 """
 
 import json
@@ -10,7 +10,7 @@ from ollie_print import olliePrint_simple
 from config import config, ollama_manager
 
 class SynapseAgent:
-    """S.Y.N.A.P.S.E. agent for context synthesis and FRED DATABASE generation."""
+    """S.Y.N.A.P.S.E. agent for context synthesis and NEURAL PROCESSING CORE generation."""
     
     def __init__(self):
         self.name = "S.Y.N.A.P.S.E."
@@ -18,7 +18,7 @@ class SynapseAgent:
     
     def synthesize_context(self, agent_outputs: Dict, l2_summaries: List[Dict], user_query: str, visual_context: str = "") -> str:
         """
-        Synthesize all agent outputs into FRED DATABASE format.
+        Synthesize all agent outputs into NEURAL PROCESSING CORE format.
         Creates bullet points that read like F.R.E.D.'s fleeting thoughts.
         """
         try:
@@ -39,7 +39,7 @@ class SynapseAgent:
             
             thoughts_content = response.get('message', {}).get('content', '')
             
-            database_content = self._format_fred_database(thoughts_content, visual_context)
+            database_content = self._format_neural_core(thoughts_content, visual_context)
             
             olliePrint_simple(f"[{self.name}] Generated {len(thoughts_content.split('•'))-1} thought bullets")
             
@@ -50,28 +50,8 @@ class SynapseAgent:
             return self._generate_fallback_database(user_query, visual_context)
     
     def _get_system_prompt(self) -> str:
-        """Get S.Y.N.A.P.S.E. system prompt."""
-        return f"""You are S.Y.N.A.P.S.E., F.R.E.D.'s internal thought synthesis system.
-
-Your job is to create "Fleeting Thoughts" - bullet points that read like F.R.E.D.'s own passing thoughts and observations. These thoughts should feel natural and human-like, as if F.R.E.D. is recalling memories, processing information, and making connections.
-
-GUIDELINES:
-- Write in first person as F.R.E.D.
-- Keep bullets concise but insightful
-- Include recalled memories, web insights, reminders, and observations
-- Make connections between different pieces of information
-- The final bullet must ALWAYS be "Putting it together..." with a summary insight
-- Maximum {self.max_bullets} bullets total
-- Sound natural and conversational, not robotic
-
-FORMAT:
-• [Thought about memory/context]
-• [Insight from web search]
-• [Reminder or observation]
-• [Connection or pattern]
-• Putting it together... [overall insight]
-
-The thoughts should feel like F.R.E.D.'s internal monologue as he processes the user's query."""
+        """Get S.Y.N.A.P.S.E. system prompt from config."""
+        return config.SYNAPSE_SYSTEM_PROMPT.format(max_bullets=self.max_bullets)
     
     def _build_synthesis_prompt(self, agent_outputs: Dict, l2_summaries: List[Dict], user_query: str, visual_context: str) -> str:
         """Build the synthesis prompt with all available context."""
@@ -116,8 +96,8 @@ The thoughts should feel like F.R.E.D.'s internal monologue as he processes the 
         
         return "\n\n".join(prompt_parts)
     
-    def _format_fred_database(self, thoughts_content: str, visual_context: str = "") -> str:
-        """Format the thoughts into proper FRED DATABASE structure."""
+    def _format_neural_core(self, thoughts_content: str, visual_context: str = "") -> str:
+        """Format the thoughts into proper NEURAL PROCESSING CORE structure."""
         
         thoughts_lines = []
         for line in thoughts_content.split('\n'):
@@ -127,35 +107,26 @@ The thoughts should feel like F.R.E.D.'s internal monologue as he processes the 
                     line = '•' + line[1:]
                 thoughts_lines.append(line)
         
-        if thoughts_lines and not any("putting it together" in line.lower() for line in thoughts_lines):
-            thoughts_lines.append("• Putting it together... processing the available information to provide a helpful response.")
-        
-        if len(thoughts_lines) > self.max_bullets:
-            thoughts_lines = thoughts_lines[:self.max_bullets-1]
-            thoughts_lines.append("• Putting it together... synthesizing the key insights from the available information.")
-        
         thoughts_text = '\n'.join(thoughts_lines)
         
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        return f"""(FRED DATABASE)
+        return f"""(NEURAL PROCESSING CORE)
 {thoughts_text}
 
 SYSTEM STATUS:
 The current time is: {current_time}
-(END FRED DATABASE)"""
+(END NEURAL PROCESSING CORE)"""
     
     def _generate_fallback_database(self, user_query: str, visual_context: str = "") -> str:
-        """Generate a basic FRED DATABASE when synthesis fails."""
+        """Generate a basic NEURAL PROCESSING CORE when synthesis fails."""
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
-        fallback_content = f"""(FRED DATABASE)
-• I'm processing your query about: {user_query[:100]}...
-• My memory systems are working to find relevant information
-• Putting it together... ready to help with what I know
+        fallback_content = f"""(NEURAL PROCESSING CORE)
+Your Neural Processing Core Deemed No Memories Needed.
 
 SYSTEM STATUS:
 The current time is: {current_time}
-(END FRED DATABASE)"""
+(END NEURAL PROCESSING CORE)"""
         
         return fallback_content

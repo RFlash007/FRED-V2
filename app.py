@@ -13,52 +13,8 @@ import glob
 # Import only non-memory tools for F.R.E.D.
 from Tools import handle_tool_calls
 
-# F.R.E.D.'s tool set (no memory tools - handled by CRAP)
-FRED_TOOLS = [
-    {
-        "name": "enroll_person",
-        "description": "Learns a new person's face from the live camera feed. Use when the user introduces someone (e.g., 'This is Sarah', 'My name is Ian'). Requires an active camera feed from the Pi glasses.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "The name of the person to enroll."
-                }
-            },
-            "required": ["name"]
-        }
-    },
-    {
-        "name": "addTaskToAgenda",
-        "description": "Add a research task to the agenda for future processing during sleep cycles. Use when the user wants information that requires recent data you don't possess, or complex research that should be done later.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "task_description": {
-                    "type": "string",
-                    "description": "Detailed description of the research task or information needed."
-                },
-                "priority": {
-                    "type": "integer",
-                    "description": "Task priority: 1 (important) or 2 (normal). Defaults to 2.",
-                    "enum": [1, 2],
-                    "default": 2
-                }
-            },
-            "required": ["task_description"]
-        }
-    },
-    {
-        "name": "triggerSleepCycle",
-        "description": "Initiate the sleep cycle to process agenda tasks, consolidate L2 memories to L3, and perform background maintenance. This will block F.R.E.D. temporarily while processing.",
-        "parameters": {
-            "type": "object",
-            "properties": {},
-            "required": []
-        }
-    }
-]
+# F.R.E.D.'s tool set - imported from consolidated config
+# Tool schemas are now centrally managed in config.py
 from datetime import datetime
 import torch
 from TTS.api import TTS
@@ -71,7 +27,7 @@ from ollie_print import olliePrint, olliePrint_simple
 
 apply_theme()
 import time
-from config import config, ollama_manager
+from config import config, ollama_manager, AGENT_MANAGEMENT_TOOLS
 
 # Import L2 and Agenda modules
 import memory.L2_memory as L2
@@ -567,8 +523,8 @@ def chat_endpoint():
             # Add user message to history
             fred_state.add_conversation_turn('user', user_message)
             
-            # Use centralized connection manager for efficient concurrent calls
-            client = ollama_manager.get_client(ollama_base_url)
+            # CENTRALIZED CONNECTION: All calls use ollama_manager.chat_concurrent_safe() directly
+            # No need to store client reference
 
             # Get visual context if from Pi glasses
             visual_context = ""
@@ -602,11 +558,32 @@ def chat_endpoint():
                         messages.append({"role": "assistant", "content": content})
             
 
+            # Check for F.R.E.D. research summaries (direct injection bypassing agents)
+            subconscious_results = ""
+            try:
+                import memory.agenda_system as agenda
+                pending_summaries = agenda.get_pending_fred_summaries()
+                if pending_summaries:
+                    summary_lines = []
+                    summary_ids = []
+                    for summary in pending_summaries:
+                        summary_lines.append(summary['content'])
+                        summary_ids.append(summary['summary_id'])
+                    
+                    subconscious_results = f"""
+SUBCONSCIOUS PROCESSING RESULTS:
+{chr(10).join(summary_lines)}
+"""
+                    # Mark as delivered
+                    agenda.mark_fred_summaries_delivered(summary_ids)
+            except Exception as e:
+                olliePrint_simple(f"Failed to get F.R.E.D. summaries: {e}", level='error')
+
             # Format final user message with the retrieved database content
             formatted_input = f"""(USER INPUT)
 {user_message}
 (END OF USER INPUT)
-
+{subconscious_results}
 {fred_database}"""
             messages.append({"role": "user", "content": formatted_input})
             
@@ -620,7 +597,7 @@ def chat_endpoint():
                     host=ollama_base_url,
                     model=model_name,
                     messages=messages,
-                    tools=FRED_TOOLS,
+                    tools=AGENT_MANAGEMENT_TOOLS,
                     stream=False,
                     options=config.THINKING_MODE_OPTIONS
                 )
@@ -707,17 +684,31 @@ def chat_endpoint():
                         # Update user message with tool results (skip for sleep cycle - already handled)
                         if not sleep_cycle_triggered:
                             tool_results = []
+                            system_notifications = [] # Generic notifications
+
                             for output in tool_outputs:
-                                tool_results.append(f"Tool result: {output.get('content', '{}')}")
-                            
+                                try:
+                                    content_json = json.loads(output.get('content', '{}'))
+                                    if content_json.get('status') == 'enrollment_complete':
+                                        person_name = content_json.get('person_name', 'unknown person')
+                                        system_notifications.append(f"[Facial Recognition Engaged] I've committed \"{person_name}\" to memory. I'll recognize them from now on.")
+                                    else:
+                                        tool_results.append(f"Tool result: {output.get('content', '{}')}")
+                                except json.JSONDecodeError:
+                                    tool_results.append(f"Tool result: {output.get('content', '{}')}")
+
+                            fred_database_content = chr(10).join(tool_results)
+                            if system_notifications:
+                                fred_database_content += f"\n\nSystem Notifications:\n- {chr(10).join(system_notifications)}"
+
                             enhanced_message = f"""(USER INPUT)
 {user_message}
 (END OF USER INPUT)
 
-(FRED DATABASE)
-{chr(10).join(tool_results)}
+(NEURAL PROCESSING CORE)
+{fred_database_content}
 The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
-(END OF FRED DATABASE)"""
+(END NEURAL PROCESSING CORE)"""
                             
                             # Update last user message
                             for i in range(len(messages) - 1, -1, -1):
@@ -743,8 +734,8 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             
             # Generate final response if needed
             if not assistant_response:
-                # Note: Streaming not supported by connection manager, use direct client
-                final_stream = client.chat(
+                # Use ollama_manager for consistent connection management
+                final_stream = ollama_manager.chat_concurrent_safe(
                     model=model_name,
                     messages=messages,
                     stream=True,

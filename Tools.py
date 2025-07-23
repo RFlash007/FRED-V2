@@ -12,6 +12,7 @@ import uuid
 import concurrent.futures
 import threading
 import io
+import sys
 from trafilatura import fetch_url, extract
 # Use centralized Ollama connection manager for all tool functions
 
@@ -21,7 +22,8 @@ __all__ = [
     'tool_search_news',
     'tool_search_academic',
     'tool_search_forums',
-    'tool_read_webpage'
+    'tool_read_webpage',
+    'tool_code_interpreter'
 ]
 
 # Change logging level to ERROR to reduce console clutter (handled by olliePrint)
@@ -394,6 +396,22 @@ AVAILABLE_TOOLS = [
 ]
 
 # --- Tool Implementations ---
+
+# Code interpreter tool
+def tool_code_interpreter(code: str) -> dict:
+    """Executes Python code and returns the output or errors."""
+    olliePrint(f"Executing code interpreter tool", show_banner=False)
+    old_stdout = sys.stdout
+    redirected_output = io.StringIO()
+    sys.stdout = redirected_output
+    try:
+        exec(code, {})
+        output = redirected_output.getvalue()
+        return {"output": output}
+    except Exception as e:
+        return {"error": str(e)}
+    finally:
+        sys.stdout = old_stdout
 # Wrapper for adding memory
 def tool_add_memory(label: str, text: str, memory_type: str, parent_id: int | None = None, target_date: str | None = None):
     """Adds a new memory node to the knowledge graph."""
@@ -455,6 +473,33 @@ def tool_search_memory(query_text: str, memory_type: str | None = None, limit: i
         return {"success": True, "results": results}
     except Exception as e:
         olliePrint(f"Error searching memory: {e}", level='error')
+        return {"success": False, "error": str(e)}
+
+# Wrapper for searching L2 memory
+def tool_search_l2_memory(query_text: str, limit: int = 5):
+    """Searches L2 Episodic Cache for recent conversation summaries."""
+    try:
+        olliePrint(f"Searching L2 memory: '{query_text}' (limit: {limit})", show_banner=False)
+        import memory.L2_memory as L2
+        
+        # Use L2's existing search functionality
+        results = L2.search_l2_memory(query_text, limit)
+        
+        if results:
+            formatted_results = []
+            for result in results:
+                formatted_results.append({
+                    "topic": result.get('topic', ''),
+                    "summary": result.get('raw_text_summary', ''),
+                    "turns": f"{result.get('turn_start', 0)}-{result.get('turn_end', 0)}",
+                    "sentiment": result.get('user_sentiment', 'neutral'),
+                    "entities": result.get('entities_mentioned', [])
+                })
+            return {"success": True, "results": formatted_results}
+        else:
+            return {"success": True, "results": []}
+    except Exception as e:
+        olliePrint(f"Error searching L2 memory: {e}", level='error')
         return {"success": False, "error": str(e)}
 
 # Research System Error Handling and Rate Limiting
@@ -906,6 +951,88 @@ def tool_get_graph_data(center_nodeid: int, depth: int = 1):
         olliePrint(f"Error getting graph data: {e}", level='error')
         return {"nodes": [], "links": []}
 
+def tool_get_subgraph(center_node_id: int, depth: int = 2, relationship_types: list = None, 
+                     max_nodes: int = 100, include_metadata: bool = True):
+    """MCP-inspired subgraph retrieval with advanced traversal and relationship analysis."""
+    try:
+        olliePrint(f"Getting subgraph (center: {center_node_id}, depth: {depth}, max_nodes: {max_nodes})", show_banner=False)
+        
+        subgraph_data = L3.get_subgraph(
+            center_node_id=center_node_id,
+            depth=depth,
+            relationship_types=relationship_types,
+            max_nodes=max_nodes,
+            include_metadata=include_metadata
+        )
+        
+        # Process datetime objects for JSON compatibility
+        for node in subgraph_data.get('nodes', []):
+            convert_datetime_for_json(node)
+        for edge in subgraph_data.get('edges', []):
+            convert_datetime_for_json(edge)
+        
+        return {"success": True, "result": subgraph_data}
+    except Exception as e:
+        olliePrint(f"Error getting subgraph: {e}", level='error')
+        return {"success": False, "error": str(e)}
+
+def tool_add_memory_with_observations(label: str, text: str, memory_type: str, 
+                                     observations: list = None, parent_id: int = None,
+                                     target_date: str = None, metadata: dict = None):
+    """MCP-inspired memory addition with structured observations and metadata support."""
+    try:
+        olliePrint(f"Adding memory with observations: '{label}' ({memory_type})", show_banner=False)
+        validate_memory_type(memory_type)
+        parsed_target_date = parse_target_date(target_date)
+        
+        result = L3.add_memory_with_observations(
+            label=label,
+            text=text,
+            memory_type=memory_type,
+            observations=observations,
+            parent_id=parent_id,
+            target_date=parsed_target_date,
+            metadata=metadata
+        )
+        
+        return {
+            "success": result.get('success', False),
+            "node_id": result.get('nodeid'),
+            "observations_added": result.get('observations_added', 0),
+            "metadata_keys": result.get('metadata_keys', []),
+            "message": f"Memory '{label}' added with ID {result.get('nodeid')} ({result.get('observations_added', 0)} observations, {len(result.get('metadata_keys', []))} metadata keys)"
+        }
+    except Exception as e:
+        olliePrint(f"Error adding memory with observations: {e}", level='error')
+        return {"success": False, "error": str(e)}
+
+def tool_discover_relationships_advanced(node_id: int, context_window: int = 5, 
+                                        min_confidence: float = 0.7):
+    """MCP-inspired enhanced relationship discovery with context-aware analysis and confidence scoring."""
+    try:
+        olliePrint(f"Discovering advanced relationships for node {node_id} (context: {context_window}, min_confidence: {min_confidence})", show_banner=False)
+        
+        relationships = L3.discover_relationships_advanced(
+            node_id=node_id,
+            context_window=context_window,
+            min_confidence=min_confidence
+        )
+        
+        # Process datetime objects for JSON compatibility in relationship data
+        for rel in relationships:
+            if 'context_nodes' in rel and isinstance(rel['context_nodes'], list):
+                rel['context_nodes'] = [int(nid) for nid in rel['context_nodes']]  # Ensure node IDs are integers
+        
+        return {
+            "success": True,
+            "relationships_found": len(relationships),
+            "relationships": relationships,
+            "message": f"Found {len(relationships)} potential relationships for node {node_id} above confidence threshold {min_confidence}"
+        }
+    except Exception as e:
+        olliePrint(f"Error discovering advanced relationships: {e}", level='error')
+        return {"success": False, "error": str(e)}
+
 def tool_enroll_person(name: str):
     """Enrolls a new person by capturing their face from the live camera feed."""
     try:
@@ -1132,6 +1259,7 @@ TOOL_FUNCTIONS = {
     "add_memory": tool_add_memory,
     "supersede_memory": tool_supersede_memory,
     "search_memory": tool_search_memory,
+    "search_l2_memory": tool_search_l2_memory,
     # High-level search helpers
     "search_general": tool_search_general,
     "search_news": tool_search_news,
@@ -1140,11 +1268,15 @@ TOOL_FUNCTIONS = {
     # Graph & memory helpers
     "get_node_by_id": tool_get_node_by_id,
     "get_graph_data": tool_get_graph_data,
+    "get_subgraph": tool_get_subgraph,
+    "add_memory_with_observations": tool_add_memory_with_observations,
+    "discover_relationships_advanced": tool_discover_relationships_advanced,
     "enroll_person": tool_enroll_person,
     "update_knowledge_graph_edges": tool_update_knowledge_graph_edges,
     "addTaskToAgenda": tool_add_task_to_agenda,
     "triggerSleepCycle": tool_trigger_sleep_cycle,
     "read_webpage": tool_read_webpage,
+    "code_interpreter": tool_code_interpreter,
 }
 
 # --- Tool Execution Logic ---

@@ -134,6 +134,46 @@ This is a multi-agent conversational framework that simulates a research team to
 
 - **Outcome:** The final, synthesized report is added as a new node to the L3 memory graph, permanently expanding F.R.E.D.'s knowledge base.
 
+### 4.3. Multi-Agent Coordination and Context Generation
+
+F.R.E.D.'s ability to process complex queries and maintain robust contextual awareness is orchestrated by a sophisticated multi-agent system that funnels relevant information to the core LLM. This system primarily revolves around **G.A.T.E. (Global Analysis & Task Evaluator)**, **C.R.A.P. (Context Retrieval for Augmented Prompts)**, **S.C.O.U.T. (Search & Confidence Optimization Utility Tool)**, and **S.Y.N.A.P.S.E. (Synthesized Neural Activation & Prompt Structuring Engine)**.
+
+#### G.A.T.E. (Global Analysis & Task Evaluator) - The Primary Router (`memory/gate.py`)
+
+- **Role:** G.A.T.E. acts as the central routing component of F.R.E.D.'s cognitive architecture. Its sole purpose is to analyze incoming user queries and recent conversational context, then determine which specialized agents need to be activated to gather the necessary information. It replaces older, less sophisticated triage functionalities.
+- **Process:**
+    - G.A.T.E. receives the user's message, the L2 episodic context (`memory/L2_memory.py`), and a truncated history of the most recent conversation turns (without F.R.E.D.'s internal thinking).
+    - It uses an LLM (governed by `GATE_SYSTEM_PROMPT`) to generate a JSON object containing boolean routing flags (e.g., `needs_memory`, `needs_web_search`, `needs_deep_research`, `needs_pi_tools`, `needs_reminders`).
+    - **L2 Context Bypass Protocol:** G.A.T.E. can bypass memory agents if the provided L2 context contains sufficient information to fully answer the user's query.
+- **Output:** The routing flags are then passed to the `AgentDispatcher` (`agents/dispatcher.py`), which orchestrates the execution of the flagged agents.
+
+#### C.R.A.P. (Context Retrieval for Augmented Prompts) - The Memory Retriever (`memory/crap.py`)
+
+- **Role:** C.R.A.P. is a dedicated memory retrieval agent. It is activated by the `AgentDispatcher` only when G.A.T.E.'s routing flags indicate `needs_memory`. Its mission is to search through F.R.E.D.'s L2 (episodic) and L3 (long-term) memory systems to gather all relevant information for the current query.
+- **Process:**
+    - C.R.A.P. receives the user's message and a limited, thinking-free segment of the conversation history.
+    - It uses its own set of memory-specific tools (e.g., `search_memory`, `search_l2_memory`, `add_memory`, `supersede_memory`, `get_node_by_id`) to interact directly with the `L2_memory.py` and `L3_memory.py` databases.
+    - **Crucially, C.R.A.P. does not generate direct responses or answer the user.** Its sole output is a structured block of "MEMORY CONTEXT" containing relevant facts and recent conversational context, which is then passed to S.Y.N.A.P.S.E.
+- **Memory Update Protocol:** C.R.A.P. also handles updating F.R.E.D.'s memory. When new information is learned or existing information is corrected by the user, C.R.A.P. is responsible for searching for existing memories and either adding new nodes or superseding outdated ones.
+
+#### S.C.O.U.T. (Search & Confidence Optimization Utility Tool) - The Web Scout (`agents/scout.py`)
+
+- **Role:** S.C.O.U.T. is F.R.E.D.'s rapid reconnaissance specialist, activated by the `AgentDispatcher` when G.A.T.E.'s routing flags indicate `needs_web_search`. Its mission is to perform quick web searches and assess the confidence level of its findings.
+- **Process:**
+    - It uses web search tools (e.g., `search_general`, `search_news`) to find relevant information.
+    - It assesses the completeness, source reliability, recency, and relevance of the search results.
+    - If its confidence in the findings is below a certain threshold (e.g., 70%), it can automatically escalate the task to the deep research agenda (`addTaskToAgenda`), signaling that a more comprehensive investigation is required by the A.R.C.H./D.E.L.V.E./V.E.T. team.
+
+#### S.Y.N.A.P.S.E. (Synthesized Neural Activation & Prompt Structuring Engine) - The Context Synthesizer (`agents/synapse.py`)
+
+- **Role:** S.Y.N.A.P.S.E. is the final agent in the context generation pipeline before the core F.R.E.D. LLM receives its prompt. Its crucial role is to synthesize the raw outputs from all activated data-gathering agents (like C.R.A.P., S.C.O.U.T., Vision Service, etc.) and the L2 summaries into a coherent, "humanoid" internal monologue.
+- **Process:**
+    - S.Y.N.A.P.S.E. receives the outputs from all dispatched agents, the relevant L2 summaries, the user query, and the visual context.
+    - It uses its system prompt (`SYNAPSE_SYSTEM_PROMPT`) to transform these disparate pieces of information into a natural-sounding `NEURAL PROCESSING CORE` block. This block reads like F.R.E.D.'s own fleeting thoughts, insights, and observations, making it seamlessly integrable into F.R.E.D.'s final prompt.
+- **Output:** The `NEURAL PROCESSING CORE` generated by S.Y.N.A.P.S.E. is then combined with the system prompt, conversation history, and user message to form the complete input for the main F.R.E.D. LLM. This ensures F.R.E.D. has a comprehensive, synthesized understanding of all relevant information without exposing the underlying agentic systems.
+
+The interplay between these agents, orchestrated by the `AgentDispatcher`, ensures that F.R.E.D. dynamically accesses and processes the exact type of information needed for each user interaction, presenting it as a cohesive internal thought process.
+
 ### 4.3. 3-Agent Research System - Deep Dive
 
 Defined in `memory/arch_delve_research.py`, this is F.R.E.D.'s system for autonomous, in-depth investigation, simulating a hierarchical research team.
@@ -173,14 +213,15 @@ This section details how F.R.E.D. perceives the world and the overall flow of da
 ### 5.1. Overall Data Flow
 
 1.  **Input:** User speaks to the Pi. Speech is transcribed locally and sent to the server.
-2.  **Processing:** The Main Server receives the text. It gathers context from L2 memory (recent conversations) and L3 memory (long-term knowledge), and gets the current visual context from the `VisionService`.
-3.  **Reasoning:** This rich, contextual prompt is sent to the primary LLM.
-4.  **Action/Response:** The LLM either generates a direct text response or uses a tool.
-    - If a text response, it's converted to audio and sent back to the Pi.
-    - If a tool (like `addTaskToAgenda`), the relevant system (e.g., the `AgendaSystem`) is engaged.
-5.  **Learning (Background):**
-    - **Passively:** The L2 memory system constantly watches the conversation, creating summaries of past topics.
-    - **Actively (During Sleep Cycle):** F.R.E.D. processes its research agenda using the A.R.C.H./D.E.L.V.E. system, consolidates L2 memories into L3, and expands its L3 knowledge graph by creating new connections.
+2.  **Initial Processing & Routing:** The Main Server receives the transcribed text. **G.A.T.E. (`memory/gate.py`)** analyzes the user's message and conversation history to determine which specialized agents (e.g., memory, web search, visual) need to be activated. It also retrieves relevant L2 (recent conversations) and L3 (long-term knowledge) context.
+3.  **Context Gathering & Synthesis:** Based on G.A.T.E.'s routing flags, the `AgentDispatcher` (`agents/dispatcher.py`) orchestrates the execution of agents like **C.R.A.P. (`memory/crap.py`)** for memory retrieval and **S.C.O.U.T. (`agents/scout.py`)** for web search. The `VisionService` (`vision_service.py`) also provides current visual context. All gathered information is then sent to **S.Y.N.A.P.S.E. (`agents/synapse.py`)**, which synthesizes it into a cohesive "NEURAL PROCESSING CORE" (F.R.E.D.'s internal thoughts).
+4.  **Reasoning & Response Generation:** The rich, contextual "NEURAL PROCESSING CORE," along with the base system prompt, conversational history, and direct subconscious processing results from completed research, is sent to the primary Ollama LLM (`app.py`). The LLM generates a direct text response or uses a tool from `FRED_TOOLS`.
+5.  **Action/Output:**
+    - If a text response, it's converted to audio (`app.py`) and sent back to the Pi.
+    - If a tool (like `addTaskToAgenda` in `app.py`), the relevant system (e.g., the `AgendaSystem`) is engaged via `Tools.py`.
+6.  **Learning (Background):**
+    - **Passively:** The L2 memory system (`memory/L2_memory.py`) constantly watches the conversation, creating summaries of past topics.
+    - **Actively (During Sleep Cycle):** F.R.E.D. processes its research agenda using the A.R.C.H./D.E.L.V.E. system (`memory/arch_delve_research.py`), consolidates L2 memories into L3, and expands its L3 knowledge graph by creating new connections.
 
 This entire architecture creates a powerful feedback loop where F.R.E.D. can interact with the world, remember its interactions, and proactively learn more about topics of interest, making it a continuously evolving AI.
 
@@ -215,10 +256,8 @@ The central logic in `app.py` dynamically assembles a rich, multi-faceted prompt
 The final prompt sent to the core LLM is constructed in a precise order inside the `/chat` endpoint's `event_stream` generator:
 
 1.  **Base System Prompt (`FRED_SYSTEM_PROMPT`):** The foundation, defining F.R.E.D.'s core persona, operating style, and available tools.
-2.  **L3 Knowledge Injection:** The user's message is used to query the L3 Knowledge Graph (`search_memory`). Relevant long-term facts are appended under a `(L3 Long-Term Memory)` heading.
-3.  **L2 Context Injection:** The user's message is used to query the L2 Episodic Cache (`query_l2_context`). Relevant recent conversation summaries are appended under a `(L2 Recent Conversation Context)` heading.
-4.  **Visual Context Injection:** The latest scene description from the `vision_service` is appended under a `(Current Visual Context (Pi Glasses))` heading.
-5.  **System Status Injection:** Pending notifications from completed research (`get_pending_notifications`) and the current agenda status (`get_agenda_summary`) are appended under a `(SYSTEM & NOTIFICATION STATUS)` heading.
-6.  **Final Assembly:** This assembled "super-prompt" is combined with the L1 conversational history and the user's latest message before being sent to the core LLM (`DEFAULT_MODEL`).
+2.  **G.A.T.E. Multi-Agent Context:** The `G.A.T.E.` (Global Agent Tasking and Execution) system (`memory/gate.py`) processes the user's message and conversation history to generate a `fred_database` string. This database string provides relevant context from various agents (e.g., L2, L3, visual context, etc.) that is then included in the final user message to the LLM.
+3.  **Subconscious Processing Results:** Pending research summaries from the `agenda_system.py` are directly injected into the user's prompt as "SUBCONSCIOUS PROCESSING RESULTS," bypassing the agentic reasoning loop for immediate awareness.
+4.  **Final Assembly:** The system prompt, along with the detailed `fred_database` from G.A.T.E., the subconscious processing results, and the L1 conversational history, are combined with the user's latest message to form the complete prompt sent to the core LLM (`DEFAULT_MODEL`).
 
 This process ensures that for every turn, F.R.E.D. has a complete, up-to-the-moment understanding of its identity, its knowledge, its recent past, its environment, and its own internal state. 

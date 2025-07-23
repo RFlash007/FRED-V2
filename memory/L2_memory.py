@@ -136,8 +136,8 @@ def init_l2_db():
 def get_embedding(text: str) -> Optional[np.ndarray]:
     """Get embedding for text using Ollama."""
     try:
-        client = ollama_manager.get_client()
-        response = client.embeddings(
+        # CENTRALIZED CONNECTION: Use connection manager instead of direct client
+        response = ollama_manager.embeddings(
             model=config.EMBED_MODEL,
             prompt=text
         )

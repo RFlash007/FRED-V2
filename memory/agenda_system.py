@@ -33,6 +33,40 @@ def _cosine_similarity(v1, v2):
         return 0.0
     return np.dot(v1, v2) / (norm_v1 * norm_v2)
 
+def generate_fred_research_summary(original_task: str, research_findings: str) -> str:
+    """Generate F.R.E.D.-ready research summary using R.E.F.L.E.X."""
+    try:
+        olliePrint_simple("[R.E.F.L.E.X.] Generating F.R.E.D. research summary...")
+        
+        summary_prompt = config.REFLEX_USER_PROMPT.format(
+            original_task=original_task,
+            research_findings=research_findings
+        )
+        
+        messages = [
+            {"role": "system", "content": config.REFLEX_SYSTEM_PROMPT},
+            {"role": "user", "content": summary_prompt}
+        ]
+        
+        response = ollama_manager.chat_concurrent_safe(
+            model=config.REFLEX_MODEL,
+            messages=messages,
+            stream=False
+        )
+        
+        fred_summary = response.get('message', {}).get('content', '').strip()
+        
+        if fred_summary:
+            olliePrint_simple("[R.E.F.L.E.X.] F.R.E.D. summary generated successfully")
+            return fred_summary
+        else:
+            olliePrint_simple("[R.E.F.L.E.X.] No summary generated, using fallback", level='warning')
+            return f"I was thinking about that {original_task[:50]}... question - I worked through it in the back of my mind and have some insights to share."
+            
+    except Exception as e:
+        olliePrint_simple(f"[R.E.F.L.E.X.] Summary generation failed: {e}", level='error')
+        return f"I was thinking about that {original_task[:50]}... question - I worked through it in the back of my mind and have some insights to share."
+
 def init_agenda_db():
     """Initialize agenda and notification tables in L3 database."""
     try:
@@ -55,7 +89,7 @@ def init_agenda_db():
                 );
             """)
             
-            # Create notification queue table
+            # Create notification queue table (legacy)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS notification_queue (
                     notification_id VARCHAR PRIMARY KEY DEFAULT (CONCAT('notif_', CAST(epoch_ms(current_timestamp) AS VARCHAR))),
@@ -65,6 +99,17 @@ def init_agenda_db():
                     source_task_id VARCHAR,
                     message_summary TEXT NOT NULL,
                     related_node_id VARCHAR
+                );
+            """)
+            
+            # Create F.R.E.D. research summaries table (direct injection to F.R.E.D.)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS fred_research_summaries (
+                    summary_id VARCHAR PRIMARY KEY,
+                    source_task_id VARCHAR NOT NULL,
+                    summary_content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT current_timestamp,
+                    delivered BOOLEAN DEFAULT false
                 );
             """)
             
@@ -165,7 +210,7 @@ def get_pending_agenda_tasks(limit: int = None) -> List[Dict]:
 # NOTE: Old linear research pipeline functions removed - now using A.R.C.H./D.E.L.V.E. iterative system
 
 def complete_agenda_task(task_id: str, result_node_id: str, research_results: Dict):
-    """Mark agenda task as completed and create notification."""
+    """Mark agenda task as completed and create F.R.E.D. summary for direct injection."""
     try:
         with duckdb.connect(AGENDA_DB_PATH) as conn:
             # Update task status
@@ -176,28 +221,57 @@ def complete_agenda_task(task_id: str, result_node_id: str, research_results: Di
                 WHERE task_id = ?
             """, (result_node_id, json.dumps(research_results), task_id))
             
-            # Get task content for notification
-            task_result = conn.execute("""
-                SELECT content FROM agenda_tasks WHERE task_id = ?
-            """, (task_id,)).fetchone()
+            # Store F.R.E.D. summary for direct injection (bypasses all agents)
+            fred_summary = research_results.get('fred_summary', 'Research completed.')
+            fred_notification_id = f"fred_summary_{uuid.uuid4().hex[:12]}"
             
-            if task_result:
-                task_content = task_result[0]
-                
-                # Create notification
-                notification_id = f"notif_{uuid.uuid4().hex[:12]}"
-                message_summary = f"Completed research on: {task_content[:100]}..."
-                
-                conn.execute("""
-                    INSERT INTO notification_queue 
-                    (notification_id, source_task_id, message_summary, related_node_id)
-                    VALUES (?, ?, ?, ?)
-                """, (notification_id, task_id, message_summary, result_node_id))
-                
-                olliePrint_simple(f"Agenda task completed: {task_content[:100]}...")
+            conn.execute("""
+                INSERT INTO fred_research_summaries 
+                (summary_id, source_task_id, summary_content, created_at, delivered)
+                VALUES (?, ?, ?, current_timestamp, false)
+            """, (fred_notification_id, task_id, fred_summary))
+            
+            olliePrint_simple(f"Research summary created for F.R.E.D.: {task_id}")
         
     except Exception as e:
         olliePrint_simple(f"Failed to complete agenda task: {e}", level='error')
+
+def get_pending_fred_summaries() -> List[Dict]:
+    """Get pending F.R.E.D. research summaries for direct injection."""
+    try:
+        with duckdb.connect(AGENDA_DB_PATH) as conn:
+            result = conn.execute("""
+                SELECT summary_id, summary_content, created_at
+                FROM fred_research_summaries
+                WHERE delivered = false
+                ORDER BY created_at ASC
+            """).fetchall()
+            
+            return [
+                {
+                    'summary_id': row[0],
+                    'content': row[1],
+                    'created_at': row[2]
+                }
+                for row in result
+            ]
+    except Exception as e:
+        olliePrint_simple(f"Failed to get pending F.R.E.D. summaries: {e}", level='error')
+        return []
+
+def mark_fred_summaries_delivered(summary_ids: List[str]):
+    """Mark F.R.E.D. summaries as delivered."""
+    try:
+        with duckdb.connect(AGENDA_DB_PATH) as conn:
+            for summary_id in summary_ids:
+                conn.execute("""
+                    UPDATE fred_research_summaries
+                    SET delivered = true
+                    WHERE summary_id = ?
+                """, (summary_id,))
+        olliePrint_simple(f"Marked {len(summary_ids)} F.R.E.D. summaries as delivered")
+    except Exception as e:
+        olliePrint_simple(f"Failed to mark F.R.E.D. summaries as delivered: {e}", level='error')
 
 def fail_agenda_task(task_id: str, error_message: str):
     """Mark agenda task as failed."""
@@ -229,9 +303,9 @@ def process_agenda_task(task: Dict) -> bool:
             """, (task_id,))
         
         # Conduct iterative research using A.R.C.H./D.E.L.V.E. system
-        from memory.arch_delve_research import conduct_iterative_research, synthesize_research_to_memory
+        from memory.arch_delve_research import conduct_enhanced_iterative_research, synthesize_research_to_memory
         
-        research_result = conduct_iterative_research(task_id, task_content)
+        research_result = conduct_enhanced_iterative_research(task_id, task_content)
         
         if not research_result.get('success', False):
             fail_agenda_task(task_id, f"A.R.C.H./D.E.L.V.E. research failed: {research_result.get('reason', 'unknown')}")
@@ -244,13 +318,17 @@ def process_agenda_task(task: Dict) -> bool:
             fail_agenda_task(task_id, "Failed to create memory node from research findings")
             return False
         
+        # Generate F.R.E.D.-ready summary using R.E.F.L.E.X.
+        fred_summary = generate_fred_research_summary(task_content, research_result.get('findings', ''))
+        
         # Complete task and create notification
         research_results = {
             'method': 'arch_delve_iterative',
             'iterations': research_result.get('iterations', 0),
             'conversation_path': research_result.get('conversation_path', ''),
             'findings': research_result.get('findings', ''),
-            'node_id': result_node_id
+            'node_id': result_node_id,
+            'fred_summary': fred_summary
         }
         
         complete_agenda_task(task_id, result_node_id, research_results)

@@ -11,171 +11,8 @@ import memory.L2_memory as L2
 # Import memory tools directly
 from Tools import TOOL_FUNCTIONS, handle_tool_calls
 
-# C.R.A.P.-specific tool schema (memory tools only)
-CRAP_TOOLS = [
-    {
-        "name": "search_memory",
-        "description": "Searches the knowledge graph for memories relevant to a query text using semantic similarity.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "query_text": {
-                    "type": "string",
-                    "description": "The text to search for relevant memories."
-                },
-                "memory_type": {
-                    "type": ["string", "null"],
-                    "description": "Optional. Filter search results to a specific memory type ('Semantic', 'Episodic', 'Procedural').",
-                    "enum": ["Semantic", "Episodic", "Procedural", None]
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Optional. The maximum number of search results to return. Defaults to 10.",
-                    "default": 10
-                },
-                "future_events_only": {
-                    "type": "boolean",
-                    "description": "Optional. If true, only return memories with a target_date in the future.",
-                    "default": False
-                },
-                "use_keyword_search": {
-                    "type": "boolean",
-                    "description": "Optional. If true, performs a keyword-based search instead of semantic. Defaults to false (semantic search).",
-                    "default": False
-                }
-            },
-            "required": ["query_text"]
-        }
-    },
-    {
-        "name": "add_memory",
-        "description": "Adds a new memory node to the knowledge graph. Use for new information, facts, events, or procedures.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "label": {
-                    "type": "string",
-                    "description": "A concise label or title for the memory node."
-                },
-                "text": {
-                    "type": "string",
-                    "description": "The detailed text content of the memory."
-                },
-                "memory_type": {
-                    "type": "string",
-                    "description": "The type of memory.",
-                    "enum": ["Semantic", "Episodic", "Procedural"]
-                },
-                "parent_id": {
-                    "type": ["integer", "null"],
-                    "description": "Optional. The ID of a parent node if this memory is hierarchically related."
-                },
-                "target_date": {
-                    "type": ["string", "null"],
-                    "description": "Optional. ISO format date (YYYY-MM-DD) or datetime (YYYY-MM-DDTHH:MM:SS) for future events or activities."
-                }
-            },
-            "required": ["label", "text", "memory_type"]
-        }
-    },
-    {
-        "name": "supersede_memory",
-        "description": "Replaces a specific old memory node with new, corrected information. Use ONLY when you have a specific NodeID to replace.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "old_nodeid": {
-                    "type": "integer",
-                    "description": "The NodeID of the specific memory to replace"
-                },
-                "new_label": {
-                    "type": "string",
-                    "description": "A concise label/title for the new, replacing memory."
-                },
-                "new_text": {
-                    "type": "string",
-                    "description": "The full, corrected text content for the new memory."
-                },
-                "new_memory_type": {
-                    "type": "string",
-                    "description": "The classification ('Semantic', 'Episodic', 'Procedural') for the new memory content.",
-                    "enum": ["Semantic", "Episodic", "Procedural"]
-                },
-                "target_date": {
-                    "type": ["string", "null"],
-                    "description": "Optional. ISO format date (YYYY-MM-DD) or datetime (YYYY-MM-DDTHH:MM:SS) for future events or activities."
-                }
-            },
-            "required": ["old_nodeid", "new_label", "new_text", "new_memory_type"]
-        }
-    },
-    {
-        "name": "get_node_by_id",
-        "description": "Retrieves a specific memory node by its ID, along with its connections to other nodes.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "nodeid": {
-                    "type": "integer",
-                    "description": "The ID of the node to retrieve."
-                }
-            },
-            "required": ["nodeid"]
-        }
-    },
-    {
-        "name": "get_graph_data",
-        "description": "Retrieves a subgraph centered around a specific node, showing its connections up to a certain depth.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "center_nodeid": {
-                    "type": "integer",
-                    "description": "The ID of the node to center the graph around."
-                },
-                "depth": {
-                    "type": "integer",
-                    "description": "Optional. How many levels of connections to retrieve. Defaults to 1.",
-                    "default": 1
-                }
-            },
-            "required": ["center_nodeid"]
-        }
-    },
-    {
-        "name": "search_general",
-        "description": "General web search for broad topics, documentation, or official sources.",
-        "parameters": {
-            "type": "object", "properties": {"query": {"type": "string", "description": "Search query"}}, "required": ["query"]
-        }
-    },
-    {
-        "name": "read_webpage",
-        "description": "Extract content from a specific URL. Use after a search to read promising sources.",
-        "parameters": {
-            "type": "object", "properties": {"url": {"type": "string", "description": "The complete URL of the webpage to read."}}, "required": ["url"]
-        }
-    },
-    {
-        "name": "addTaskToAgenda",
-        "description": "Adds a research task to the proactive learning agenda for later processing by the ARCH/DELVE pipeline. Use when the user wants comprehensive research done on a topic.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "task_description": {
-                    "type": "string",
-                    "description": "Detailed description of the research task to be performed."
-                },
-                "priority": {
-                    "type": "integer",
-                    "description": "Priority level (1=highest, 5=lowest). Defaults to 2.",
-                    "default": 2
-                }
-            },
-            "required": ["task_description"]
-        }
-    }
-]
+# C.R.A.P. tool schemas are now consolidated in config.py
+# Import and use config.CRAP_TOOLS for all C.R.A.P. operations
 
 # Use C.R.A.P. system prompt from config  
 CRAP_SYSTEM_PROMPT = config.CRAP_SYSTEM_PROMPT
@@ -233,27 +70,7 @@ class CrapState:
                 content = turn['content']
                 messages.append({"role": "assistant", "content": content})
         
-        # Check for pending notifications and include them
-        notifications_text = ""
-        try:
-            import memory.agenda_system as agenda
-            pending_notifications = agenda.get_pending_notifications()
-            if pending_notifications:
-                notification_lines = []
-                notification_ids = []
-                for notif in pending_notifications:
-                    notification_lines.append(f"• {notif['message']}")
-                    notification_ids.append(notif['notification_id'])
-                
-                notifications_text = f"""(PENDING NOTIFICATIONS)
-{chr(10).join(notification_lines)}
-(END PENDING NOTIFICATIONS)
-
-"""
-                # Mark as delivered
-                agenda.mark_notifications_delivered(notification_ids)
-        except Exception as e:
-            olliePrint_simple(f"Failed to get pending notifications: {e}", level='error')
+        # Notifications are now handled directly by F.R.E.D., not C.R.A.P.
         
         # Add current user message with C.R.A.P. database context
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -262,7 +79,7 @@ class CrapState:
 {user_message}
 (END OF USER INPUT)
 
-{notifications_text}{crap_database_section}
+{crap_database_section}
 
 Current analysis time: {current_time}"""
         
@@ -272,48 +89,7 @@ Current analysis time: {current_time}"""
 # Global C.R.A.P. state
 crap_state = CrapState()
 
-def get_pending_tasks_alert():
-    """Get pending tasks alert for system status."""
-    try:
-        import memory.L3_memory as L3
-        import memory.agenda_system as agenda
-        import duckdb
-        
-        alerts = []
-        
-        # Check L3 edge creation backlog
-        with duckdb.connect(L3.DB_FILE) as con:
-            count = con.execute("SELECT COUNT(*) FROM pending_edge_creation_tasks WHERE status = 'pending';").fetchone()
-            if count and count[0] > 5:
-                # Try background processing if backlog is building
-                if count[0] > 15:
-                    olliePrint_simple(f"[BACKGROUND] High edge backlog ({count[0]}), starting background processing...")
-                    try:
-                        import threading
-                        threading.Thread(
-                            target=L3.process_pending_edges,
-                            args=(3,),  # Process 3 at a time in background
-                            daemon=True
-                        ).start()
-                    except Exception as e:
-                        olliePrint_simple(f"[BACKGROUND] Edge processing failed: {e}", level='error')
-                
-                alerts.append(f"{count[0]} memory nodes awaiting connection processing")
-        
-        # Check agenda system status
-        agenda_summary = agenda.get_agenda_summary()
-        pending_tasks = agenda_summary.get('tasks', {}).get('pending', 0)
-        pending_notifications = agenda_summary.get('pending_notifications', 0)
-        
-        if pending_tasks > 0:
-            alerts.append(f"{pending_tasks} research tasks in agenda")
-        if pending_notifications > 0:
-            alerts.append(f"{pending_notifications} notifications ready")
-        
-        return "Alert: " + ", ".join(alerts) + "." if alerts else ""
-    except Exception:
-        pass
-    return ""
+# Alert handling removed - notifications now handled directly by F.R.E.D.
 
 def run_crap_analysis(user_message, conversation_history):
     """Run C.R.A.P. memory analysis and return structured database content."""
@@ -334,16 +110,98 @@ def run_crap_analysis(user_message, conversation_history):
         total_tool_calls_made = 0
         
         for iteration in range(max_tool_iterations):
+            # Use safe attribute access to prevent AttributeError during import timing issues
+            # Define minimal memory tools if CRAP_TOOLS is not available
+            try:
+                crap_tools = config.CRAP_TOOLS
+            except AttributeError:
+                # Fallback: Define basic memory tools directly
+                crap_tools = [
+                    {
+                        "name": "search_memory",
+                        "description": "Search the knowledge graph for relevant memories using semantic similarity.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "query_text": {"type": "string", "description": "The text to search for relevant memories."},
+                                "memory_type": {"type": ["string", "null"], "description": "Optional filter by memory type."},
+                                "limit": {"type": "integer", "description": "Maximum results to return.", "default": 10}
+                            },
+                            "required": ["query_text"]
+                        }
+                    },
+                    {
+                        "name": "add_memory",
+                        "description": "Add new memory node to knowledge graph.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "label": {"type": "string", "description": "A concise label for the memory."},
+                                "text": {"type": "string", "description": "The full memory content."},
+                                "memory_type": {"type": "string", "description": "Memory classification.", "enum": ["Semantic", "Episodic", "Procedural"]}
+                            },
+                            "required": ["label", "text", "memory_type"]
+                        }
+                    },
+                    {
+                        "name": "supersede_memory",
+                        "description": "Replace existing memory with corrected information.",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {
+                                "old_nodeid": {"type": "integer", "description": "NodeID to replace."},
+                                "new_label": {"type": "string", "description": "New memory label."},
+                                "new_text": {"type": "string", "description": "New memory content."},
+                                "new_memory_type": {"type": "string", "enum": ["Semantic", "Episodic", "Procedural"]}
+                            },
+                            "required": ["old_nodeid", "new_label", "new_text", "new_memory_type"]
+                        }
+                    }
+                ]
+                # Cache the fallback tools for future use
+                config.CRAP_TOOLS = crap_tools
+            
+            # DEBUG: Show CRAP tools available
+            olliePrint_simple(f"[DEBUG] CRAP Tools Available: {len(crap_tools)} tools")
+            for tool in crap_tools:
+                olliePrint_simple(f"  - {tool.get('name', 'Unknown')}")
+            
+            # DEBUG: Show messages being sent to CRAP
+            olliePrint_simple(f"[DEBUG] Sending {len(messages)} messages to CRAP model: {config.CRAP_MODEL}")
+            
             response = ollama_manager.chat_concurrent_safe(
-                model="hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M",
+                model=config.CRAP_MODEL,
                 messages=messages,
-                tools=CRAP_TOOLS,
+                tools=crap_tools,
                 stream=False,
                 options=config.THINKING_MODE_OPTIONS
             )
             
             response_message = response.get('message', {})
             raw_content = response_message.get('content', '')
+            tool_calls = response_message.get('tool_calls', [])
+            
+            # DEBUG: Comprehensive tool_calls debugging
+            olliePrint_simple(f"[DEBUG] CRAP Response Length: {len(raw_content)} chars")
+            olliePrint_simple(f"[DEBUG] tool_calls type: {type(tool_calls)}")
+            olliePrint_simple(f"[DEBUG] tool_calls value: {tool_calls}")
+            olliePrint_simple(f"[DEBUG] tool_calls is None: {tool_calls is None}")
+            
+            # Safe len() call with additional protection
+            if tool_calls is not None:
+                olliePrint_simple(f"[DEBUG] CRAP Tool Calls: {len(tool_calls)}")
+            else:
+                olliePrint_simple(f"[DEBUG] CRAP Tool Calls: 0 (tool_calls was None despite fallback)")
+                tool_calls = []  # Force fallback
+            if tool_calls:
+                for i, call in enumerate(tool_calls):
+                    func_name = call.get('function', {}).get('name', 'Unknown')
+                    olliePrint_simple(f"  Tool Call {i+1}: {func_name}")
+            else:
+                olliePrint_simple("[DEBUG] No tool calls made by CRAP")
+            
+            # DEBUG: Show first 200 chars of response
+            olliePrint_simple(f"[DEBUG] CRAP Response Preview: {raw_content[:200]}...")
             
             # Extract and store C.R.A.P.'s thinking
             current_thinking = crap_state.extract_think_content(raw_content)
@@ -357,7 +215,7 @@ def run_crap_analysis(user_message, conversation_history):
                 raw_thinking += current_thinking + "\n"
             
             clean_content = crap_state.strip_think_tags(raw_content)
-            tool_calls = response_message.get('tool_calls')
+            # tool_calls already safely assigned above with fallback
             
             # Ensure assistant role and preserve thinking for next iteration
             if 'role' not in response_message:
@@ -420,7 +278,7 @@ Current analysis time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
         # Get final response if needed
         if not assistant_response:
             final_response = ollama_manager.chat_concurrent_safe(
-                model="hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M",
+                model=config.CRAP_MODEL,
                 messages=messages,
                 stream=False,
                 options=config.THINKING_MODE_OPTIONS
@@ -454,17 +312,16 @@ Current analysis time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"""
             olliePrint_simple(assistant_response)
             olliePrint_simple(f"{'='*60}\n")
         
-        # Extract the (FRED DATABASE) section from C.R.A.P. response
-        if "(FRED DATABASE)" in assistant_response and "(END FRED DATABASE)" in assistant_response:
-            start = assistant_response.find("(FRED DATABASE)")
-            end = assistant_response.find("(END FRED DATABASE)") + len("(END FRED DATABASE)")
+        # Extract the (MEMORY CONTEXT) section from C.R.A.P. response
+        if "(MEMORY CONTEXT)" in assistant_response and "(END MEMORY CONTEXT)" in assistant_response:
+            start = assistant_response.find("(MEMORY CONTEXT)")
+            end = assistant_response.find("(END MEMORY CONTEXT)") + len("(END MEMORY CONTEXT)")
             return assistant_response[start:end]
         else:
             # C.R.A.P. didn't format properly, create minimal fallback
             current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            pending_alert = get_pending_tasks_alert()
             
-            fallback = f"""(FRED DATABASE)
+            fallback = f"""(MEMORY CONTEXT)
 RELEVANT MEMORIES:
 {assistant_response if assistant_response else "No specific memory context identified."}
 
@@ -472,8 +329,8 @@ RECENT CONTEXT:
 {L2.query_l2_context(user_message) if L2.query_l2_context(user_message) else "No relevant recent context."}
 
 SYSTEM STATUS:
-{pending_alert if pending_alert else ""}The current time is: {current_time}
-(END FRED DATABASE)"""
+The current time is: {current_time}
+(END MEMORY CONTEXT)"""
             
             return fallback
             
@@ -482,7 +339,7 @@ SYSTEM STATUS:
         
         # Minimal fallback on complete failure
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        return f"""(FRED DATABASE)
+        return f"""(MEMORY CONTEXT)
 RELEVANT MEMORIES:
 Memory system temporarily unavailable.
 
@@ -491,4 +348,4 @@ Analysis system offline.
 
 SYSTEM STATUS:
 The current time is: {current_time}
-(END FRED DATABASE)"""  
+(END MEMORY CONTEXT)"""  

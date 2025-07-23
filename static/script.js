@@ -567,18 +567,24 @@ messageForm.addEventListener('submit', async (event) => {
     const assistantParagraph = assistantMessageDiv.querySelector('p');
     let fullResponse = ""; // To accumulate the full response for potential Markdown parsing later
 
+        // Build request payload, respecting backend default model
+        const payload = {
+            message: userMessage,
+            ollama_url: ollamaUrl,
+            mute_fred: isFredMuted // Send mute state to server
+        };
+        // Only include model if user explicitly selected a value
+        if (selectedModel) {
+            payload.model = selectedModel;
+        }
+
     try {
         const response = await fetch('/chat', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                message: userMessage,
-                model: selectedModel,
-                ollama_url: ollamaUrl,
-                mute_fred: isFredMuted // Send mute state to server
-            }),
+            body: JSON.stringify(payload),
         });
 
         if (!response.ok) {

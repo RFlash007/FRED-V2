@@ -4,7 +4,7 @@ import playwright.sync_api
 import re
 import io
 import sys
-import ollama
+from config import ollama_manager
 
 # --- Configuration (Consistent with config.py style) ---
 OLLAMA_BASE_URL = 'http://localhost:11434'
@@ -182,7 +182,7 @@ def test_ollama_with_custom_tools():
         
         try:
             # Make the chat call to Ollama with our custom tools
-            response = ollama.chat(
+            response = ollama_manager.chat_concurrent_safe(
                 model=DEFAULT_MODEL,
                 messages=messages,
                 tools=TOOL_SCHEMAS, # Pass our custom tool schemas

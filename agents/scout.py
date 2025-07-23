@@ -7,11 +7,7 @@ import json
 from typing import Dict, Optional, Tuple
 from ollie_print import olliePrint_simple
 from config import config, ollama_manager
-try:
-    from Tools import handle_tool_calls
-except ImportError:
-    def handle_tool_calls(tool_calls):
-        return [{"content": "Mock search result: Current weather is sunny, 75°F"}]
+from Tools import handle_tool_calls, tool_add_task_to_agenda
 
 class ScoutAgent:
     """S.C.O.U.T. agent for web search with confidence assessment."""
@@ -53,16 +49,12 @@ class ScoutAgent:
             
             if escalation_needed:
                 olliePrint_simple(f"[{self.name}] Low confidence ({confidence_score}%), escalating to deep research")
-                agenda_tool_call = [{
-                    "function": {
-                        "name": "addTaskToAgenda",
-                        "arguments": {
-                            "task_description": f"Deep research required: {query}",
-                            "priority": 1
-                        }
-                    }
-                }]
-                handle_tool_calls(agenda_tool_call)
+                
+                # Directly call the centralized tool_add_task_to_agenda function
+                tool_add_task_to_agenda(
+                    task_description=f"Deep research required: {query}",
+                    priority=1
+                )
             
             return {
                 "search_result": search_content,
@@ -83,25 +75,11 @@ class ScoutAgent:
     def _assess_confidence(self, query: str, search_content: str, context: str) -> int:
         """Assess confidence in search results using LLM."""
         try:
-            assessment_prompt = f"""
-You are S.C.O.U.T., analyzing search results for confidence.
-
-QUERY: {query}
-CONTEXT: {context}
-
-SEARCH RESULTS:
-{search_content}
-
-Rate your confidence (0-100) that these search results provide a complete, accurate answer to the query.
-
-Consider:
-- Completeness of information
-- Source reliability indicators
-- Recency of information
-- Relevance to the specific query
-
-Respond with ONLY a number between 0-100.
-"""
+            assessment_prompt = config.SCOUT_CONFIDENCE_PROMPT.format(
+                query=query,
+                context=context,
+                search_content=search_content
+            )
             
             response = ollama_manager.chat_concurrent_safe(
                 model=config.LLM_DECISION_MODEL,

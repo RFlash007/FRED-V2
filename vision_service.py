@@ -3,7 +3,6 @@ import base64
 import io
 import time
 from PIL import Image
-import ollama
 import numpy as np
 from config import config, ollama_manager
 from ollietec_theme import apply_theme
@@ -15,25 +14,25 @@ apply_theme()
 
 class VisionService:
     def __init__(self):
-        self.processing_interval = config.VISION_PROCESSING_INTERVAL
         self.model = config.VISION_MODEL
-        self.enabled = config.VISION_ENABLED
-        self.is_processing = False
-        self.pi_connected = False
         
-        # Scene tracking
-        self.current_frame = None
-        self.last_scene_description = ""
-        self.current_scene_description = ""
-        self.last_processing_time = 0
-        self.last_recognized_faces = []
+        # Initialize Qwen dimensions - optimized for Pi camera native resolution
+        self.qwen_max_pixels = 3584 * 3584  # 12.8 MP - Qwen 2.5-VL 7B limit
+        self.pi_native_width = 3280  # Pi camera native width
+        self.pi_native_height = 2464  # Pi camera native height
+        self.pi_native_pixels = self.pi_native_width * self.pi_native_height  # 8.1 MP - optimal
+        
+        # Scene state
+        self.current_scene_description = "No visual input processed yet"
+        self.last_scene_description = "No previous scene data"
+        self.scene_timestamp = None
         
         # Processing control
         self.vision_processing_lock = None  # Created lazily when needed
         self.currently_processing_vision = False
         
-        # Use centralized Ollama connection manager for vision processing
-        self.ollama_client = ollama_manager.get_client()
+        # CENTRALIZED CONNECTION: Remove direct client storage
+        # Use ollama_manager.chat_concurrent_safe() for all calls
         
         # Processing task
         self.processing_task = None
@@ -173,8 +172,9 @@ class VisionService:
             
             # Call Qwen 2.5-VL 7B with proper error handling (no timeout - model needs time)
             try:
+                # CENTRALIZED CONNECTION: Use connection manager instead of direct client
                 response = await asyncio.to_thread(
-                    self.ollama_client.chat,
+                    ollama_manager.chat_concurrent_safe,
                     model=self.model,
                     messages=[{
                         "role": "system",
