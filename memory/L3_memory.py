@@ -10,6 +10,13 @@ from ollie_print import olliePrint_simple
 from contextlib import contextmanager
 from config import config, ollama_manager # Import the config and connection manager
 from typing import List, Dict, Optional, Tuple, Set, Any
+from memory.supersession_helpers import (
+    resolve_supersession_chain,
+    transfer_pending_edge_tasks, 
+    inherit_edges_from_superseded,
+    handle_updates_edge_supersession,
+    check_edge_exists_through_supersession
+)
 
 # --- Configuration ---
 # Set default path inside the memory folder
@@ -20,8 +27,8 @@ EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
 # Use centralized Ollama connection manager for all L3 operations
 
-# How many similar nodes to check for automatic edge creation
-AUTO_EDGE_SIMILARITY_CHECK_LIMIT = 3
+# How many similar nodes to check for automatic edge creation (increased for richer connectivity)
+AUTO_EDGE_SIMILARITY_CHECK_LIMIT = 5
 
 # Configuration constants now imported from config.py
 
@@ -300,7 +307,7 @@ def determine_edge_type_llm_enhanced(source_node_info: Dict[str, Any],
         context_info = ""
         if context_nodes:
             context_info = "\n\nRELATED CONTEXT NODES:\n"
-            for i, ctx_node in enumerate(context_nodes[:3], 1):  # Limit context to prevent token overflow
+            for i, ctx_node in enumerate(context_nodes[:5], 1):  # Increased context limit to 5 nodes
                 context_info += f"{i}. {ctx_node[2]} ({ctx_node[1]}): {ctx_node[3][:100]}...\n"
         
         # Enhanced prompt with confidence scoring
@@ -1510,7 +1517,7 @@ def forget_old_memories(days_old=180):
 
     return deleted_count
 
-def process_pending_edges(limit_per_run=5):
+def process_pending_edges(limit_per_run=10):
     """Processes pending edge creation tasks from the queue.
 
     Args:
@@ -1625,12 +1632,33 @@ def process_pending_edges(limit_per_run=5):
                         olliePrint_simple(f"Enhanced analysis: relationship from {node_id_to_process} to {similar_nodeid} = {determined_rel_type} (confidence: {confidence})")
                         
                         summary["edges_attempted_this_run"] += 1
-                        add_edge(sourceid=node_id_to_process,
-                                 targetid=similar_nodeid,
-                                 rel_type=determined_rel_type,
-                                 con=con) # add_edge uses the provided connection
-                        summary["edges_succeeded_this_run"] += 1
-                        edges_added_for_this_node += 1
+                        
+                        # Handle supersession if LLM determines 'updates' relationship
+                        if determined_rel_type == 'updates':
+                            # Check if edge already exists to avoid duplicate supersession
+                            if not check_edge_exists_through_supersession(node_id_to_process, similar_nodeid, 'updates', con):
+                                olliePrint_simple(f"LLM determined supersession: node {node_id_to_process} updates node {similar_nodeid}")
+                                handle_updates_edge_supersession(node_id_to_process, similar_nodeid, con)
+                                # Create the 'updates' edge
+                                add_edge(sourceid=node_id_to_process,
+                                         targetid=similar_nodeid,
+                                         rel_type='updates',
+                                         con=con)
+                                summary["edges_succeeded_this_run"] += 1
+                                edges_added_for_this_node += 1
+                            else:
+                                olliePrint_simple(f"Supersession edge already exists: {node_id_to_process} -> {similar_nodeid}")
+                        else:
+                            # Regular edge creation with duplicate checking
+                            if not check_edge_exists_through_supersession(node_id_to_process, similar_nodeid, determined_rel_type, con):
+                                add_edge(sourceid=node_id_to_process,
+                                         targetid=similar_nodeid,
+                                         rel_type=determined_rel_type,
+                                         con=con)
+                                summary["edges_succeeded_this_run"] += 1
+                                edges_added_for_this_node += 1
+                            else:
+                                olliePrint_simple(f"Edge already exists: {node_id_to_process} -[{determined_rel_type}]-> {similar_nodeid}")
                         
                         if edges_added_for_this_node >= AUTO_EDGE_SIMILARITY_CHECK_LIMIT:
                             break

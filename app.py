@@ -76,14 +76,17 @@ class FREDState:
                 if self.total_conversation_turns % config.L2_TRIGGER_INTERVAL == 0:
                     # Trigger L2 analysis in background (after F.R.E.D. responds)
                     def delayed_l2_processing():
-                        # Get the user message that triggered this turn
-                        if len(self.conversation_history) >= 2:
-                            user_msg = self.conversation_history[-2].get('content', '')
-                            L2.process_l2_creation(
-                                self.conversation_history.copy(),
-                                len(self.conversation_history),
-                                user_msg
-                            )
+                        try:
+                            # Get the user message that triggered this turn
+                            if len(self.conversation_history) >= 2:
+                                user_msg = self.conversation_history[-2].get('content', '')
+                                L2.process_l2_creation(
+                                    self.conversation_history.copy(),
+                                    len(self.conversation_history),
+                                    user_msg
+                                )
+                        except Exception as e:
+                            olliePrint_simple(f"L2 processing failed: {e}", level='error')
                     
                     threading.Thread(
                         target=delayed_l2_processing,
@@ -99,6 +102,8 @@ class FREDState:
         """Clear conversation history."""
         with self._lock:
             self.conversation_history.clear()
+            self.total_conversation_turns = 0
+            self.last_analyzed_message_index = 0
     
     def set_tts_engine(self, engine):
         """Thread-safe TTS engine setting."""
@@ -532,13 +537,55 @@ def chat_endpoint():
                 from vision_service import vision_service
                 visual_context = vision_service.get_current_visual_context()
 
-            # New G.A.T.E. Multi-Agent Integration
+            # Parallel Agent Execution: G.A.T.E. + M.A.D.
             from memory import gate
-            fred_database = gate.run_gate_analysis(
-                user_message, 
-                fred_state.get_conversation_history(),
-                visual_context
-            )
+            from agents.mad import mad_agent
+            
+            def run_parallel_agents():
+                """Run G.A.T.E. and M.A.D. in parallel."""
+                # G.A.T.E. processes current user message for context retrieval
+                gate_result = gate.run_gate_analysis(
+                    user_message, 
+                    fred_state.get_conversation_history(),
+                    visual_context
+                )
+                
+                # M.A.D. analyzes previous conversation turn for memory creation
+                # Only run if we have at least one complete turn (user + assistant)
+                conversation_history = fred_state.get_conversation_history()
+                if len(conversation_history) >= 2:
+                    # Get the last completed turn
+                    last_assistant_idx = None
+                    last_user_idx = None
+                    
+                    for i in range(len(conversation_history) - 1, -1, -1):
+                        if conversation_history[i]['role'] == 'assistant' and last_assistant_idx is None:
+                            last_assistant_idx = i
+                        elif conversation_history[i]['role'] == 'user' and last_user_idx is None and last_assistant_idx is not None:
+                            last_user_idx = i
+                            break
+                    
+                    if last_user_idx is not None and last_assistant_idx is not None:
+                        previous_user_msg = conversation_history[last_user_idx]['content']
+                        previous_fred_response = conversation_history[last_assistant_idx]['content']
+                        
+                        try:
+                            mad_result = mad_agent.analyze_turn(
+                                previous_user_msg,
+                                previous_fred_response,
+                                conversation_history[:last_user_idx]  # Context before the analyzed turn
+                            )
+                            if mad_result.get('success', False):
+                                created_count = len(mad_result.get('created_memories', []))
+                                if created_count > 0:
+                                    olliePrint_simple(f"[M.A.D.] Successfully created {created_count} new memories from previous turn")
+                        except Exception as e:
+                            olliePrint_simple(f"[M.A.D.] Analysis failed: {e}", level='error')
+                
+                return gate_result
+            
+            # Run agents in parallel - M.A.D. analyzes previous turn while G.A.T.E. processes current
+            fred_database = run_parallel_agents()
 
             # Prepare messages for F.R.E.D. using the context from G.A.T.E./C.R.A.P.
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
@@ -657,8 +704,12 @@ SUBCONSCIOUS PROCESSING RESULTS:
                                 "content": f"Executing {tool_name}..."
                             }) + '\n'
                     
-                    tool_outputs = handle_tool_calls(tool_calls)
-                    olliePrint_simple(f"[TOOL CALLS] Executed {len(tool_outputs) if tool_outputs else 0} tools successfully")
+                    try:
+                        tool_outputs = handle_tool_calls(tool_calls)
+                        olliePrint_simple(f"[TOOL CALLS] Executed {len(tool_outputs) if tool_outputs else 0} tools successfully")
+                    except Exception as e:
+                        olliePrint_simple(f"[TOOL CALLS] Tool execution failed: {e}", level='error')
+                        tool_outputs = []
                     
                     # Print tool results
                     if tool_outputs:
@@ -736,6 +787,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             if not assistant_response:
                 # Use ollama_manager for consistent connection management
                 final_stream = ollama_manager.chat_concurrent_safe(
+                    host=ollama_base_url,
                     model=model_name,
                     messages=messages,
                     stream=True,
@@ -773,6 +825,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             # Store response with thinking in history
             fred_state.add_conversation_turn('assistant', assistant_response, raw_thinking.strip())
             
+
             # TTS - route audio to appropriate device (use outer-scope flag)
             target_device = 'pi' if from_pi_glasses else 'local'
             fred_speak(assistant_response, mute_fred, target_device)
@@ -956,9 +1009,6 @@ if __name__ == '__main__':
         olliePrint_simple(f"[NEURAL-NET] AI model interface connected")
     except:
         olliePrint_simple("[WARNING] AI model interface not responding", level='warning')
-    
-    # Initialize TTS
-    initialize_tts()
     
     # Initialize STT
     stt_service.initialize()

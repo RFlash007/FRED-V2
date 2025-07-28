@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 import time
 
-from config import config, ollama_manager
+from tool_schemas import ARCH_TOOLS, PIPELINE_CONTROL_TOOLS, DELVE_TOOLS, RESEARCH_TOOLS, ollama_manager
 from ollie_print import olliePrint_simple
 
 # MEMORY OPTIMIZATION: Use single model for all agents with context switching

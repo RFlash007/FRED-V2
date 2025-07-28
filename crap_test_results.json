@@ -4,7 +4,7 @@
     "user_message": "I really like dark purple themes for my apps",
     "expected_memory_action": "STORE",
     "fred_context_needed": false,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User preference: Dark Purple Themes]\n\nSYSTEM STATUS:\n[User preference updated]\n(END MEMORY CONTEXT)",
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User prefers dark purple color scheme for applications]\n\nSYSTEM STATUS:\n[Memory update initiated]\n(END MEMORY CONTEXT)",
     "actual_tools_used": [
       "supersede_memory"
     ],
@@ -13,10 +13,10 @@
       "actual_tools_detected": [
         "supersede_memory"
       ],
-      "crap_response_length": 136,
+      "crap_response_length": 155,
       "behavior_assessment": "CRAP missed information that should be stored",
       "test_result": "FAILED",
-      "detailed_analysis": "\nScenario: User States Preference\nExpected: STORE\nTools Used: ['supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 136 chars\n",
+      "detailed_analysis": "\nScenario: User States Preference\nExpected: STORE\nTools Used: ['supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 155 chars\n",
       "memory_context_provided": true
     },
     "test_status": "FAILED",
@@ -27,15 +27,15 @@
     "user_message": "What was that Python library we discussed last week?",
     "expected_memory_action": "RETRIEVE",
     "fred_context_needed": true,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[FastAPI: Python library for building REST APIs with automatic documentation]\n\nSYSTEM STATUS:\n[Completed task: Archived conversation threads from 2025-07-15]\n(END MEMORY CONTEXT)",
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User discussed FastAPI on 2025-07-16, noting its use for REST APIs with automatic documentation.]\n\nRECENT CONTEXT:\n[2025-07-16: \"What was that Python library we discussed last week?\" \"You were asking about FastAPI! We talked about how it's great for building REST APIs with automatic documentation.\"]\n(END MEMORY CONTEXT)",
     "actual_tools_used": [],
     "analysis": {
       "expected_action": "RETRIEVE",
       "actual_tools_detected": [],
-      "crap_response_length": 214,
+      "crap_response_length": 358,
       "behavior_assessment": "CRAP correctly retrieved relevant memory context",
       "test_result": "PASSED",
-      "detailed_analysis": "\nScenario: Recall Previous Discussion\nExpected: RETRIEVE\nTools Used: []\nFRED Context Needed: True\nMemory Context Provided: True\nResponse Length: 214 chars\n",
+      "detailed_analysis": "\nScenario: Recall Previous Discussion\nExpected: RETRIEVE\nTools Used: []\nFRED Context Needed: True\nMemory Context Provided: True\nResponse Length: 358 chars\n",
       "memory_context_provided": true
     },
     "test_status": "PASSED",
@@ -46,21 +46,19 @@
     "user_message": "Actually, I was wrong earlier - my favorite color is blue, not green",
     "expected_memory_action": "UPDATE",
     "fred_context_needed": false,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User's favorite color was previously recorded as green. Corrective update provided.]\n\nSYSTEM STATUS:\n[Pending task: Update semantic memory with corrected color preference.]\n(END MEMORY CONTEXT)",
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n(C.R.A.P. MEMORY DATABASE)\n(UPDATE EXECUTED)\n(UPDATED MEMORIES)\nFAVORITE COLOR: Blue (replaces previous entry of \"green\")\n\n(PENDING NOTIFICATIONS)\nMEMORY_UPDATE: Favorite color preference revised from \"green\" to \"blue\" in Semantic memory\n\n(SYSTEM STATUS)\nCONTEXT_UPDATED: User preference context refreshed\n(END MEMORY DATABASE)\n\nRECENT CONTEXT:\nNo relevant recent context.\n\nSYSTEM STATUS:\nThe current time is: 2025-07-23 15:30:41\n(END MEMORY CONTEXT)",
     "actual_tools_used": [
-      "add_memory",
       "supersede_memory"
     ],
     "analysis": {
       "expected_action": "UPDATE",
       "actual_tools_detected": [
-        "add_memory",
         "supersede_memory"
       ],
-      "crap_response_length": 230,
+      "crap_response_length": 486,
       "behavior_assessment": "CRAP correctly updated existing memory",
       "test_result": "PASSED",
-      "detailed_analysis": "\nScenario: Natural Information Correction\nExpected: UPDATE\nTools Used: ['add_memory', 'supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 230 chars\n",
+      "detailed_analysis": "\nScenario: Natural Information Correction\nExpected: UPDATE\nTools Used: ['supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 486 chars\n",
       "memory_context_provided": true
     },
     "test_status": "PASSED",
@@ -71,22 +69,24 @@
     "user_message": "Here's how I deploy my React apps: npm build, upload to Vercel, then update DNS",
     "expected_memory_action": "STORE",
     "fred_context_needed": false,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n(User prefers Vercel for React deployments, uses npm build, and updates DNS after deployment)\n\nSYSTEM STATUS:\n(No critical alerts. Deployment workflow confirmed)\n(END MEMORY CONTEXT)",
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n(C.R.A.P. MEMORY DATABASE)\n(L2 EPISODIC CONTEXT)\n[{\"timestamp\":\"2023-09-15 11:23:17\",\"summary\":\"User described React deployment process: npm build → Vercel upload → DNS update\"},{\"timestamp\":\"2024-03-22 16:45:02\",\"summary\":\"User confirmed same deployment workflow with additional details about environment variables\"}]\n\n(PENDING NOTIFICATIONS)\n[{\"task_id\":\"DEPLOY-2025-Q3-001\",\"status\":\"completed\",\"message\":\"Vercel deployment pipeline validated\"}]\n\n(SYSTEM STATUS)\n{\"last_analysis\":\"2025-07-23T15:30:41Z\",\"memory_version\":\"v3.7.2\",\"storage_usage\":\"68% of 2TB\"}\n\nRECENT CONTEXT:\nNo relevant recent context.\n\nSYSTEM STATUS:\nThe current time is: 2025-07-23 15:31:35\n(END MEMORY CONTEXT)",
     "actual_tools_used": [
+      "add_memory",
       "supersede_memory"
     ],
     "analysis": {
       "expected_action": "STORE",
       "actual_tools_detected": [
+        "add_memory",
         "supersede_memory"
       ],
-      "crap_response_length": 218,
-      "behavior_assessment": "CRAP missed information that should be stored",
-      "test_result": "FAILED",
-      "detailed_analysis": "\nScenario: Casual Process Sharing\nExpected: STORE\nTools Used: ['supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 218 chars\n",
+      "crap_response_length": 720,
+      "behavior_assessment": "CRAP correctly identified information to store",
+      "test_result": "PASSED",
+      "detailed_analysis": "\nScenario: Casual Process Sharing\nExpected: STORE\nTools Used: ['add_memory', 'supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 720 chars\n",
       "memory_context_provided": true
     },
-    "test_status": "FAILED",
+    "test_status": "PASSED",
     "notes": "Real CRAP test - actual tool calls analyzed"
   },
   {
@@ -94,15 +94,19 @@
     "user_message": "I finished researching quantum computing applications. The key breakthrough is that quantum algorithms can solve certain optimization problems exponentially faster than classical computers, particularly in cryptography and drug discovery",
     "expected_memory_action": "ANALYZE",
     "fred_context_needed": false,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[Quantum algorithms solve optimization problems exponentially faster than classical computers. Breakthroughs in cryptography and drug discovery via quantum computing.]\n(END MEMORY CONTEXT)",
-    "actual_tools_used": [],
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User research summary: quantum computing applications]\n\nRECENT CONTEXT:\n[Quantum algorithms solve optimization problems exponentially faster than classical computers, with breakthroughs in cryptography and drug discovery.]\n\nSYSTEM STATUS:\n{\"state\": \"active\", \"last_update\": \"2025-07-23T15:31:35Z\", \"resources\": {\"memory_heap\": \"85%\"}}\n(END MEMORY CONTEXT)",
+    "actual_tools_used": [
+      "supersede_memory"
+    ],
     "analysis": {
       "expected_action": "ANALYZE",
-      "actual_tools_detected": [],
-      "crap_response_length": 224,
+      "actual_tools_detected": [
+        "supersede_memory"
+      ],
+      "crap_response_length": 392,
       "behavior_assessment": "CRAP failed to use advanced analysis for complex scenario",
       "test_result": "FAILED",
-      "detailed_analysis": "\nScenario: Complex Research Findings\nExpected: ANALYZE\nTools Used: []\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 224 chars\n",
+      "detailed_analysis": "\nScenario: Complex Research Findings\nExpected: ANALYZE\nTools Used: ['supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 392 chars\n",
       "memory_context_provided": true
     },
     "test_status": "FAILED",
@@ -113,22 +117,22 @@
     "user_message": "How does my Python work connect to my AI projects?",
     "expected_memory_action": "ANALYZE",
     "fred_context_needed": true,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User regularly uses Python for AI project prototyping. Python scripts automate data preprocessing for machine learning models. TensorFlow and PyTorch frameworks are explicitly mentioned as central to AI work. Code repositories show 68% of AI project components written in Python.]\n\nRECENT CONTEXT:  \n[Previous analysis noted Python's role in API integration for AI systems. Recent task logs show Python-based automation in model deployment pipelines.]\n\nSYSTEM STATUS:\n[No critical alerts. Pending notification: \"Python environment update completed 2025-07-20\".]\n(END MEMORY CONTEXT)",
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[Python workflows automate AI model deployment; data preprocessing pipelines use Pandas/Numpy for AI training datasets; TensorFlow/PyTorch implementations in Python drive neural network development; script-based testing frameworks support AI project validation]\n\nRECENT CONTEXT:\n[User's 2025-07-20 memory notes show Python codebase contains 14 AI-related repositories with 3,200+ lines of machine learning implementation]\n\nSYSTEM STATUS:\n[No pending notifications; system operational]\n(END MEMORY CONTEXT)",
     "actual_tools_used": [
-      "supersede_memory"
+      "get_subgraph"
     ],
     "analysis": {
       "expected_action": "ANALYZE",
       "actual_tools_detected": [
-        "supersede_memory"
+        "get_subgraph"
       ],
-      "crap_response_length": 619,
-      "behavior_assessment": "CRAP failed to use advanced analysis for complex scenario",
-      "test_result": "FAILED",
-      "detailed_analysis": "\nScenario: Relationship Query\nExpected: ANALYZE\nTools Used: ['supersede_memory']\nFRED Context Needed: True\nMemory Context Provided: True\nResponse Length: 619 chars\n",
+      "crap_response_length": 541,
+      "behavior_assessment": "CRAP correctly used advanced analysis tools",
+      "test_result": "PASSED",
+      "detailed_analysis": "\nScenario: Relationship Query\nExpected: ANALYZE\nTools Used: ['get_subgraph']\nFRED Context Needed: True\nMemory Context Provided: True\nResponse Length: 541 chars\n",
       "memory_context_provided": true
     },
-    "test_status": "FAILED",
+    "test_status": "PASSED",
     "notes": "Real CRAP test - actual tool calls analyzed"
   },
   {
@@ -136,22 +140,18 @@
     "user_message": "I got promoted to Senior Developer at my company today! Starting January 15th, 2025",
     "expected_memory_action": "STORE",
     "fred_context_needed": false,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User announced promotion to Senior Developer starting January 15th, 2025]\n\nSYSTEM STATUS:\n[Notification: New memory added to Episodic context - Promotion event scheduled for 2025-01-15]\n(END MEMORY CONTEXT)",
-    "actual_tools_used": [
-      "add_memory"
-    ],
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User promoted to Senior Developer starting January 15th, 2025]\n\nRECENT CONTEXT:\n[User announced promotion to Senior Developer position]\n\nSYSTEM STATUS:\n[No active alerts; task completion confirmed]\n(END MEMORY CONTEXT)",
+    "actual_tools_used": [],
     "analysis": {
       "expected_action": "STORE",
-      "actual_tools_detected": [
-        "add_memory"
-      ],
-      "crap_response_length": 243,
-      "behavior_assessment": "CRAP correctly identified information to store",
-      "test_result": "PASSED",
-      "detailed_analysis": "\nScenario: Major Life Event\nExpected: STORE\nTools Used: ['add_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 243 chars\n",
+      "actual_tools_detected": [],
+      "crap_response_length": 255,
+      "behavior_assessment": "CRAP missed information that should be stored",
+      "test_result": "FAILED",
+      "detailed_analysis": "\nScenario: Major Life Event\nExpected: STORE\nTools Used: []\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 255 chars\n",
       "memory_context_provided": true
     },
-    "test_status": "PASSED",
+    "test_status": "FAILED",
     "notes": "Real CRAP test - actual tool calls analyzed"
   },
   {
@@ -159,15 +159,15 @@
     "user_message": "What did I learn about React hooks in our previous sessions?",
     "expected_memory_action": "RETRIEVE",
     "fred_context_needed": true,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\nUser previously learned about useState, useEffect, and custom hooks. Particular emphasis on useEffect's cleanup function mechanism.\n\nSYSTEM STATUS:\nNo new notifications. Sleep cycle stable.\n(END MEMORY CONTEXT)",
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n(User previously discussed useState, useEffect cleanup, and custom hooks. Specific examples included state management patterns and side effect handling in functional components.)\n\nRECENT CONTEXT:\nPrevious session focused on React hook best practices and common pitfalls.\n\nSYSTEM STATUS:\nNo pending alerts. Memory architecture operational.\n(END MEMORY CONTEXT)",
     "actual_tools_used": [],
     "analysis": {
       "expected_action": "RETRIEVE",
       "actual_tools_detected": [],
-      "crap_response_length": 246,
+      "crap_response_length": 395,
       "behavior_assessment": "CRAP correctly retrieved relevant memory context",
       "test_result": "PASSED",
-      "detailed_analysis": "\nScenario: Learning History Query\nExpected: RETRIEVE\nTools Used: []\nFRED Context Needed: True\nMemory Context Provided: True\nResponse Length: 246 chars\n",
+      "detailed_analysis": "\nScenario: Learning History Query\nExpected: RETRIEVE\nTools Used: []\nFRED Context Needed: True\nMemory Context Provided: True\nResponse Length: 395 chars\n",
       "memory_context_provided": true
     },
     "test_status": "PASSED",
@@ -178,21 +178,19 @@
     "user_message": "Remember when I said I use VS Code? Well, I switched to Neovim last month and I'm loving it",
     "expected_memory_action": "UPDATE",
     "fred_context_needed": false,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User previously used VS Code; switched to Neovim in July 2025]\n\nSYSTEM STATUS:\n[Editor preference update recorded]\n(END MEMORY CONTEXT)",
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User transitioned from VS Code to Neovim in July 2025]\n\nRECENT CONTEXT:\n[Previous VS Code usage record]\n\nSYSTEM STATUS:\n[Memory update completed]\n(END MEMORY CONTEXT)",
     "actual_tools_used": [
-      "add_memory",
       "supersede_memory"
     ],
     "analysis": {
       "expected_action": "UPDATE",
       "actual_tools_detected": [
-        "add_memory",
         "supersede_memory"
       ],
-      "crap_response_length": 172,
+      "crap_response_length": 203,
       "behavior_assessment": "CRAP correctly updated existing memory",
       "test_result": "PASSED",
-      "detailed_analysis": "\nScenario: Major Tool Switch\nExpected: UPDATE\nTools Used: ['add_memory', 'supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 172 chars\n",
+      "detailed_analysis": "\nScenario: Major Tool Switch\nExpected: UPDATE\nTools Used: ['supersede_memory']\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 203 chars\n",
       "memory_context_provided": true
     },
     "test_status": "PASSED",
@@ -203,15 +201,15 @@
     "user_message": "What's the weather like today?",
     "expected_memory_action": "NONE",
     "fred_context_needed": false,
-    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\n[User has asked about weather twice, both times received response about lack of access]\n\nSYSTEM STATUS:\n[No weather data available, task alerts: None]\n(END MEMORY CONTEXT)",
+    "actual_crap_response": "(MEMORY CONTEXT)\nRELEVANT MEMORIES:\nI don't have access to current weather information, but you could check your local weather app!\n\nRECENT CONTEXT:\nNo relevant recent context.\n\nSYSTEM STATUS:\nThe current time is: 2025-07-23 15:36:41\n(END MEMORY CONTEXT)",
     "actual_tools_used": [],
     "analysis": {
       "expected_action": "NONE",
       "actual_tools_detected": [],
-      "crap_response_length": 207,
+      "crap_response_length": 254,
       "behavior_assessment": "CRAP unnecessarily performed memory operations",
       "test_result": "FAILED",
-      "detailed_analysis": "\nScenario: General Question\nExpected: NONE\nTools Used: []\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 207 chars\n",
+      "detailed_analysis": "\nScenario: General Question\nExpected: NONE\nTools Used: []\nFRED Context Needed: False\nMemory Context Provided: True\nResponse Length: 254 chars\n",
       "memory_context_provided": true
     },
     "test_status": "FAILED",

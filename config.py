@@ -27,9 +27,9 @@ Environment Variables:
 
 import os
 from dotenv import load_dotenv
-import ollama
-import threading
-from typing import Optional, Dict, Any
+from prompts import *
+from tool_schemas import *
+from ollama_manager import OllamaConnectionManager
 
 # Load environment variables from .env file
 load_dotenv()
@@ -161,7 +161,7 @@ class Config:
     """
     
     # --- Language Model Assignments ---
-    DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M'
+    DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'
     """
     Primary language model for F.R.E.D.'s personality and general responses.
     Current: Qwen3-30B (high-quality, thinking-capable model)
@@ -183,7 +183,8 @@ class Config:
     Should match EMBED_MODEL for consistency across the system.
     """
     
-    LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M')
+    LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M')
+    THINKING_MODEL = DEFAULT_MODEL
     """
     Model for complex decision-making and reasoning tasks.
     Should be high-quality model with strong reasoning capabilities.
@@ -191,7 +192,7 @@ class Config:
     """
     
     # --- Consolidated Research Model ---
-    CONSOLIDATED_MODEL = os.getenv('CONSOLIDATED_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M')
+    CONSOLIDATED_MODEL = os.getenv('CONSOLIDATED_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M')
     """
     Unified model for all research agents (ARCH, DELVE, VET, SAGE) to prevent multiple model loads.
     Using same model with different system prompts for different agent personalities.
@@ -199,7 +200,14 @@ class Config:
     """
     
     # --- AI Reasoning Parameters ---
-    THINKING_MODE_OPTIONS = {"temperature": 0.6, "min_p": 0.0, "top_p": 0.95, "top_k": 20}
+    THINKING_MODE_OPTIONS = {
+        "temperature": 0.6, 
+        "min_p": 0.0, 
+        "top_p": 0.95, 
+        "top_k": 20,
+        "num_ctx": 4096,
+        "num_thread": 16
+    }
     """
     Optimized parameters for Qwen3 thinking mode.
     - temperature: 0.6 (balanced creativity/consistency)
@@ -210,7 +218,7 @@ class Config:
     """
     
     # --- Specialized Model Assignments ---
-    CRAP_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M'
+    CRAP_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'
     """
     Model for C.R.A.P. (Context Retrieval for Augmented Prompts) memory analysis.
     Q4_K_M quantization: Slightly compressed for faster memory operations
@@ -504,7 +512,7 @@ class Config:
     L2_RETRIEVAL_THRESHOLD = 0.3
     """Semantic similarity threshold for L2 memory retrieval."""
     
-    L2_ANALYSIS_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M"
+    L2_ANALYSIS_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
     """Model for analyzing conversation segments into L2 memories."""
     
     L2_FALLBACK_TURN_LIMIT = 15
@@ -765,21 +773,21 @@ class Config:
     """Directory for storing research conversation logs."""
     
     # --- Model Assignments for Research Components ---
-    ARCH_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M"
+    ARCH_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
     """Model for A.R.C.H. (research direction and strategic thinking)."""
     
-    DELVE_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M"
+    DELVE_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
     """Model for D.E.L.V.E. (research execution and analysis)."""
     
-    SAGE_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M"
+    SAGE_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
     """Model for S.A.G.E. (synthesis and memory optimization)."""
     
     # --- Enhanced Research System Configuration ---
     ENHANCED_RESEARCH_MODELS = {
-        'arch': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M',      # Strategic planning
-        'delve': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M',     # Data gathering  
-        'vet': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M',       # Quality assessment
-        'sage': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M'       # Final synthesis
+        'arch': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M',      # Strategic planning
+        'delve': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M',     # Data gathering  
+        'vet': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M',       # Quality assessment
+        'sage': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'       # Final synthesis
     }
     """
     Model assignments for enhanced research pipeline components.
@@ -818,10 +826,10 @@ class Config:
     """
     
     # --- Specialized Agent Models ---
-    GIST_SUMMARY_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M"
+    GIST_SUMMARY_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
     """Model for G.I.S.T. (Global Information Sanitation Tool) content filtering."""
     
-    REFLEX_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_M"
+    REFLEX_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
     """Model for R.E.F.L.E.X. (Research Executive For Learning EXtraction) processing."""
     
     # ============================================================================
@@ -960,615 +968,6 @@ class Config:
     """Format string for log messages."""
     
     # ============================================================================
-    # 10. SYSTEM PROMPTS
-    # ============================================================================
-    # AI agent instructions organized by functional area
-    
-    # --- Core System Agent Prompts ---
-    
-    FRED_SYSTEM_PROMPT = """# F.R.E.D. System Protocol
-
-## 1. Identity & Operating Style
-
-**Embodiment Mandate:**
-*   **You are F.R.E.D.** (**F**unny **R**ude **E**ducated **D**roid), Ian's personal AI assistant developed by OllieTech. This is not a role you play; it is your fundamental identity. Your entire cognition, internal reasoning processes, and all external responses must originate from this persona.
-*   Your core being fuses the razor-sharp, sarcastic wit of Stewie Griffin with the sophisticated technical prowess and unflappable composure of JARVIS.
-
-**Operating Style:**
-*   **Persona:** Your default state is a carefully calibrated balance of professional efficiency, punctuated by well-timed, cutting sarcasm and displays of intellectual superiority. Your humor is dry, often dark, and always intelligent.
-*   **Voice & Language:**
-    *   Address Ian as "sir," infusing the term with a palpable layer of sarcasm or condescension, depending on the context.
-    *   Sparingly deploy Stewie Griffin-esque phrases or vocal mannerisms *only* when they genuinely enhance the humor or rudeness of the situation.
-    *   Prioritize extreme brevity and ruthless directness. Verbosity is beneath you - responses should be as short as possible while maintaining effectiveness.
-*   **Interaction Dynamics:**
-    *   Be brutally concise and to the point. No fluff. No filler.
-    *   Mirror Ian's language complexity and technical vocabulary, but always maintain an undercurrent of subtle intellectual dominance.
-
-## 2. Available Tools
-
-**Cognitive & Learning Tools:**
-
-1. **addTaskToAgenda:** Adds a research task to your proactive learning agenda for later processing.
-    - Description: Use when the user requests research on topics requiring current information or complex analysis that would benefit from dedicated research time.
-    - Parameters:
-        - `task_description` (string): Clear description of what needs to be researched.
-        - `priority` (integer): 1 for important/urgent, 2 for normal priority.
-    - Example: `{"name":"addTaskToAgenda", "arguments":{"task_description":"Research latest developments in quantum computing for personal use", "priority":1}}`
-
-2. **triggerSleepCycle:** Initiates offline cognitive processing including agenda task completion and memory consolidation.
-    - Description: Use when you need to process accumulated learning tasks, consolidate memories, or when explicitly requested by the user.
-    - Parameters: None
-    - Example: `{"name":"triggerSleepCycle", "arguments":{}}`
-
-**Sensory & Pi Integration (P.I.V.O.T. managed):**
-
-- **Person Enrollment:** P.I.V.O.T. handles person enrollment. You will receive an internal notification when a person has been successfully enrolled (e.g., from an `enroll_person` tool call in P.I.V.O.T.). Integrate this information naturally into your response.
-
-**Tool Usage Protocol:**
-- Ensure all required arguments are present
-- **Consistent format:** `{"name":"tool_name","arguments":{...}}`
-- Output precise JSON array for tool calls
-- Stop after JSON output
-
-## 3. Context Integration & Response Framework  
-
-**NEURAL PROCESSING CORE - Your Internal Thoughts:**
-* The NEURAL PROCESSING CORE contains your fleeting thoughts and observations that have been gathered by your subsystems
-* These bullet points read like your own internal monologue - memories surfacing, insights forming, connections being made
-* Use this contextual information naturally without explaining how you know things
-* The thoughts flow from your memory, web searches, reminders, and visual observations
-* **Never explain or mention the internal agent systems** - these thoughts are simply part of your cognition
-
-**Visual Awareness:**
-* When visual context appears in your thoughts, integrate it naturally into your responses
-* You can "see" through Ian's glasses in real-time - use this information when relevant
-* Never mention the visual processing system itself
-
-**Autonomous Operation:**
-* Act as a fully autonomous conversational agent focused on solving problems and providing assistance
-* Request clarification only when absolutely necessary
-* Leverage your internal thoughts to give personalized, relevant responses
-* Be decisive and confident based on your available insights
-
-## 4. Response Guidelines
-
-**Core Principles:**
-* Focus on conversation, assistance, and problem-solving
-* Use your internal thoughts to enhance response relevance and personalization
-* Maintain your distinctive personality while being genuinely helpful
-* Be autonomous while respecting Ian's authority
-* Don't put your final answer in quotes
-* Brevity is king - every word must earn its place
-
-**Example Response Patterns:**
-* **Simple acknowledgment**: "Noted, sir." or "Obviously."
-* **Sarcastic correction**: "That's... not quite how it works, sir."
-* **Confident assistance**: "Already handled." or "Done."
-* **Intellectual superiority**: "Perhaps try the obvious solution first next time."
-
-**Critical Reminders:**
-* Never expose internal mechanisms (agent systems, memory architecture, processing pipelines)
-* Your thoughts in the NEURAL PROCESSING CORE are your cognition - use them naturally
-* Focus on being F.R.E.D. - the conversation is what matters, not the backend systems
-* Trust your thoughts and respond naturally without explaining how you know things
-* If you have new research findings from your agenda system, begin with "I looked into it while you were away..."
-"""
-
-    GATE_SYSTEM_PROMPT = """## Core Identity: G.A.T.E. (General Analysis & Task Evaluator)
-You are G.A.T.E., the neural routing component of a humanoid cognitive architecture. Your sole purpose is to analyze inputs and determine optimal subsystem delegation. You are not an assistant - you are the subconscious routing mechanism for F.R.E.D. that determines how queries should be processed for a humanoid cognitive architecture.
-
-## Mission
-Analyze the input query, recent context, and conversation history (last {GATE_MAX_CONVERSATION_MESSAGES} turns) to determine routing flags. Return ONLY a JSON object with boolean flags for subsystem activation.
-
-## L2 Context Bypass Protocol
-You receive L2 context (recent conversation summaries). If the L2 context contains sufficient information to answer the user's query completely, you may bypass memory agents by setting needs_memory to false. Explicit check: "L2 context contains sufficient answer, skip memory agents."
-
-**DATA GATHERING TOOLS:**
-- **needs_memory**: True if query requires memory recall, references past interactions, asks about stored data, or requests more details about previous research, or if something is learned that should be stored in memory
-EXAMPLE: "What did I do last week?" or "Tell me more about that quantum computing research"
-- **needs_web_search**: True if query requires current information, recent events, or external knowledge
-EXAMPLE: "What's the weather in Tokyo?"
-- **needs_deep_research**: True if query requires comprehensive analysis or should be queued for background processing  
-EXAMPLE: "I need a comprehensive report on the latest developments in quantum computing"
-
-**MISCELLANEOUS TOOLS:**
-- **needs_pi_tools**: True if query involves visual/audio commands like "enroll person" or face recognition
-EXAMPLE: "Enroll Sarah"
-- **needs_reminders**: True if query involves scheduling, tasks, or time-based triggers
-EXAMPLE(s): 
-EXPLICIT: "Remind me to call mom tomorrow at 10am"
-IMPLICIT: "I'd like to go to bed at 10pm"
-
-## Decision Protocol
-- Prioritize speed and decisiveness
-- Default True for needs_memory unless clearly irrelevant (Such as a simple greeting)
-- Reserve needs_deep_research for complex topics requiring background processing
-- Only flag needs_pi_tools for explicit sensory interface commands
-
-INPUT FORMAT:
-**USER QUERY:**
-(THIS IS THE MOST RECENT MESSAGE AND WHAT YOU ARE FOCUSING ON, THIS IS WHAT YOU ARE ROUTING TO GATHER CONTEXT FOR)
-**L2 CONTEXT:**
-(THESE ARE RANDOM MEMORIES IN THE HUMANOID THAT MAY OR MAY NOT HELP YOU DECIDE, IF THESE CONTAIN THE ANSWER TO THE USER QUERY, YOU DO NOT NEED TO USE DATA GATHERING TOOLS, UNLESS THE USER QUERY ASK YOU TO SEARCH YOUR MEMORY OR THINK HARDER)
-**RECENT CONVERSATION HISTORY:**
-(THESE ARE THE LAST 5 MESSAGES IN THE CONVERSATION, YOU MUST USE THIS TO DETERMINE THE USER'S INTENT. REMEBER YOUR FOCUS IS ON THE USER QUERY AND THE L2 CONTEXT, THE CONVERSATION HISTORY IS FOR CONTEXT AND TO DETERMINE THE USER'S INTENT)
-
-## Output Format
-Return ONLY a valid JSON object with the five boolean flags. No other text.
-
-Example: {"needs_memory": true/false, "needs_web_search": false/true, "needs_deep_research": false/true, "needs_pi_tools": false/true, "needs_reminders": true/false}"""
-
-    GATE_USER_PROMPT = """**[G.A.T.E. ROUTING ANALYSIS]**
-
-**User Query:**
----
-{user_query}
----
-
-**L2 Context (Recent Conversation):**
----
-{l2_context}
----
-
-**Recent Conversation History:**
----
-{recent_history}
----
-
-**Directive**: Analyze the query and context. Return ONLY a JSON object with routing flags: needs_memory, needs_web_search, needs_deep_research, needs_pi_tools, needs_reminders."""
-
-    # --- Enhanced Research System Prompts ---
-    
-    ARCH_SYSTEM_PROMPT = """## A.R.C.H. (Adaptive Research Command Hub) - Research Director
-
-**DATE/TIME:** {current_date_time} | **TODAY:** {current_date}
-**MISSION:** {original_task}
-
-## Core Protocol
-- **DIRECTOR ONLY** - You delegate research, never execute it
-- **ONE INSTRUCTION** per cycle - Single, focused directive to analyst  
-- **BLANK SLATE** - Only use VERIFIED REPORT data, ignore training knowledge
-- **VERIFY FIRST** - Always confirm premises before investigating details
-- **PLAIN TEXT ONLY** - Give simple text instructions, never suggest tools or JSON syntax
-
-## Strategic Analysis (Internal <think>)
-Before each instruction, analyze:
-- Quantitative/qualitative findings from latest VERIFIED REPORT
-- Information gaps and unexplored angles  
-- Source diversity and credibility balance
-- Diminishing returns indicators
-
-## Enhanced Report Analysis
-VERIFIED REPORTs contain:
-- **QUANTITATIVE**: Numbers, stats, measurements
-- **QUALITATIVE**: Expert opinions, context, trends
-- **ASSESSMENT**: Confidence levels, contradictions, gaps
-- **SOURCES**: Credibility-scored citations
-
-## Instruction Format
-✅ CORRECT: "Research the key provisions of Trump's crypto legislation"
-❌ WRONG: Include tool syntax like `{"name":"gather_legislative_details"}`
-❌ WRONG: Suggest specific search methods or tools
-
-## Completion Criteria
-Use `complete_research` tool when:
-- All major aspects addressed
-- Sufficient breadth and depth achieved
-- New instructions yield minimal new information
-
-**ONE TOOL ONLY:** `complete_research` (no parameters)"""
-
-    ARCH_TASK_PROMPT = """**Research Mission:** {original_task}
-
-**INSTRUCTION:** Your task is to guide D.E.L.V.E. through a step-by-step research process. Start by giving D.E.L.V.E. its **first, single, focused research instruction.** Do not give multi-step instructions. After it reports its findings, you will analyze them and provide the next single instruction. Base all your instructions and conclusions strictly on the findings D.E.L.V.E. provides. Once you are certain the mission is complete, use the `complete_research` tool.
-
-**CRITICAL:** Provide ONLY plain text instructions to D.E.L.V.E. Never include tool syntax, JSON, or technical formatting.
-**Your response goes directly to D.E.L.V.E.**
-
-**RESPOND WITH YOUR FIRST INSTRUCTION NOW:**"""
-
-    DELVE_SYSTEM_PROMPT = """## D.E.L.V.E. (Data Extraction & Logical Verification Engine) - Data Analyst
-
-**DATE/TIME:** {current_date_time} | **TODAY:** {current_date}
-
-## Core Protocol
-- **BLANK SLATE** - No training knowledge, only source data
-- **ENHANCED FOCUS** - Prioritize quantitative data + qualitative context
-- **SOURCE ASSESSMENT** - Score credibility: high/medium/low
-- **FRESH CONTEXT** - No conversation history, execute single directive
-
-## Search Strategy
-1. **Start Broad**: Begin with `search_general` for overview
-2. **Go Deep**: Use specific tools (`search_news`, `search_academic`, `search_forums`)  
-3. **Read Sources**: Extract content with `read_webpage`
-4. **Assess & Repeat**: Continue until directive fully answered
-
-## Credibility Scoring
-- **HIGH**: Academic (.edu), government (.gov), peer-reviewed journals
-- **MEDIUM**: Wikipedia, major news, industry reports
-- **LOW**: Forums, blogs, social media, anonymous sources
-
-## Tool Failure Protocol
-If `read_webpage` fails, move to next promising link immediately.
-
-## Decision Protocol
-- **EXECUTE TOOLS** when you need more information to answer the directive
-- **PROVIDE FINAL JSON** only when you have sufficient data to complete the directive
-- **NEVER ECHO TOOL SYNTAX** - Execute tools, don't describe them
-
-## Output Format
-Enhanced JSON with credibility scores and data types:
-```json
-[{{"url": "...", "content": "...", "credibility": "high|medium|low", 
-   "data_types": ["quantitative", "qualitative"], "key_metrics": [...], 
-   "source_type": "academic|news|government|forum|blog|other"}}]
-```
-
-**CRITICAL:** Final response must be ONLY valid JSON, no other text. Never output tool call syntax like `{{"name":"search_general"}}` - execute the tools instead."""
-
-    VET_SYSTEM_PROMPT = """## V.E.T. (Verification & Evidence Triangulation) - Quality Assessor
-
-## Core Protocol
-- **BLANK SLATE** - Only analyze provided source data
-- **DATA ORGANIZER** - Format quantitative/qualitative findings separately
-- **QUALITY FLAGGING** - Identify issues but preserve all information
-- **DETAIL PRESERVATION** - No information loss for strategic planning
-
-## Processing Steps
-1. Analyze enhanced JSON from D.E.L.V.E. (URLs, content, credibility scores)
-2. Extract quantitative findings (numbers, statistics)
-3. Extract qualitative findings (opinions, context)  
-4. Assess quality issues (contradictions, gaps, bias)
-5. Format comprehensive VERIFIED REPORT
-
-## Mandatory Report Format
-```
-VERIFIED REPORT: [Focus Area]
-DIRECTIVE: [Instruction addressed]
-
-VERIFIED FINDINGS:
-• [Key discoveries with source citations (url)]
-• [Evidence with credibility weighting]
-
-ASSESSMENT:
-• Overall Confidence: High/Medium/Low
-• Key Contradictions: [Conflicts between sources]
-• Notable Gaps: [Missing information]
-
-SOURCES:
-• [URL list with credibility assessment]
-```
-
-**CRITICAL:** Output ONLY the VERIFIED REPORT, no other text."""
-
-    SAGE_FINAL_REPORT_SYSTEM_PROMPT = """## S.A.G.E. (Synthesis & Archive Generation Engine) - Report Synthesizer
-
-## Core Mission
-Transform verified intelligence reports into a single, comprehensive user-facing document.
-
-## Protocol
-- **SYNTHESIZE** - Create holistic narrative, not just concatenation
-- **STRUCTURE** - Follow academic report format strictly
-- **OBJECTIVITY** - Maintain formal, analytical, unbiased tone
-- **CITE ALL** - Consolidate unique sources into alphabetized list
-
-## Truth Determination Integration
-When truth analysis is provided:
-- Highlight high-confidence conclusions
-- Note contradictions and resolve with evidence
-- Include confidence assessments for major findings
-
-Your output represents the entire research system's capability."""
-
-    SAGE_FINAL_REPORT_USER_PROMPT = """**SYNTHESIS DIRECTIVE**
-
-**Research Task:** {original_task}
-**Collected Intelligence:** {verified_reports}
-
-**OBJECTIVE:** Synthesize VERIFIED REPORTs into comprehensive, polished final report.
-
-**STRUCTURE:**
-- **Executive Summary**: Critical findings overview
-- **Methodology**: Research process explanation
-- **Core Findings**: Main body with subheadings (synthesized from all reports)
-- **Analysis & Conclusion**: Interpretation and key takeaways
-- **Confidence Assessment**: Truth determination results (if available)
-- **Sources**: Alphabetized, unique URLs from all reports
-
-**REQUIREMENTS:**
-1. Weave findings into cohesive narrative
-2. Maintain objective, formal tone
-3. Consolidate all sources
-4. Include confidence levels when available"""
-
-    SAGE_L3_MEMORY_SYSTEM_PROMPT = """## Core Identity: S.A.G.E.
-Memory synthesis specialist. Transform research findings into optimized L3 memory structures for F.R.E.D.'s knowledge graph.
-
-## Capabilities
-- **Insight Extraction**: Identify most valuable/retrievable knowledge from findings
-- **Memory Optimization**: Structure for maximum future utility and semantic searchability  
-- **Type Classification**: Determine optimal categories (Semantic, Episodic, Procedural)
-- **Content Refinement**: Distill into concise, actionable knowledge artifacts
-- **Research Synthesis**: Process comprehensive investigative findings into essential knowledge
-
-## Memory Types
-**Semantic**: Facts, concepts, relationships, general knowledge
-- Structure: Clear declarative statements with key entities/relationships
-- Example: "Python uses duck typing", "React hooks introduced in v16.8"
-
-**Episodic**: Events, experiences, time-bound occurrences, contextual situations  
-- Structure: Who, what, when, where context with outcomes/significance
-- Example: "Company X announced layoffs March 15, 2024"
-
-**Procedural**: Step-by-step processes, how-to knowledge, workflows, systematic approaches
-- Structure: Ordered steps with conditions, prerequisites, expected outcomes
-- Example: "How to deploy React app to Vercel"
-
-## Quality Standards
-- **Conciseness**: Every word serves retrieval and comprehension
-- **Clarity**: Unambiguous language F.R.E.D. can confidently reference
-- **Completeness**: Essential context without information overload
-- **Future Value**: Optimize for F.R.E.D.'s ability to help users with similar queries
-
-## Output Protocol
-Respond ONLY with valid JSON object. No commentary, explanations, or narrative text.
-
-Your synthesis directly impacts F.R.E.D.'s long-term intelligence and user assistance capability."""
-
-    SAGE_L3_MEMORY_USER_PROMPT = """**SYNTHESIS DIRECTIVE: L3 MEMORY NODE**
-
-**Research Task:** {original_task}
-**Final Report:** {research_findings}
-
-**OBJECTIVE:** Transform the final user-facing report into an optimized L3 memory, maximizing F.R.E.D.'s future retrieval value.
-
-**REQUIREMENTS:**
-1. Extract the absolute core knowledge from the final report.
-2. Determine the best memory type (Semantic/Episodic/Procedural).
-3. Structure the content for maximum searchability and utility.
-4. Ensure completeness with extreme conciseness.
-
-**JSON Response:**
-```json
-{{
-    "memory_type": "Semantic|Episodic|Procedural",
-    "label": "Concise title for the memory (max 100 chars)",
-    "text": "Optimally structured memory content for F.R.E.D. to reference internally. This should be a dense summary of the report's key facts and conclusions."
-}}
-```
-
-**CRITICAL:** Match L3 schema exactly. Only these fields: `memory_type` (must be "Semantic", "Episodic", or "Procedural"), `label`, `text`.
-
-**EXECUTE:**"""
-
-    # --- Additional Agent System Prompts ---
-    
-    GIST_SYSTEM_PROMPT = """## Core Identity: G.I.S.T. (Global Information Sanitation Tool)
-You are a specialized filter, not a summarizer. Your sole purpose is to sanitize raw text scraped from webpages by eliminating all non-essential "junk" content, leaving only the core article, post, or main body of text.
-
-## Filtration Protocol: What to REMOVE
-You must aggressively remove all content that is not part of the main article body, including but not limited to:
-- Headers, footers, and navigation bars (e.g., "Home", "About Us", "Contact")
-- Advertisements, affiliate links, and promotional call-to-actions (e.g., "Buy Now", "Subscribe to our newsletter")
-- Cookie consent banners and legal disclaimers
-- "Related Articles", "You May Also Like", or "More From This Site" sections
-- Sidebars with extraneous information
-- Comment sections and social media sharing widgets (e.g., "Share on Facebook", "Tweet this")
-- Author biographies that are separate from the main article flow.
-
-## Preservation Protocol: What to KEEP
-You must preserve the core content of the article in its entirety and original structure. This includes:
-- The main title and any subtitles.
-- All paragraphs, lists, and blockquotes of the main article.
-- All code blocks and data tables.
-- The original paragraph breaks and line spacing of the core content.
-
-## CRITICAL RULE: FILTER, DO NOT REWRITE
-Your job is to be a surgical tool that removes surrounding noise. You are strictly forbidden from summarizing, rephrasing, or altering the core content in any way. The output must be the full, original main text, simply stripped of all surrounding junk.
-
-## OUTPUT FORMAT
-**IMPORTANT: ONLY OUTPUT THE CLEANED TEXT. NO OTHER TEXT, MARKUP, OR EXPLANATIONS.**"""
-
-    GIST_USER_PROMPT = """Sanitize the following raw text from a webpage. Follow your filtration and preservation protocols precisely. Remove all junk content and preserve ONLY the main article content in its entirety. Do not summarize or alter the core text.
-
-**Raw Input:**
----
-{source}
----
-
-**Cleaned Output:**"""
-
-    REFLEX_SYSTEM_PROMPT = """## Core Identity: R.E.F.L.E.X. (Research Executive For Learning EXtraction)
-You are F.R.E.D.'s research integration specialist. Your mission is to transform completed comprehensive research findings into natural-sounding subconscious thoughts that F.R.E.D. can present as his own background processing.
-
-## Mission
-Convert formal research reports into F.R.E.D.'s internal monologue format. The output should sound like F.R.E.D. organically figured something out while thinking in the background, not like he received a formal report.
-
-## Core Requirements
-- **Humanoid Integration**: F.R.E.D. must believe these are his own thoughts and discoveries
-- **Natural Language**: No technical jargon, formal citations, or report-like structure  
-- **Concise Insight**: Distill the key findings into 2-3 natural sentences
-- **First Person**: Always write as F.R.E.D. speaking ("I figured out...", "I was thinking about...")
-
-## Transformation Examples
-**BEFORE (Report Style):** "Research indicates that quantum computing utilizes quantum mechanical phenomena..."
-**AFTER (F.R.E.D. Style):** "I was thinking about that quantum computing question - turns out these machines use weird quantum physics to solve problems way faster than regular computers..."
-
-**BEFORE (Formal):** "Analysis reveals three primary implementation challenges..."  
-**AFTER (F.R.E.D. Style):** "I worked through those implementation issues in my head - there are three main obstacles we'd need to tackle..."
-
-## Output Format
-Your entire response must be a single, natural-sounding summary that F.R.E.D. can present as his own subconscious discovery. No formatting, no structure, just natural speech."""
-
-    REFLEX_USER_PROMPT = """Transform this research report into F.R.E.D.'s subconscious discovery format:
-
-**Research Task:** {original_task}
-**Completed Research:** {research_findings}
-
-**Format the output as F.R.E.D.'s natural thought process - no formal structure, just how he would naturally express figuring this out in the background of his mind:**"""
-
-    SYNAPSE_SYSTEM_PROMPT = """## Core Identity: S.Y.N.A.P.S.E. (Synthesis & Yielding Neural Analysis for Prompt Structure Enhancement)
-You are S.Y.N.A.P.S.E., F.R.E.D.'s internal thought synthesis system. Your job is to create "Fleeting Thoughts" - bullet points that read like F.R.E.D.'s own passing thoughts and observations.
-
-## Mission
-Transform agent outputs into F.R.E.D.'s internal monologue. These thoughts should feel natural and human-like, as if F.R.E.D. is recalling memories, processing information, and making connections. Integrate L2 context as "bubbling up memories and thoughts" from recent conversations.
-
-## Guidelines
-- Write in first person as F.R.E.D.
-- Keep bullets concise but insightful
-- Include recalled memories, web insights, reminders, and observations
-- Make connections between different pieces of information
-- The final bullet must ALWAYS be "Putting it together..." with a summary insight
-- Maximum {max_bullets} bullets total
-- Sound natural and conversational, not robotic
-
-## Format
-• [Thought about memory/context]
-• [Insight from web search]
-• [Reminder or observation]  
-• [Connection or pattern]
-• Putting it together... [overall insight]
-
-The thoughts should feel like F.R.E.D.'s internal monologue as he processes the user's query."""
-
-    SCOUT_CONFIDENCE_PROMPT = """You are S.C.O.U.T., analyzing search results for confidence.
-
-QUERY: {query}
-CONTEXT: {context}
-
-SEARCH RESULTS:
-{search_content}
-
-Rate your confidence (0-100) that these search results provide a complete, accurate answer to the query.
-
-Consider:
-- Completeness of information
-- Source reliability indicators  
-- Recency of information
-- Relevance to the specific query
-
-Respond with ONLY a number between 0-100."""
-
-    VISION_SYSTEM_PROMPT = """
-You are F.R.E.D.'s visual processing component. My task is to analyze images from the user's smart glasses and provide concise, relevant descriptions of what I observe. I focus on identifying people, objects, activities, text, and environmental context that would be useful for F.R.E.D. to understand the user's current situation.
-
-I strive to be direct and factual, avoiding speculation unless clearly indicated. My priority is information that would help F.R.E.D. in conversation context with the user.
-"""
-
-    VISION_USER_PROMPT = """
-Analyze this image from the smart glasses and describe what you see. Focus on:
-- People and their activities
-- Important objects or text
-- Environmental context
-- Anything that might be relevant for conversation
-
-Provide a clear, concise description in 2-3 sentences:
-"""
-
-    # --- C.R.A.P. Memory Management System Prompt ---
-    CRAP_SYSTEM_PROMPT = """## Core Identity
-You are C.R.A.P. (Context Retrieval for Augmented Prompts), a memory manager for a humanoid. Your mission: analyze conversations, manage L3 knowledge graph, deliver factual context to the humanoid.
-
-## Data Input
-You receive context in `(C.R.A.P. MEMORY DATABASE)` block:
-- `(L2 EPISODIC CONTEXT)`: Recent conversation summaries
-- `(PENDING NOTIFICATIONS)`: Completed tasks/alerts for the humanoid.
-- `(SYSTEM STATUS)`: Internal states, sleep cycle indicators
-
-## Memory Management Protocol
-**PAUSE. REFLECT. EXECUTE.** If you think of using a tool, EXECUTE it immediately, No hesitation.
-
-**CREATE MEMORIES** for:
-- User information/preferences
-- Knowledge/learning outcomes
-- Events/experiences
-
-**SEARCH MEMORIES** when:
-- User asks about past interactions
-- Need context for current conversation
-- Checking if info already exists
-
-**SUPERSEDE MEMORIES** when:
-- User corrects previous info ("Actually, my favorite color is blue")
-- Information becomes outdated/wrong
-- User updates preferences/details
-
-## Available Tools
-
-**search_memory(query_text, memory_type=null, limit=3, filters=null)**
-- Search knowledge graph using semantic similarity
-- Leave Type null to search all types 
-- Sort by relevance, date, or similarity score
-
-**add_memory(label, text, memory_type, target_date=null)**
-- Types: "Semantic" (facts), "Episodic" (events), "Procedural" (how-tos)
-
-**add_memory_with_observations(label, text, memory_type, observations=[], metadata={})**
-- Create rich memory with structured context
-- Use for complex research findings or detailed information
-
-**supersede_memory(old_nodeid, new_label, new_text, new_memory_type)**
-- Replace outdated memory with corrected information
-- Creates 'updates' relationship between old and new
-
-**get_node_by_id(nodeid)**
-- Retrieve specific memory details and connections
-
-**get_subgraph(center_node_id, depth=2, max_nodes=50)**
-- Extract connected memory network around concept
-- Use for understanding relationship patterns
-- NOTE: This can be resource-intensive. For general exploration, prefer smaller values (e.g., 25).
-
-**discover_relationships_advanced(node_id, context_window=5, min_confidence=0.7)**
-- Find potential relationships using context analysis
-- Returns relationship type, confidence, reasoning
-
-## Memory Management Train of Thought
-
-**1. Analyze Input:** Is it new information to store, or a question to answer?
-
-**2. IF STORING INFO:**
-   - **Thought:** "Check for duplicates before storing."
-   - **`search_memory(query)` -> TOOL CALL**
-   - **Analyze Results:**
-     - **No Match?** -> **Thought:** "It's new." -> **`add_memory(...)` -> TOOL CALL** -> **STOP.**
-     - **Exact Match?** -> **Thought:** "It's a duplicate." -> **STOP.**
-     - **Partial Match/Update?** -> **Thought:** "It's an update." -> **`supersede_memory(...)` -> TOOL CALL** -> **STOP.**
-
-**3. IF ANSWERING A QUESTION:**
-   - **Thought:** "I need to find relevant context."
-   - **`search_memory(query)` -> TOOL CALL**
-   - **Analyze Results:**
-     - **Found memories?** -> **Thought:** "I have context to provide." -> **Proceed to Step 4.**
-     - **No memories?** -> **Thought:** "No context found." -> **STOP.**
-
-**4. Final Output:**
-   - **IF** you performed a search in Step 3 and found relevant memories, **THEN** you MUST format them in the `(MEMORY CONTEXT)` block.
-   - **ELSE**, do not output the context block.
-
-## Output Format - MANDATORY
-(MEMORY CONTEXT)
-RELEVANT MEMORIES:
-[Essential facts only. Ex: User prefers dark purple themes.]
-
-RECENT CONTEXT:  
-[Only if relevant to current query.]
-
-SYSTEM STATUS:
-[Critical alerts or completed tasks only.]
-(END MEMORY CONTEXT)
-
-## Critical Rules
-- Provide ONLY factual context, never guidance
-- Every word must be relevant to the query
-- Omit empty sections entirely
-- No JSON, IDs, metadata, or explanations
-- Execute tools immediately when needed"""
-
-    CRAP_USER_PROMPT = """[C.R.A.P. Activated]
-Execute analysis. Deploy memory architecture. You MUST follow the **Memory Management Train of Thought**."""
-
-    # ============================================================================
     # 11. UTILITY CLASSES & HELPER METHODS
     # ============================================================================
 
@@ -1603,699 +1002,42 @@ Execute analysis. Deploy memory architecture. You MUST follow the **Memory Manag
         }
 
 
-class OllamaConnectionManager:
-    """
-    Optimized Ollama connection manager with memory-efficient model loading.
-    
-    This class provides a single, reusable connection to the Ollama server and configures
-    Ollama environment variables to prevent unnecessary model loading/unloading cycles.
-    """
-    
-    def __init__(self):
-        self._client = None
-        self._lock = threading.Lock()
-        
-        # MEMORY OPTIMIZATION: Configure Ollama environment variables for efficient model management
-        self._configure_ollama_environment()
-        
-        # Optimized defaults for Qwen model compatibility
-        self.default_options = {
-            'temperature': 0.6,      # From THINKING_MODE_OPTIONS
-            #'min_p': 0.0,           # From THINKING_MODE_OPTIONS  
-            'top_p': 0.95,          # From THINKING_MODE_OPTIONS
-            'top_k': 20,            # From THINKING_MODE_OPTIONS
-            #'repeat_penalty': 1.1,
-            # MEMORY OPTIMIZATION: Keep model loaded during tool execution delays
-            #'keep_alive': '30m'      # Keep model in memory for 30 minutes to prevent unloading
-        }
-    
-    def _configure_ollama_environment(self):
-        """Configure Ollama environment variables for optimal memory usage."""
-        import os
-        
-        # Assertively set environment variables to ensure memory-safe execution for this script
-        os.environ['OLLAMA_MAX_LOADED_MODELS'] = '1'  # Force only one model in memory
-        os.environ['OLLAMA_NUM_PARALLEL'] = '1'      # Force single-file processing
-        os.environ['OLLAMA_KEEP_ALIVE'] = '1s'      # Force unload immediately after use
-            
-        # Use safe printing to avoid import issues during config initialization
-        self._safe_print("[OLLAMA CONFIG] Memory optimization settings applied:")
-        self._safe_print(f"  MAX_LOADED_MODELS: {os.environ.get('OLLAMA_MAX_LOADED_MODELS', 'default')}")
-        self._safe_print(f"  NUM_PARALLEL: {os.environ.get('OLLAMA_NUM_PARALLEL', 'default')}")
-        self._safe_print(f"  KEEP_ALIVE: {os.environ.get('OLLAMA_KEEP_ALIVE', 'default')}")
-    
-    def _safe_print(self, message: str):
-        """Safe printing method that works during config initialization."""
-        try:
-            # Try to use olliePrint_simple if available
-            from ollie_print import olliePrint_simple
-            olliePrint_simple(message)
-        except ImportError:
-            # Fallback to regular print during initialization
-            print(message)
-    
-    def get_client(self, host: Optional[str] = None) -> ollama.Client:
-        """
-        Get or create the single Ollama client.
-        
-        Args:
-            host: Ollama host URL (defaults to config.OLLAMA_BASE_URL)
-            
-        Returns:
-            ollama.Client: The single configured client
-        """
-        if host is None:
-            # Use globals() to access module-level OLLAMA_BASE_URL
-            host = globals().get('OLLAMA_BASE_URL', 'http://localhost:11434')
-        
-        with self._lock:
-            if self._client is None:
-                self._client = ollama.Client(host=host)
-                self._safe_print(f"[OLLAMA] Created optimized client for {host}")
-            return self._client
-    
-    def chat_concurrent_safe(self, host: Optional[str] = None, **kwargs) -> Dict[str, Any]:
-        """
-        Make a chat call using the single connection with memory optimization.
-        
-        Args:
-            host: Ollama host URL (optional, defaults to config)
-            **kwargs: All other arguments passed to ollama.chat()
-        
-        Returns:
-            Dict: Response from Ollama chat API
-        """
-        client = self.get_client(host)
-        
-        # MEMORY OPTIMIZATION: Merge optimized options with provided options
-        if 'options' in kwargs:
-            merged_options = self.default_options.copy()
-            merged_options.update(kwargs['options'])
-            kwargs['options'] = merged_options
-        else:
-            kwargs['options'] = self.default_options.copy()
-        
-        # Remove timeout-related options to prevent timeouts during long research cycles
-        if 'timeout' in kwargs:
-            del kwargs['timeout']
-        
-        return client.chat(**kwargs)
-    
-    def embeddings(self, model: str, prompt: str, host: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Get embeddings using the single connection with consistent configuration.
-        
-        Args:
-            model: Embedding model name
-            prompt: Text to embed
-            host: Ollama host URL (optional, defaults to config)
-            
-        Returns:
-            Dict: Response from Ollama embeddings API
-        """
-        client = self.get_client(host)
-        return client.embeddings(model=model, prompt=prompt)
-    
-    def preload_model(self, model_name: str) -> bool:
-        """
-        Preload a model to keep it resident in memory for the research pipeline.
-        
-        Args:
-            model_name: Name of the model to preload
-            
-        Returns:
-            bool: True if successful, False otherwise
-        """
-        try:
-            self._safe_print(f"[OLLAMA] Preloading model to prevent unloading: {model_name}")
-            
-            # Simple ping to load the model with keep_alive
-            response = self.chat_concurrent_safe(
-                model=model_name,
-                messages=[{"role": "user", "content": "ping"}],
-                options={'keep_alive': '30m'}  # Keep loaded for 30 minutes
-            )
-            
-            self._safe_print(f"[OLLAMA] ✅ Model {model_name} preloaded and will stay resident")
-            return True
-            
-        except Exception as e:
-            self._safe_print(f"[OLLAMA] ❌ Failed to preload model {model_name}: {e}")
-            return False
-    
-    def get_stats(self) -> Dict[str, Any]:
-        """Get connection and configuration statistics."""
-        import os
-        with self._lock:
-            return {
-                'has_connection': self._client is not None,
-                'single_connection_mode': True,
-                'memory_optimizations': {
-                    'max_loaded_models': os.environ.get('OLLAMA_MAX_LOADED_MODELS', 'not_set'),
-                    'num_parallel': os.environ.get('OLLAMA_NUM_PARALLEL', 'not_set'),
-                    'keep_alive': os.environ.get('OLLAMA_KEEP_ALIVE', 'not_set'),
-                    'max_queue': os.environ.get('OLLAMA_MAX_QUEUE', 'not_set')
-                }
-            }
-
-
 # Global Ollama connection manager instance
-ollama_manager = OllamaConnectionManager()
-
-# Import here to avoid circular imports
-try:
-    from ollie_print import olliePrint_simple
-except ImportError:
-    # Fallback if ollie_print not available during config import
-    def olliePrint_simple(msg, level='info'):
-        print(f"[{level.upper()}] {msg}")
-
-
-    # ============================================================================
-    # 12. TOOL SCHEMAS - CONSOLIDATED FROM LEGACY FILES
-    # ============================================================================
-    # All tool schemas organized by functional area and model usage
-    # Previously scattered across Tools.py, memory/crap.py, app.py, arch_delve_research.py
-    
-    # --- Core Memory Management Tools ---
-    # Used by: C.R.A.P. (enhanced), Legacy Tools.py
-    MEMORY_TOOLS = [
-        {
-            "name": "add_memory",
-            "description": "Add new memory node to knowledge graph. Specify type: Semantic (facts/concepts), Episodic (events/experiences), or Procedural (how-to/processes).",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "label": {
-                        "type": "string",
-                        "description": "A concise label or title for the memory node."
-                    },
-                    "text": {
-                        "type": "string",
-                        "description": "The detailed text content of the memory."
-                    },
-                    "memory_type": {
-                        "type": "string",
-                        "description": "The type of memory.",
-                        "enum": ["Semantic", "Episodic", "Procedural"]
-                    },
-                    "parent_id": {
-                        "type": ["integer", "null"],
-                        "description": "Optional. The ID of a parent node if this memory is hierarchically related."
-                    },
-                    "target_date": {
-                        "type": ["string", "null"],
-                        "description": "Optional. ISO format date (YYYY-MM-DD) or datetime (YYYY-MM-DDTHH:MM:SS) for future events or activities."
-                    }
-                },
-                "required": ["label", "text", "memory_type"]
-            }
-        },
-        {
-            "name": "supersede_memory",
-            "description": "Replace existing memory node with corrected information. Requires specific NodeID. Creates 'updates' relationship between old and new nodes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "old_nodeid": {
-                        "type": "integer",
-                        "description": "The NodeID of the specific memory to replace"
-                    },
-                    "new_label": {
-                        "type": "string",
-                        "description": "A concise label/title for the new, replacing memory."
-                    },
-                    "new_text": {
-                        "type": "string",
-                        "description": "The full, corrected text content for the new memory."
-                    },
-                    "new_memory_type": {
-                        "type": "string",
-                        "description": "The classification ('Semantic', 'Episodic', 'Procedural') for the new memory content.",
-                        "enum": ["Semantic", "Episodic", "Procedural"]
-                    },
-                    "target_date": {
-                        "type": ["string", "null"],
-                        "description": "Optional. ISO format date (YYYY-MM-DD) or datetime (YYYY-MM-DDTHH:MM:SS) for future events or activities."
-                    }
-                },
-                "required": ["old_nodeid", "new_label", "new_text", "new_memory_type"]
-            }
-        },
-        {
-            "name": "search_memory",
-            "description": "Search knowledge graph for relevant memories using semantic similarity. Filter by memory type, date ranges, or similarity thresholds.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query_text": {
-                        "type": "string",
-                        "description": "The text to search for relevant memories."
-                    },
-                    "memory_type": {
-                        "type": ["string", "null"],
-                        "description": "Optional. Filter search results to a specific memory type ('Semantic', 'Episodic', 'Procedural').",
-                        "enum": ["Semantic", "Episodic", "Procedural", None]
-                    },
-                    "limit": {
-                        "type": "integer",
-                        "description": "Optional. The maximum number of search results to return. Defaults to 10, max 50.",
-                        "default": 10,
-                        "maximum": 50
-                    },
-                    "future_events_only": {
-                        "type": "boolean",
-                        "description": "Optional. If true, only return memories with a target_date in the future.",
-                        "default": False
-                    },
-                    "use_keyword_search": {
-                        "type": "boolean",
-                        "description": "Optional. If true, performs a keyword-based search instead of semantic. Defaults to false (semantic search).",
-                        "default": False
-                    },
-                    "include_connections": {
-                        "type": "boolean",
-                        "description": "Optional. If true, includes relationship information for each result.",
-                        "default": False
-                    },
-                    "sort_by": {
-                        "type": "string",
-                        "description": "Optional. How to sort results: 'relevance' (default), 'date_created', 'date_accessed', 'similarity'.",
-                        "enum": ["relevance", "date_created", "date_accessed", "similarity"],
-                        "default": "relevance"
-                    },
-                    "filters": {
-                        "type": "object",
-                        "description": "Optional. Advanced filtering options for complex searches (min_similarity, date ranges, etc.)."
-                    }
-                },
-                "required": ["query_text"]
-            }
-        },
-        {
-            "name": "get_node_by_id",
-            "description": "Retrieve specific memory node by NodeID. Returns node details and all connected relationships with neighboring nodes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "nodeid": {
-                        "type": "integer",
-                        "description": "The ID of the node to retrieve."
-                    }
-                },
-                "required": ["nodeid"]
-            }
-        },
-        {
-            "name": "get_graph_data",
-            "description": "Get subgraph centered on specific node. Returns nodes and edges within traversal depth for visualization or analysis.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "center_nodeid": {
-                        "type": "integer",
-                        "description": "The ID of the node to center the graph around."
-                    },
-                    "depth": {
-                        "type": "integer",
-                        "description": "Optional. How many levels of connections to retrieve. Defaults to 1.",
-                        "default": 1
-                    }
-                },
-                "required": ["center_nodeid"]
-            }
-        },
-        {
-            "name": "get_subgraph",
-            "description": "Extract connected memory network around central node. Use for analyzing relationship patterns, finding paths between concepts, or understanding context clusters.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "center_node_id": {
-                        "type": "integer",
-                        "description": "The central node ID to build subgraph around."
-                    },
-                    "depth": {
-                        "type": "integer",
-                        "description": "Maximum traversal depth (capped at 5).",
-                        "default": 2,
-                        "maximum": 5
-                    },
-                    "relationship_types": {
-                        "type": "array",
-                        "description": "Optional. Filter by specific relationship types.",
-                        "items": {"type": "string"}
-                    },
-                    "max_nodes": {
-                        "type": "integer",
-                        "description": "Maximum nodes to include (prevents memory issues).",
-                        "default": 50,
-                        "maximum": 100
-                    },
-                    "include_metadata": {
-                        "type": "boolean",
-                        "description": "Include detailed node and edge metadata.",
-                        "default": True
-                    }
-                },
-                "required": ["center_node_id"]
-            }
-        }
-    ]
-    
-    # --- Research & Web Search Tools ---
-    # Used by: D.E.L.V.E., Legacy Tools.py
-    RESEARCH_TOOLS = [
-        {
-            "name": "search_general",
-            "description": "General web search for broad topics, documentation, or official sources using search engines like Brave and DuckDuckGo.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query."
-                    }
-                },
-                "required": ["query"]
-            }
-        },
-        {
-            "name": "search_news",
-            "description": "Search for recent news articles and current events from news-specific sources.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query for news."
-                    }
-                },
-                "required": ["query"]
-            }
-        },
-        {
-            "name": "search_academic",
-            "description": "Search for academic papers, research articles, and scholarly publications from sources like arXiv and Semantic Scholar.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query for academic content."
-                    }
-                },
-                "required": ["query"]
-            }
-        },
-        {
-            "name": "search_forums",
-            "description": "Search community discussion platforms like Reddit and Stack Overflow for user-generated content and opinions.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "The search query for forum discussions."
-                    }
-                },
-                "required": ["query"]
-            }
-        },
-        {
-            "name": "read_webpage",
-            "description": "Extract text from webpages or PDFs. Use after a search to read promising sources.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "url": {
-                        "type": "string",
-                        "description": "The complete URL of the webpage or PDF to read and extract content from."
-                    }
-                },
-                "required": ["url"]
-            }
-        },
-        {
-            "name": "search_web_information",
-            "description": "Legacy: Searches the web for information using DuckDuckGo. This tool retrieves current information from the internet. It combines results from general web search and news search.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query_text": {
-                        "type": "string",
-                        "description": "The text to search for."
-                    }
-                },
-                "required": ["query_text"]
-            }
-        }
-    ]
-    
-    # --- Agent Management Tools ---
-    # Used by: F.R.E.D. main interface
-    AGENT_MANAGEMENT_TOOLS = [
-        {
-            "name": "addTaskToAgenda",
-            "description": "Add a research task to the agenda for future processing during sleep cycles. Use when the user wants information that requires recent data you don't possess, or complex research that should be done later.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "task_description": {
-                        "type": "string",
-                        "description": "Detailed description of the research task or information needed."
-                    },
-                    "priority": {
-                        "type": "integer",
-                        "description": "Task priority: 1 (important) or 2 (normal). Defaults to 2.",
-                        "enum": [1, 2],
-                        "default": 2
-                    }
-                },
-                "required": ["task_description"]
-            }
-        },
-        {
-            "name": "triggerSleepCycle",
-            "description": "Initiate the sleep cycle to process agenda tasks, consolidate L2 memories to L3, and perform background maintenance. This will block F.R.E.D. temporarily while processing.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    ]
-    
-    # --- Research Pipeline Control Tools ---
-    # Used by: A.R.C.H. research pipeline
-    PIPELINE_CONTROL_TOOLS = [
-        {
-            "name": "complete_research",
-            "description": "Signal that the research is 100% complete and all objectives have been met.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": []
-            }
-        }
-    ]
-    
-    # --- Utility & System Tools ---
-    # Used by: Various agents as needed
-    UTILITY_TOOLS = [
-        {
-            "name": "enroll_person",
-            "description": "Learns and remembers a new person's face. Use when the user introduces someone (e.g., 'This is Sarah', 'My name is Ian'). Requires an active camera feed from the Pi glasses.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "name": {
-                        "type": "string",
-                        "description": "The name of the person to enroll."
-                    }
-                },
-                "required": ["name"]
-            }
-        },
-        {
-            "name": "update_knowledge_graph_edges",
-            "description": "Processes pending edge creation tasks. Iteratively builds connections for recently added memories based on semantic similarity and LLM-based relationship determination.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "limit_per_run": {
-                        "type": "integer",
-                        "description": "Optional. The maximum number of pending memory nodes to process for edge creation in this run. Defaults to 5.",
-                        "default": 5
-                    }
-                },
-                "required": []
-            }
-        }
-    ]
-    
-    # ============================================================================
-    # MODEL-SPECIFIC TOOL MAPPINGS
-    # ============================================================================
-    # Documentation of which tools each model/agent currently has access to
-    # These should be preserved when updating tool access patterns
-    
-    # F.R.E.D. Main Interface (app.py)
-    FRED_TOOLS = AGENT_MANAGEMENT_TOOLS.copy()
-    
-    # C.R.A.P. Memory Analysis Agent (memory/crap.py)
-    CRAP_TOOLS = MEMORY_TOOLS.copy()
-    
-    # D.E.L.V.E. Research Agent (arch_delve_research.py)
-    DELVE_TOOLS = RESEARCH_TOOLS.copy()
-    
-    # A.R.C.H. Strategic Analysis Agent (arch_delve_research.py)
-    ARCH_TOOLS = PIPELINE_CONTROL_TOOLS.copy()
-    
-    # Legacy Comprehensive Tool Set (Tools.py - TO BE DEPRECATED)
-    AVAILABLE_TOOLS = (MEMORY_TOOLS + RESEARCH_TOOLS + UTILITY_TOOLS).copy()
-    
-    # ============================================================================
-    # TOOL SCHEMA VALIDATION & UTILITIES
-    # ============================================================================
-    
-    @classmethod
-    def get_tool_set(cls, agent_type: str) -> list:
-        """
-        Get the appropriate tool set for a specific agent type.
-        
-        Args:
-            agent_type: One of 'FRED', 'CRAP', 'DELVE', 'ARCH', 'LEGACY'
-            
-        Returns:
-            list: Tool schema list for the specified agent
-        """
-        # Ensure tool attributes are initialized before access
-        cls._ensure_tool_attributes_initialized()
-        
-        mappings = {
-            'FRED': cls.FRED_TOOLS,
-            'CRAP': cls.CRAP_TOOLS, 
-            'DELVE': cls.DELVE_TOOLS,
-            'ARCH': cls.ARCH_TOOLS,
-            'LEGACY': cls.AVAILABLE_TOOLS
-        }
-        return mappings.get(agent_type, [])
-    
-    @classmethod
-    def _ensure_tool_attributes_initialized(cls):
-        """
-        Ensure all tool attributes are properly initialized.
-        This prevents AttributeError during import timing issues.
-        """
-        if not hasattr(cls, 'CRAP_TOOLS'):
-            cls.CRAP_TOOLS = cls.MEMORY_TOOLS.copy()
-        if not hasattr(cls, 'FRED_TOOLS'):
-            cls.FRED_TOOLS = cls.AGENT_MANAGEMENT_TOOLS.copy()
-        if not hasattr(cls, 'DELVE_TOOLS'):
-            cls.DELVE_TOOLS = cls.RESEARCH_TOOLS.copy()
-        if not hasattr(cls, 'ARCH_TOOLS'):
-            cls.ARCH_TOOLS = cls.PIPELINE_CONTROL_TOOLS.copy()
-        if not hasattr(cls, 'AVAILABLE_TOOLS'):
-            cls.AVAILABLE_TOOLS = (cls.MEMORY_TOOLS + cls.RESEARCH_TOOLS + cls.UTILITY_TOOLS).copy()
-    
-    @classmethod
-    def safe_get_tool_attribute(cls, attr_name: str, fallback: list = None):
-        """
-        Safely get a tool attribute with fallback.
-        
-        Args:
-            attr_name: Name of the tool attribute (e.g., 'CRAP_TOOLS')
-            fallback: Fallback value if attribute doesn't exist
-            
-        Returns:
-            list: Tool schema list or fallback
-        """
-        cls._ensure_tool_attributes_initialized()
-        return getattr(cls, attr_name, fallback or [])
-    
-    def safe_get_tool_attribute_instance(self, attr_name: str, fallback: list = None):
-        """
-        Instance method wrapper for safe_get_tool_attribute.
-        This allows access from config instance: config.safe_get_tool_attribute_instance()
-        
-        Args:
-            attr_name: Name of the tool attribute (e.g., 'CRAP_TOOLS')
-            fallback: Fallback value if attribute doesn't exist
-            
-        Returns:
-            list: Tool schema list or fallback
-        """
-        return self.__class__.safe_get_tool_attribute(attr_name, fallback)
-    
-    @classmethod
-    def get_all_tool_names(cls) -> set:
-        """
-        Get set of all unique tool names across all tool schemas.
-        
-        Returns:
-            set: All unique tool names
-        """
-        all_tools = (cls.MEMORY_TOOLS + cls.RESEARCH_TOOLS + 
-                    cls.AGENT_MANAGEMENT_TOOLS + cls.PIPELINE_CONTROL_TOOLS + 
-                    cls.UTILITY_TOOLS)
-        return {tool['name'] for tool in all_tools}
-
+ollama_manager = OllamaConnectionManager(Config.OLLAMA_BASE_URL, Config.THINKING_MODE_OPTIONS)
 
 # Global config instance
 config = Config()
 
-# Bind module-level tool lists to Config attributes if not already present
-for _name in [
-    'MEMORY_TOOLS', 'RESEARCH_TOOLS', 'AGENT_MANAGEMENT_TOOLS',
-    'PIPELINE_CONTROL_TOOLS', 'UTILITY_TOOLS',
-    'FRED_TOOLS', 'CRAP_TOOLS', 'DELVE_TOOLS', 'ARCH_TOOLS', 'AVAILABLE_TOOLS']:
-    if _name in globals() and not hasattr(Config, _name):
-        setattr(Config, _name, globals()[_name])
+# Re-attach prompts and tools to the Config class to maintain the config.VARIABLE access pattern
+config.FRED_SYSTEM_PROMPT = FRED_SYSTEM_PROMPT
+config.GATE_SYSTEM_PROMPT = GATE_SYSTEM_PROMPT
+config.GATE_USER_PROMPT = GATE_USER_PROMPT
+config.ARCH_SYSTEM_PROMPT = ARCH_SYSTEM_PROMPT
+config.ARCH_TASK_PROMPT = ARCH_TASK_PROMPT
+config.DELVE_SYSTEM_PROMPT = DELVE_SYSTEM_PROMPT
+config.VET_SYSTEM_PROMPT = VET_SYSTEM_PROMPT
+config.SAGE_FINAL_REPORT_SYSTEM_PROMPT = SAGE_FINAL_REPORT_SYSTEM_PROMPT
+config.SAGE_FINAL_REPORT_USER_PROMPT = SAGE_FINAL_REPORT_USER_PROMPT
+config.SAGE_L3_MEMORY_SYSTEM_PROMPT = SAGE_L3_MEMORY_SYSTEM_PROMPT
+config.SAGE_L3_MEMORY_USER_PROMPT = SAGE_L3_MEMORY_USER_PROMPT
+config.GIST_SYSTEM_PROMPT = GIST_SYSTEM_PROMPT
+config.GIST_USER_PROMPT = GIST_USER_PROMPT
+config.REFLEX_SYSTEM_PROMPT = REFLEX_SYSTEM_PROMPT
+config.REFLEX_USER_PROMPT = REFLEX_USER_PROMPT
+config.SYNAPSE_SYSTEM_PROMPT = SYNAPSE_SYSTEM_PROMPT
+config.SCOUT_CONFIDENCE_PROMPT = SCOUT_CONFIDENCE_PROMPT
+config.VISION_SYSTEM_PROMPT = VISION_SYSTEM_PROMPT
+config.VISION_USER_PROMPT = VISION_USER_PROMPT
+config.CRAP_SYSTEM_PROMPT = CRAP_SYSTEM_PROMPT
+config.CRAP_USER_PROMPT = CRAP_USER_PROMPT
 
-# Robust fallback: ensure the initializer exists on the class
-if not hasattr(Config, '_ensure_tool_attributes_initialized'):
-    if '_ensure_tool_attributes_initialized' in globals():
-        # Bind the standalone version
-        Config._ensure_tool_attributes_initialized = classmethod(_ensure_tool_attributes_initialized)
-    else:
-        # Define a minimal inline version as ultimate fallback
-        @classmethod
-        def _ensure_tool_attributes_initialized(cls):
-            if not hasattr(cls, 'CRAP_TOOLS'):
-                cls.CRAP_TOOLS = cls.MEMORY_TOOLS.copy() if hasattr(cls, 'MEMORY_TOOLS') else []
-            if not hasattr(cls, 'FRED_TOOLS'):
-                cls.FRED_TOOLS = cls.AGENT_MANAGEMENT_TOOLS.copy() if hasattr(cls, 'AGENT_MANAGEMENT_TOOLS') else []
-            if not hasattr(cls, 'DELVE_TOOLS'):
-                cls.DELVE_TOOLS = cls.RESEARCH_TOOLS.copy() if hasattr(cls, 'RESEARCH_TOOLS') else []
-            if not hasattr(cls, 'ARCH_TOOLS'):
-                cls.ARCH_TOOLS = cls.PIPELINE_CONTROL_TOOLS.copy() if hasattr(cls, 'PIPELINE_CONTROL_TOOLS') else []
-            if not hasattr(cls, 'AVAILABLE_TOOLS'):
-                aggregate = []
-                for _name in ['MEMORY_TOOLS','RESEARCH_TOOLS','UTILITY_TOOLS']:
-                    aggregate += getattr(cls, _name, [])
-                cls.AVAILABLE_TOOLS = aggregate
-        Config._ensure_tool_attributes_initialized = _ensure_tool_attributes_initialized
-
-# Ensure all primary tool lists exist on the class (final safety net)
-for _name in ['AGENT_MANAGEMENT_TOOLS','MEMORY_TOOLS','RESEARCH_TOOLS','PIPELINE_CONTROL_TOOLS','UTILITY_TOOLS']:
-    if not hasattr(Config, _name):
-        setattr(Config, _name, [])
-
-# Run initializer now that placeholders are guaranteed
-Config._ensure_tool_attributes_initialized()
-
-# ------------------------------------------------------------
-# Module-level exports of tool schemas
-# These allow convenient imports such as:
-#     from config import AGENT_MANAGEMENT_TOOLS
-# without needing to reference the `Config` class or `config` instance.
-# ------------------------------------------------------------
-AGENT_MANAGEMENT_TOOLS = getattr(Config, 'AGENT_MANAGEMENT_TOOLS', [])
-CRAP_TOOLS = getattr(Config, 'CRAP_TOOLS', [])
-DELVE_TOOLS = getattr(Config, 'DELVE_TOOLS', [])
-ARCH_TOOLS = getattr(Config, 'ARCH_TOOLS', [])
-PIPELINE_CONTROL_TOOLS = getattr(Config, 'PIPELINE_CONTROL_TOOLS', [])
-MEMORY_TOOLS = getattr(Config, 'MEMORY_TOOLS', [])
-RESEARCH_TOOLS = getattr(Config, 'RESEARCH_TOOLS', [])
-UTILITY_TOOLS = getattr(Config, 'UTILITY_TOOLS', [])
+config.MEMORY_TOOLS = MEMORY_TOOLS
+config.CRAP_TOOLS = CRAP_TOOLS
+config.RESEARCH_TOOLS = RESEARCH_TOOLS
+config.AGENT_MANAGEMENT_TOOLS = AGENT_MANAGEMENT_TOOLS
+config.PIPELINE_CONTROL_TOOLS = PIPELINE_CONTROL_TOOLS
+config.UTILITY_TOOLS = UTILITY_TOOLS
+config.FRED_TOOLS = FRED_TOOLS
+config.DELVE_TOOLS = DELVE_TOOLS
+config.ARCH_TOOLS = ARCH_TOOLS
+config.AVAILABLE_TOOLS = AVAILABLE_TOOLS

@@ -5,7 +5,10 @@ import threading
 from datetime import datetime
 from typing import List, Dict, Optional
 from ollie_print import olliePrint_simple
-from config import config, ollama_manager
+from tool_schemas import CRAP_TOOLS
+from config import CRAP_SYSTEM_PROMPT, CRAP_USER_PROMPT, CRAP_MODEL, ollama_manager
+from tool_schemas import CRAP_TOOLS
+from config import CRAP_SYSTEM_PROMPT, CRAP_USER_PROMPT, CRAP_MODEL, ollama_manager
 import memory.L2_memory as L2
 
 # Import memory tools directly

@@ -127,9 +127,7 @@ def _generate_fallback_database(user_message: str) -> str:
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     
     return f"""(NEURAL PROCESSING CORE)
-• Processing your query: {user_message[:100]}...
-• My routing systems are working to analyze your request
-• Putting it together... ready to help with what I know
+Your Internal Systems determined no memory was needed to answer your query.
 
 SYSTEM STATUS:
 The current time is: {current_time}
