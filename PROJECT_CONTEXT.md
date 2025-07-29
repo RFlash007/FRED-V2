@@ -644,7 +644,7 @@ The enhanced A.R.C.H./D.E.L.V.E./V.E.T./S.A.G.E. system now delivers:
 - ✅ **Enhanced ARCH System Prompt**: Strategic reasoning, diminishing returns detection, enhanced VET report handling
 - ✅ **Sequential Processing Framework**: `conduct_enhanced_iterative_research()` function with fresh context design
 - ✅ **Config.py Cleanup**: Removed duplicate DELVE_SYSTEM_PROMPT and VET_SYSTEM_PROMPT entries
-- ✅ **Legacy Function Marking**: Original `conduct_iterative_research()` marked as deprecated
+- ✅ **Function Update**: `conduct_iterative_research()` replaced by `conduct_enhanced_iterative_research()`
 
 #### **System Architecture Decisions Finalized**
 - ✅ **Fresh Context Strategy**: Each DELVE/VET instance gets completely fresh context for hardware efficiency

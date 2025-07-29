@@ -776,7 +776,7 @@ def search_memory(query_text: str, memory_type: Optional[str] = None, limit: int
     """
     # If advanced filters are provided, use the enhanced search capabilities
     if filters is not None:
-        # Merge legacy parameters into filters for unified processing
+        # Merge older parameters into filters for unified processing
         combined_filters = dict(filters)
         combined_filters.update({
             'memory_type': memory_type,
@@ -1215,10 +1215,10 @@ def get_graph_data(center_nodeid: int, depth: int = 1) -> Dict[str, Any]:
     # Convert nodes to backward-compatible LIST format (maintains previous behavior expected by Tools.py)
     nodes_list = []
     for node in subgraph_result.get('nodes', []):
-        # Provide both the new canonical key ('id') and legacy key ('nodeid')
+        # Provide both the new canonical key ('id') and the older 'nodeid' key for compatibility
         nodes_list.append({
             'id': node['nodeid'],          # canonical for downstream callers
-            'nodeid': node['nodeid'],      # legacy for older callers
+            'nodeid': node['nodeid'],      # kept for compatibility
             'type': node['type'],
             'label': node['label'],
             'text': node['text'],
@@ -1229,13 +1229,13 @@ def get_graph_data(center_nodeid: int, depth: int = 1) -> Dict[str, Any]:
             'target_date': node['target_date']
         })
     
-    # Convert edges to backward-compatible LIST format with both canonical and legacy keys
+    # Convert edges to backward-compatible LIST format with both canonical and older keys
     edges_list = []
     for edge in subgraph_result.get('edges', []):
         edges_list.append({
             'source': edge['sourceid'],     # canonical
             'target': edge['targetid'],     # canonical
-            'sourceid': edge['sourceid'],   # legacy
+            'sourceid': edge['sourceid'],   # kept for compatibility
             'targetid': edge['targetid'],
             'rel_type': edge['rel_type'],
             'created_at': edge['created_at']
