@@ -101,6 +101,9 @@ class TestGateIntegration(unittest.TestCase):
         routing_flags = agent_dispatcher.dispatch_agents.call_args.kwargs['routing_flags']
         print(f"--> Routing flags (implicit memory): {routing_flags}")
         self.assertTrue(routing_flags.get('needs_memory', False), "Model failed to flag needs_memory for implicit memory query")
+        # New assertion: Ensure the G.A.T.E. agent provides or defaults a valid memory_search_query
+        memory_search_query = routing_flags.get('memory_search_query') or user_message
+        self.assertTrue(memory_search_query, "G.A.T.E. did not supply a valid memory_search_query for memory retrieval")
 
 if __name__ == '__main__':
     unittest.main()
