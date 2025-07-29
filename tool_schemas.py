@@ -14,7 +14,7 @@ them easier to manage, version, and test.
 # Previously scattered across Tools.py, memory/crap.py, app.py, arch_delve_research.py
 
 # --- Core Memory Management Tools ---
-# Used by: C.R.A.P. (enhanced), Legacy Tools.py
+# Used by: C.R.A.P. (enhanced) and Tools.py for compatibility
 MEMORY_TOOLS = [
     {
         "name": "add_memory",
@@ -244,7 +244,7 @@ RESEARCH_TOOLS = [
     },
     {
         "name": "search_web_information",
-        "description": "Legacy: Searches the web for information using DuckDuckGo. This tool retrieves current information from the internet. It combines results from general web search and news search.",
+        "description": "Searches the web for information using DuckDuckGo. This tool retrieves current information from the internet, combining results from general web and news searches.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -378,7 +378,7 @@ def get_tool_set(agent_type: str) -> list:
     Get the appropriate tool set for a specific agent type.
     
     Args:
-        agent_type: One of 'FRED', 'CRAP', 'DELVE', 'ARCH', 'LEGACY'
+        agent_type: One of 'FRED', 'CRAP', 'DELVE', 'ARCH'
         
     Returns:
         list: Tool schema list for the specified agent
@@ -387,8 +387,7 @@ def get_tool_set(agent_type: str) -> list:
         'FRED': FRED_TOOLS,
         'CRAP': CRAP_TOOLS, 
         'DELVE': DELVE_TOOLS,
-        'ARCH': ARCH_TOOLS,
-        'LEGACY': AVAILABLE_TOOLS
+        'ARCH': ARCH_TOOLS
     }
     return mappings.get(agent_type, [])
 

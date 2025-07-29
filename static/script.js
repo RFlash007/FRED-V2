@@ -230,7 +230,7 @@ function olliePrint_quiet(message, level = 'info') {
   olliePrint(message, level, null, false, false);
 }
 
-// === Legacy Compatibility ===
+// === Compatibility Layer ===
 // Keep existing function signatures for backward compatibility
 window.olliePrint = olliePrint;
 window.olliePrint_info = olliePrint_info;

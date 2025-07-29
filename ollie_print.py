@@ -464,10 +464,10 @@ def startup_block(component: str, info_lines: list) -> str:
     
     return '\n'.join(lines)
 
-# === Legacy Compatibility ===
-# Keep the old function name for backward compatibility
+# === Compatibility Layer ===
+# Expose the old function name for backward compatibility
 def banner(component: str) -> str:
-    """Legacy banner function - redirects to startup_block"""
+    """Compatibility banner function - redirects to startup_block"""
     return startup_block(component, [])
 
 def olliePrint_concise(message: Any, level: str = 'info', module: Optional[str] = None) -> None:

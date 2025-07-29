@@ -89,7 +89,7 @@ def init_agenda_db():
                 );
             """)
             
-            # Create notification queue table (legacy)
+            # Create notification queue table for compatibility
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS notification_queue (
                     notification_id VARCHAR PRIMARY KEY DEFAULT (CONCAT('notif_', CAST(epoch_ms(current_timestamp) AS VARCHAR))),

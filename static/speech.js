@@ -185,7 +185,7 @@ class SpeechSystem {
         if (this.audioContext.audioWorklet) {
             this.setupModernAudioProcessing();
         } else {
-            this.setupLegacyAudioProcessing();
+            this.setupFallbackAudioProcessing();
         }
         
         olliePrint('Audio processing set up successfully');
@@ -261,20 +261,20 @@ class SpeechSystem {
             
         } catch (workletError) {
             console.warn('AudioWorkletNode setup failed, falling back to ScriptProcessorNode:', workletError);
-            this.setupLegacyAudioProcessing();
+            this.setupFallbackAudioProcessing();
         }
         */
     }
     
-    setupLegacyAudioProcessing() {
-        // DISABLED: Legacy audio processing - backend handles audio directly
-        olliePrint('Legacy audio processing disabled - backend handles microphone');
+    setupFallbackAudioProcessing() {
+        // DISABLED: Fallback audio processing - backend handles audio directly
+        olliePrint('Fallback audio processing disabled - backend handles microphone');
         return;
         
         // COMMENTED OUT: ScriptProcessorNode processing
         /*
         // Fallback to ScriptProcessorNode for older browsers
-        console.warn('Using deprecated ScriptProcessorNode - consider updating browser for better performance');
+        console.warn('Falling back to ScriptProcessorNode - consider updating browser for better performance');
         
         this.processor = this.audioContext.createScriptProcessor(4096, 1, 1);
         

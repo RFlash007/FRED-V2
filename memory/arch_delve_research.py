@@ -14,7 +14,8 @@ from pathlib import Path
 import re
 import time
 
-from tool_schemas import ARCH_TOOLS, PIPELINE_CONTROL_TOOLS, DELVE_TOOLS, RESEARCH_TOOLS, ollama_manager
+from tool_schemas import ARCH_TOOLS, PIPELINE_CONTROL_TOOLS, DELVE_TOOLS, RESEARCH_TOOLS
+from config import config, ollama_manager
 from ollie_print import olliePrint_simple
 
 # MEMORY OPTIMIZATION: Use single model for all agents with context switching
@@ -509,7 +510,7 @@ _max_active_sessions = 10  # Prevent unlimited session accumulation
 def cleanup_research_session(task_id: str) -> None:
     """Clean up a completed research session - uses unified ResourceManager."""
     resource_manager.cleanup_session(task_id)
-    # Also clean from legacy storage for backward compatibility
+    # Also remove from compatibility storage
     with _session_lock:
         if task_id in active_research_sessions:
             del active_research_sessions[task_id]
@@ -517,7 +518,7 @@ def cleanup_research_session(task_id: str) -> None:
 def cleanup_old_research_sessions(max_age_hours: int = 24) -> None:
     """Clean up old research sessions - uses unified ResourceManager."""
     resource_manager.cleanup_old_sessions(max_age_hours)
-    # Also clean from legacy storage
+    # Also remove from compatibility storage
     import time
     current_time = time.time()
     max_age_seconds = max_age_hours * 3600
@@ -580,7 +581,7 @@ def create_research_session(task_id: str, original_task: str) -> ArchDelveState:
         # Register with ResourceManager
         resource_manager.register_session(task_id, session)
         
-        # Also add to legacy storage for backward compatibility
+        # Also store in compatibility storage for older clients
         with _session_lock:
             active_research_sessions[task_id] = session
         
@@ -596,7 +597,7 @@ def create_research_session(task_id: str, original_task: str) -> ArchDelveState:
 def force_cleanup_all_sessions() -> None:
     """Force cleanup of all active research sessions using unified ResourceManager."""
     resource_manager.force_cleanup_all()
-    # Also clear legacy storage
+    # Also clear compatibility storage
     with _session_lock:
         active_research_sessions.clear()
 

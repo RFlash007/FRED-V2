@@ -538,7 +538,7 @@ class FREDPiClient:
                 config = RTCConfiguration(iceServers=ice_servers)
                 self.pc = RTCPeerConnection(configuration=config)
             except Exception:
-                olliePrint_simple("🔧 Using legacy WebRTC configuration", 'warning')
+                olliePrint_simple("🔧 Using fallback WebRTC configuration", 'warning')
                 self.pc = RTCPeerConnection()
             
             # Suppress noisy ICE transaction timeout errors
