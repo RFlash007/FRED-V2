@@ -30,6 +30,10 @@ class ScoutAgent:
                     "arguments": {"query": query}
                 }
             }]
+
+            print(f"\n--- S.C.O.U.T. Tool Call ---")
+            print(json.dumps(search_tool_call, indent=2))
+            print(f"----------------------------\n")
             
             search_results = handle_tool_calls(search_tool_call)
             
@@ -88,6 +92,10 @@ class ScoutAgent:
             )
             
             confidence_text = response.get('message', {}).get('content', '0').strip()
+
+            print(f"\n--- S.C.O.U.T. Confidence Assessment ---")
+            print(f"Raw Response: {confidence_text}")
+            print(f"----------------------------------------\n")
             
             try:
                 confidence_score = int(''.join(filter(str.isdigit, confidence_text)))

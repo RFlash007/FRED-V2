@@ -15,10 +15,7 @@ from .scout import ScoutAgent
 from .remind import RemindAgent
 from .pivot import PivotAgent
 from .synapse import SynapseAgent
-try:
-    import memory.crap as crap
-except ImportError:
-    crap = None
+
 
 class AgentDispatcher:
     """Manages parallel execution of FRED agents."""
@@ -43,7 +40,7 @@ class AgentDispatcher:
         else:
             raise ValueError(f"Unknown agent type: {agent_type}")
     
-    def dispatch_agents(self, routing_flags: Dict, user_message: str, conversation_history: List[Dict], visual_context: str = "") -> str:
+    def dispatch_agents(self, routing_flags: Dict, user_message: str, conversation_history: List[Dict], visual_context: str = "", memory_context: str = "") -> str:
         """
         Dispatch agents based on G.A.T.E. routing flags and return synthesized NEURAL PROCESSING CORE.
         
@@ -61,11 +58,22 @@ class AgentDispatcher:
             
             agent_tasks = self._plan_agent_execution(routing_flags, user_message, conversation_history, visual_context)
             
-            if not agent_tasks:
-                olliePrint_simple("[DISPATCHER] No agents needed, using fallback")
+            agent_outputs = {}
+
+            # Execute agents if any are planned
+            if agent_tasks:
+                agent_outputs = self._execute_agents_parallel(agent_tasks)
+            else:
+                olliePrint_simple("[DISPATCHER] No agent tasks scheduled (memory-only request)")
+
+            # Inject memory context prepared by G.A.T.E. directly (new pathway)
+            if memory_context:
+                agent_outputs['memory'] = {'memories': memory_context}
+                olliePrint_simple("[DISPATCHER] Injected memory_context into agent_outputs")
+            elif not agent_tasks:
+                # If still no context or agents, fallback
+                olliePrint_simple("[DISPATCHER] Neither agents nor memory context provided. Using fallback")
                 return self._generate_fallback_database(user_message, visual_context)
-            
-            agent_outputs = self._execute_agents_parallel(agent_tasks)
             
             l2_summaries = self._get_l2_context(user_message)
             
@@ -91,10 +99,7 @@ class AgentDispatcher:
         """Plan which agents to execute based on routing flags."""
         tasks = []
         
-        if routing_flags.get('needs_memory', False):
-            def run_crap():
-                return self._run_crap_agent(user_message, conversation_history)
-            tasks.append(('crap', run_crap))
+        
         
         if routing_flags.get('needs_web_search', False):
             def run_scout():
@@ -157,27 +162,6 @@ class AgentDispatcher:
         
         return agent_outputs
     
-    def _run_crap_agent(self, user_message: str, conversation_history: List[Dict]) -> Dict:
-        """Run C.R.A.P. agent and return structured output."""
-        try:
-            if crap is None:
-                return {"error": "C.R.A.P. module not available"}
-            
-            crap_result = crap.run_crap_analysis(user_message, conversation_history)
-            
-            if isinstance(crap_result, str) and "(MEMORY CONTEXT)" in crap_result:
-                start = crap_result.find("(MEMORY CONTEXT)")
-                end = crap_result.find("(END MEMORY CONTEXT)")
-                if start != -1 and end != -1:
-                    database_content = crap_result[start:end + len("(END MEMORY CONTEXT)")]
-                    return {"memories": database_content, "raw_output": crap_result}
-            
-            return {"memories": crap_result, "raw_output": crap_result}
-            
-        except Exception as e:
-            olliePrint_simple(f"[DISPATCHER] C.R.A.P. execution error: {e}", level='error')
-            return {"error": config.AGENT_ERRORS.get("memory_failure", "Memory system failed")}
-    
     def _extract_pi_command(self, user_message: str) -> Tuple[Optional[str], Dict]:
         """Extract Pi command from user message (simplified implementation)."""
         message_lower = user_message.lower()
@@ -220,9 +204,7 @@ class AgentDispatcher:
         current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         return f"""(NEURAL PROCESSING CORE)
-• Processing your query: {user_message[:100]}...
-• My agent systems are working to gather information
-• Putting it together... ready to help with what I know
+Your internal system deemed no memories to be retrieved for this query. Answer normally.
 
 SYSTEM STATUS:
 The current time is: {current_time}

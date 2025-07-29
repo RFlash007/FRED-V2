@@ -73,7 +73,7 @@ USER: {user_message}
 
 FRED: {fred_response}
 
-Analyze this turn: What new information about Ian or his interests should be stored in memory?"""
+Analyze this turn: What new information about Ian or his interests should be stored in memory? What general knowledge is learned about the world that you do not inherently know? Add that to memory."""
         
         messages.append({"role": "user", "content": current_turn})
         
@@ -83,11 +83,18 @@ Analyze this turn: What new information about Ian or his interests should be sto
         """Execute M.A.D. tool calls (add_memory and add_memory_with_observations)."""
         results = []
         
+        print(f"\n--- M.A.D. Tool Calls ({len(tool_calls)}) ---")
         for tool_call in tool_calls:
             function_name = tool_call.get("function", {}).get("name")
-            function_args = tool_call.get("function", {}).get("arguments", {})
+            function_args_str = tool_call.get("function", {}).get("arguments", "{}")
             
+            print(f"[M.A.D.] Calling tool: {function_name}")
+            print(f"[M.A.D.] Arguments: {function_args_str}")
+
             try:
+                # The arguments are a JSON string, so we need to parse them
+                function_args = json.loads(function_args_str)
+
                 if function_name == "add_memory":
                     result = tool_add_memory(**function_args)
                 elif function_name == "add_memory_with_observations":
@@ -95,19 +102,21 @@ Analyze this turn: What new information about Ian or his interests should be sto
                 else:
                     result = {"success": False, "error": f"Unknown tool: {function_name}"}
                 
+                print(f"[M.A.D.] Tool Result: {result}")
+
                 results.append({
                     "tool": function_name,
                     "args": function_args,
                     "result": result
                 })
-                
             except Exception as e:
-                olliePrint_simple(f"[M.A.D.] Tool execution error ({function_name}): {e}", level='error')
+                olliePrint_simple(f"[M.A.D.] Tool call failed: {e}", level='error')
                 results.append({
                     "tool": function_name,
-                    "args": function_args,
+                    "args": function_args_str, # Log the raw string on failure
                     "result": {"success": False, "error": str(e)}
                 })
+        print("---------------------------\n")
         
         return results
 
@@ -161,10 +170,19 @@ Analyze this turn: What new information about Ian or his interests should be sto
             response_message = response.get('message', {})
             raw_content = response_message.get('content', '')
             tool_calls = response_message.get('tool_calls', [])
+
+            print("\n--- M.A.D. Raw Response ---")
+            print(raw_content)
+            print("---------------------------\n")
             
             # Extract thinking and clean content
             thinking = self._extract_think_content(raw_content)
             clean_content = self._strip_think_tags(raw_content)
+
+            if thinking:
+                print("\n--- M.A.D. Thinking ---")
+                print(thinking)
+                print("------------------------\n")
             
             # Add to M.A.D.'s analysis history
             analysis_turn = f"USER: {user_message}\nFRED: {fred_response}"

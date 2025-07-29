@@ -3,20 +3,11 @@ import json
 from datetime import datetime
 from ollie_print import olliePrint_simple
 from config import config, ollama_manager
-from app import strip_think_tags
-try:
-    import memory.L2_memory as L2
-except ImportError:
-    class MockL2:
-        @staticmethod
-        def query_l2_context(message):
-            return "No recent context available"
-    L2 = MockL2()
+from utils import strip_think_tags
+
 from agents.dispatcher import AgentDispatcher
 
-agent_dispatcher = AgentDispatcher()
-
-def run_gate_analysis(user_message: str, conversation_history: list, visual_context: str = "") -> str:
+def run_gate_analysis(user_message: str, conversation_history: list, agent_dispatcher: AgentDispatcher, visual_context: str = "") -> str:
     """
     Runs the new G.A.T.E. routing system with multi-agent dispatch.
     1. Analyzes user query to determine routing flags
@@ -26,11 +17,6 @@ def run_gate_analysis(user_message: str, conversation_history: list, visual_cont
     olliePrint_simple("[G.A.T.E.] Multi-agent routing initiated...")
 
     try:
-        l2_context_raw = L2.query_l2_context(user_message)
-        l2_context_clean = l2_context_raw.replace("(L2 EPISODIC CONTEXT)", "").replace("(END L2 EPISODIC CONTEXT)", "").strip()
-        if not l2_context_clean:
-            l2_context_clean = "No relevant recent context found."
-
         # Get G.A.T.E. Specific Context - last 5 messages with thinking content removed
         recent_history_for_prompt = []
         # Ensure we only get the last 5 relevant turns
@@ -45,11 +31,28 @@ def run_gate_analysis(user_message: str, conversation_history: list, visual_cont
         
         # Log inputs for _get_routing_flags
         olliePrint_simple(f"[G.A.T.E.] User Message Input: {user_message}", level='debug')
-        olliePrint_simple(f"[G.A.T.E.] L2 Context Input: {l2_context_clean}", level='debug')
+
         olliePrint_simple(f"[G.A.T.E.] Recent History Input: {recent_history_for_prompt}", level='debug')
 
         # 2. Get routing flags from G.A.T.E. LLM
-        routing_flags = _get_routing_flags(user_message, l2_context_clean, recent_history_for_prompt)
+        routing_flags = _get_routing_flags(user_message, recent_history_for_prompt)
+
+        # -----------------------------------------------------------------
+        # NEW: Retrieve memory context when needs_memory is true
+        memory_context = ""
+        if routing_flags.get('needs_memory', False):
+            search_query = routing_flags.get('memory_search_query') or user_message
+            try:
+                import memory.L3_memory as L3
+                olliePrint_simple(f"[G.A.T.E.] Performing memory search for query: '{search_query}'", level='debug')
+                memory_results = L3.search_memory(query_text=search_query, limit=2)
+                # Convert to a compact string representation for Synapse
+                memory_context = json.dumps(memory_results, ensure_ascii=False, default=str)
+                olliePrint_simple(f"[G.A.T.E.] Retrieved {len(memory_results)} memory nodes", level='debug')
+            except Exception as mem_err:
+                olliePrint_simple(f"[G.A.T.E.] Memory search error: {mem_err}", level='warning')
+                memory_context = ""
+        # -----------------------------------------------------------------
         
         olliePrint_simple(f"[G.A.T.E.] Routing flags: {routing_flags}")
 
@@ -57,7 +60,8 @@ def run_gate_analysis(user_message: str, conversation_history: list, visual_cont
             routing_flags=routing_flags,
             user_message=user_message,
             conversation_history=conversation_history,
-            visual_context=visual_context
+            visual_context=visual_context,
+            memory_context=memory_context
         )
 
         olliePrint_simple(f"[G.A.T.E.] Final Neural Processing Core Content: {database_content}", level='debug')
@@ -68,7 +72,7 @@ def run_gate_analysis(user_message: str, conversation_history: list, visual_cont
         # Fallback to basic database
         return _generate_fallback_database(user_message)
 
-def _get_routing_flags(user_message: str, l2_context: str, recent_history: list) -> dict:
+def _get_routing_flags(user_message: str, recent_history: list) -> dict:
     """Get routing flags from G.A.T.E. LLM analysis."""
     try:
         # Format recent_history for the prompt
@@ -76,7 +80,6 @@ def _get_routing_flags(user_message: str, l2_context: str, recent_history: list)
         
         prompt = config.GATE_USER_PROMPT.format(
             user_query=user_message,
-            l2_context=l2_context,
             recent_history=formatted_recent_history
         )
 
@@ -93,6 +96,10 @@ def _get_routing_flags(user_message: str, l2_context: str, recent_history: list)
         )
 
         response_content = response.get('message', {}).get('content', '').strip()
+
+        print("\n--- G.A.T.E. Raw Routing Response ---")
+        print(response_content)
+        print("-------------------------------------\n")
         
         try:
             routing_flags = json.loads(response_content)

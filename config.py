@@ -161,7 +161,7 @@ class Config:
     """
     
     # --- Language Model Assignments ---
-    DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'
+    DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL'
     """
     Primary language model for F.R.E.D.'s personality and general responses.
     Current: Qwen3-30B (high-quality, thinking-capable model)
@@ -183,7 +183,7 @@ class Config:
     Should match EMBED_MODEL for consistency across the system.
     """
     
-    LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M')
+    LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL')
     THINKING_MODEL = DEFAULT_MODEL
     """
     Model for complex decision-making and reasoning tasks.
@@ -192,7 +192,7 @@ class Config:
     """
     
     # --- Consolidated Research Model ---
-    CONSOLIDATED_MODEL = os.getenv('CONSOLIDATED_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M')
+    CONSOLIDATED_MODEL = os.getenv('CONSOLIDATED_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL')
     """
     Unified model for all research agents (ARCH, DELVE, VET, SAGE) to prevent multiple model loads.
     Using same model with different system prompts for different agent personalities.
@@ -218,7 +218,7 @@ class Config:
     """
     
     # --- Specialized Model Assignments ---
-    CRAP_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'
+    CRAP_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL'
     """
     Model for C.R.A.P. (Context Retrieval for Augmented Prompts) memory analysis.
     Q4_K_M quantization: Slightly compressed for faster memory operations
@@ -512,7 +512,7 @@ class Config:
     L2_RETRIEVAL_THRESHOLD = 0.3
     """Semantic similarity threshold for L2 memory retrieval."""
     
-    L2_ANALYSIS_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
+    L2_ANALYSIS_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
     """Model for analyzing conversation segments into L2 memories."""
     
     L2_FALLBACK_TURN_LIMIT = 15
@@ -773,21 +773,21 @@ class Config:
     """Directory for storing research conversation logs."""
     
     # --- Model Assignments for Research Components ---
-    ARCH_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
+    ARCH_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
     """Model for A.R.C.H. (research direction and strategic thinking)."""
     
-    DELVE_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
+    DELVE_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
     """Model for D.E.L.V.E. (research execution and analysis)."""
     
-    SAGE_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
+    SAGE_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
     """Model for S.A.G.E. (synthesis and memory optimization)."""
     
     # --- Enhanced Research System Configuration ---
     ENHANCED_RESEARCH_MODELS = {
-        'arch': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M',      # Strategic planning
-        'delve': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M',     # Data gathering  
-        'vet': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M',       # Quality assessment
-        'sage': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'       # Final synthesis
+        'arch': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL',      # Strategic planning
+        'delve': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL',     # Data gathering  
+        'vet': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL',       # Quality assessment
+        'sage': 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL'       # Final synthesis
     }
     """
     Model assignments for enhanced research pipeline components.
@@ -826,10 +826,10 @@ class Config:
     """
     
     # --- Specialized Agent Models ---
-    GIST_SUMMARY_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
+    GIST_SUMMARY_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
     """Model for G.I.S.T. (Global Information Sanitation Tool) content filtering."""
     
-    REFLEX_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M"
+    REFLEX_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
     """Model for R.E.F.L.E.X. (Research Executive For Learning EXtraction) processing."""
     
     # ============================================================================
@@ -838,6 +838,13 @@ class Config:
     # Agent limits, thresholds, timeouts, and system behavior
     
     # --- General Agent Configuration ---
+    USE_MAD = True
+    """
+    Master toggle for the M.A.D. (Memory Addition Daemon) agent.
+    True: M.A.D. runs in parallel to analyze conversation turns for new memories.
+    False: Disables the M.A.D. agent completely.
+    """
+    
     MAX_CONCURRENT_AGENTS = 1
     """Maximum number of agents that can run simultaneously."""
     
@@ -1008,6 +1015,9 @@ ollama_manager = OllamaConnectionManager(Config.OLLAMA_BASE_URL, Config.THINKING
 # Global config instance
 config = Config()
 
+# Make CRAP_MODEL available for direct import
+CRAP_MODEL = Config.CRAP_MODEL
+
 # Re-attach prompts and tools to the Config class to maintain the config.VARIABLE access pattern
 config.FRED_SYSTEM_PROMPT = FRED_SYSTEM_PROMPT
 config.GATE_SYSTEM_PROMPT = GATE_SYSTEM_PROMPT
@@ -1030,6 +1040,7 @@ config.VISION_SYSTEM_PROMPT = VISION_SYSTEM_PROMPT
 config.VISION_USER_PROMPT = VISION_USER_PROMPT
 config.CRAP_SYSTEM_PROMPT = CRAP_SYSTEM_PROMPT
 config.CRAP_USER_PROMPT = CRAP_USER_PROMPT
+config.CRAP_MODEL = Config.CRAP_MODEL
 
 config.MEMORY_TOOLS = MEMORY_TOOLS
 config.CRAP_TOOLS = CRAP_TOOLS

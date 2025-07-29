@@ -13,7 +13,7 @@ except ImportError:
     sys.exit(1)
 
 # The model and its parameters (num_gpu, num_ctx, etc.) are now loaded from config
-MODEL_NAME = "awaescher/qwen3-235b-thinking-2507-unsloth-q3-k-xl:latest"
+MODEL_NAME = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
 
 # --- Main Chat Logic ---
 def main():

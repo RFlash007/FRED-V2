@@ -3,6 +3,7 @@ P.I.V.O.T. (Pi Integration & Vision Operations Tool)
 Handles Pi-specific commands and operations
 """
 
+import json
 from typing import Dict, Optional
 from ollie_print import olliePrint_simple
 from config import config
@@ -65,6 +66,10 @@ class PivotAgent:
                     "arguments": {"name": name}
                 }
             }]
+
+            print(f"\n--- P.I.V.O.T. Tool Call ---")
+            print(json.dumps(tool_call, indent=2))
+            print(f"----------------------------\n")
             
             results = handle_tool_calls(tool_call)
             

@@ -22,7 +22,7 @@ from memory.supersession_helpers import (
 # Set default path inside the memory folder
 DB_FILE = os.path.join('memory', 'memory.db')  # Default that can be overridden
 EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
-LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M') # As requested
+LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL') # As requested
 EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
 # Use centralized Ollama connection manager for all L3 operations

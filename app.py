@@ -23,7 +23,8 @@ from stt_service import stt_service
 from vision_service import vision_service
 import threading
 from ollietec_theme import apply_theme, banner
-from ollie_print import olliePrint, olliePrint_simple
+from ollie_print import olliePrint
+from utils import strip_think_tags, olliePrint_simple
 
 apply_theme()
 import time
@@ -125,8 +126,11 @@ class FREDState:
                 'last_analyzed_index': self.last_analyzed_message_index
             }
 
+from agents.dispatcher import AgentDispatcher
+
 # Global state instance
 fred_state = FREDState()
+agent_dispatcher = AgentDispatcher()
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['SECRET_KEY'] = config.SECRET_KEY
@@ -190,12 +194,6 @@ def extract_think_content(text):
         return ""
     matches = re.findall(r'<think>(.*?)</think>', text, re.DOTALL)
     return '\n'.join(matches).strip()
-
-def strip_think_tags(text):
-    """Remove <think>...</think> blocks from text."""
-    if not text:
-        return ""
-    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 # Legacy message preparation functions removed - now handled by CORTEX
 
@@ -542,11 +540,12 @@ def chat_endpoint():
             from agents.mad import mad_agent
             
             def run_parallel_agents():
-                """Run G.A.T.E. and M.A.D. in parallel."""
+                """Run G.A.T.E. and prepare for M.A.D. analysis."""
                 # G.A.T.E. processes current user message for context retrieval
                 gate_result = gate.run_gate_analysis(
                     user_message, 
                     fred_state.get_conversation_history(),
+                    agent_dispatcher,
                     visual_context
                 )
                 

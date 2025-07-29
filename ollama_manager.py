@@ -30,14 +30,14 @@ class OllamaConnectionManager:
         # Optimized defaults for Qwen model compatibility
         self.default_options = thinking_options.copy()
         # Keep model loaded during tool execution delays
-        # self.default_options['keep_alive'] = '30m' 
+        self.default_options['keep_alive'] = '30m'  # Keep model resident to avoid repeated loads
     
     def _configure_ollama_environment(self):
         """Configure Ollama environment variables for optimal memory usage."""
         # Assertively set environment variables to ensure memory-safe execution for this script
         os.environ['OLLAMA_MAX_LOADED_MODELS'] = '1'  # Force only one model in memory
         os.environ['OLLAMA_NUM_PARALLEL'] = '1'      # Force single-file processing
-        os.environ['OLLAMA_KEEP_ALIVE'] = '1s'      # Force unload immediately after use
+        os.environ['OLLAMA_KEEP_ALIVE'] = '30m'      # Keep model resident for 30 minutes to prevent thrashing
             
         # Use safe printing to avoid import issues during config initialization
         self._safe_print("[OLLAMA CONFIG] Memory optimization settings applied:")

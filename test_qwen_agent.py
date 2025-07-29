@@ -8,7 +8,7 @@ from config import ollama_manager
 
 # --- Configuration (Consistent with config.py style) ---
 OLLAMA_BASE_URL = 'http://localhost:11434'
-DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q4_K_M'
+DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL'
 LLM_GENERATION_OPTIONS = {
     'temperature': 0.6,
     'top_p': 0.95,
