@@ -134,10 +134,10 @@ async def offer(request):
                 if not text or not text.strip():
                     return
 
-                # Prepare chat request for main server
+                # Prepare chat request for main server - use FRED_MODEL for consistent personality
                 payload = {
                     "message": text,
-                    "model": config.DEFAULT_MODEL,
+                    "model": config.FRED_MODEL,  # Use FRED's personality model for Pi transcriptions
                     "mute_fred": False,
                     "from_pi_glasses": True,
                 }

@@ -513,7 +513,8 @@ def chat_endpoint():
             return jsonify({'error': 'Invalid JSON payload'}), 400
         
         user_message = data.get('message')
-        model_name = data.get('model', config.DEFAULT_MODEL)
+        # Use FRED_MODEL for personality responses, but allow override from client
+        model_name = data.get('model', config.FRED_MODEL)
         ollama_base_url = data.get('ollama_url', config.OLLAMA_BASE_URL).strip()
         max_tool_iterations = data.get('max_tool_iterations', config.MAX_TOOL_ITERATIONS)
         mute_fred = data.get('mute_fred', False)
@@ -898,7 +899,7 @@ def process_transcription(text, from_pi=False):
             # Prepare request data
             request_data = {
                 'message': text,
-                'model': config.DEFAULT_MODEL,  # Use configured default model, not hardcoded
+                'model': config.FRED_MODEL,  # Use FRED's personality model for voice responses
                 'mute_fred': False
             }
             

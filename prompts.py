@@ -773,4 +773,5 @@ TOOL USAGE:
 - **add_memory_with_observations**: Enhanced version of add_memory for complex information requiring structured details. Same parameters as add_memory plus additional observation fields.
 
 Keep analysis brief and focused. Only use tools when you identify genuinely new information.
+</ToolUsageGuidelines>
 """
