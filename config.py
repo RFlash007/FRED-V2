@@ -161,12 +161,18 @@ class Config:
     """
     
     # --- Language Model Assignments ---
-    DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL'
+    FRED_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL'
     """
     Primary language model for F.R.E.D.'s personality and general responses.
-    Current: Qwen3-30B (high-quality, thinking-capable model)
-    Alternative: llama3.1:8b (faster, less capable)
-    Affects: Response quality, speed, and resource usage
+    This is the main model that defines F.R.E.D.'s personality and conversational style.
+    Current: Qwen3-30B-A3B-Instruct-2507 (high-quality, instruction-tuned model)
+    Affects: Response quality, personality, and conversational style
+    """
+    
+    DEFAULT_MODEL = FRED_MODEL  # Backward compatibility
+    """
+    Legacy reference to FRED's personality model.
+    Using FRED_MODEL is preferred for clarity.
     """
     
     EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
