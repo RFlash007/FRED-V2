@@ -14,7 +14,7 @@ apply_theme()
 
 class VisionService:
     def __init__(self):
-        self.model = config.VISION_MODEL
+        self.model = config.VISION_OLLAMA_MODEL
         
         # Initialize Qwen dimensions - optimized for Pi camera native resolution
         self.qwen_max_pixels = 3584 * 3584  # 12.8 MP - Qwen 2.5-VL 7B limit

@@ -21,8 +21,8 @@ from memory.supersession_helpers import (
 # --- Configuration ---
 # Set default path inside the memory folder
 DB_FILE = os.path.join('memory', 'memory.db')  # Default that can be overridden
-EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
-LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL') # As requested
+EMBED_MODEL = config.EMBED_MODEL
+LLM_DECISION_MODEL = config.GATE_OLLAMA_MODEL
 EMBEDDING_DIM = 768 # As specified for nomic-embed-text
 
 # Use centralized Ollama connection manager for all L3 operations
@@ -153,7 +153,8 @@ def call_ollama_generate(prompt, model=LLM_DECISION_MODEL):
             model=model,
             messages=messages,
             stream=False,
-            format="json" # Explicitly request JSON format
+            format="json",  # Explicitly request JSON format
+            options=config.LLM_GENERATION_OPTIONS
         )
         
         response_content = response.get('message', {}).get('content', '')
@@ -348,7 +349,7 @@ If no clear relationship exists, use null for relationship_type and low confiden
             model=LLM_DECISION_MODEL,
             messages=[{"role": "user", "content": enhanced_prompt}],
             stream=False,
-            options={"temperature": 0.1}  # Low temperature for consistent analysis
+            options=config.LLM_GENERATION_OPTIONS
         )
         
         response_text = response.get('message', {}).get('content', '').strip()

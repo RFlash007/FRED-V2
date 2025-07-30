@@ -12,14 +12,14 @@ except ImportError:
     print("Please run this script from the root of your F.R.E.D. project directory.")
     sys.exit(1)
 
-# The model and its parameters (num_gpu, num_ctx, etc.) are now loaded from config
+# The model and its parameters are loaded from config
 MODEL_NAME = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
 
 # --- Main Chat Logic ---
 def main():
     """Main function to run the terminal chat client."""
     print(f"--- Starting chat with '{MODEL_NAME}' ---")
-    print(f"(Parameters: num_gpu={config.THINKING_MODE_OPTIONS.get('num_gpu')}, num_ctx={config.THINKING_MODE_OPTIONS.get('num_ctx')})")
+    print(f"(Parameters: num_ctx={config.LLM_GENERATION_OPTIONS.get('num_ctx')})")
     print("Type 'quit', 'exit', or press Ctrl+C to end the chat.")
     print("--------------------------------------------------")
 

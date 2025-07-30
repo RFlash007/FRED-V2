@@ -35,12 +35,13 @@ class SynapseAgent:
             print(synthesis_prompt[:2000])
             print("========== [{self.name}] SYNTHESIS PROMPT END =========\n")
             response = ollama_manager.chat_concurrent_safe(
-                model=config.LLM_DECISION_MODEL,
+                model=config.SYNAPSE_OLLAMA_MODEL,
                 messages=[
                     {"role": "system", "content": self._get_system_prompt()},
                     {"role": "user", "content": synthesis_prompt}
                 ],
-                stream=False
+                stream=False,
+                options=config.LLM_GENERATION_OPTIONS
             )
             
             thoughts_content = response.get('message', {}).get('content', '')

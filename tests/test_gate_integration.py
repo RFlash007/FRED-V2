@@ -27,7 +27,7 @@ class TestGateIntegration(unittest.TestCase):
     def setUpClass(cls):
         """Preload model once and create a shared dispatcher to minimize server workers."""
         from config import config, ollama_manager
-        ollama_manager.preload_model(config.DEFAULT_MODEL)
+        ollama_manager.preload_model(config.GATE_OLLAMA_MODEL)
         cls.dispatcher = AgentDispatcher()
         # Single MagicMock reused—return value string distinguishes tests for logging
         cls.dispatcher.dispatch_agents = MagicMock(return_value="Dispatcher reused by setUpClass")

@@ -49,9 +49,10 @@ def generate_fred_research_summary(original_task: str, research_findings: str) -
         ]
         
         response = ollama_manager.chat_concurrent_safe(
-            model=config.REFLEX_MODEL,
+            model=config.REFLEX_OLLAMA_MODEL,
             messages=messages,
-            stream=False
+            stream=False,
+            options=config.LLM_GENERATION_OPTIONS
         )
         
         fred_summary = response.get('message', {}).get('content', '').strip()

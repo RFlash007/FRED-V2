@@ -180,10 +180,11 @@ def analyze_conversation_chunk(messages: List[Dict], turn_start: int, turn_end: 
         ]
 
         response = ollama_manager.chat_concurrent_safe(
-            model=config.L2_ANALYSIS_MODEL,
+            model=config.L2_ANALYSIS_OLLAMA_MODEL,
             messages=chat_messages,
             stream=False,
-            format="json"
+            format="json",
+            options=config.LLM_GENERATION_OPTIONS
         )
         
         response_text = response.get('message', {}).get('content', '').strip()

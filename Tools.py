@@ -992,9 +992,10 @@ def gist_summarize_source(source: str) -> str:
         ]
         
         response = ollama_manager.chat_concurrent_safe(
-            model=config.GIST_SUMMARY_MODEL,
+            model=config.GIST_OLLAMA_MODEL,
             messages=messages,
-            stream=False
+            stream=False,
+            options=config.LLM_GENERATION_OPTIONS
         )
         
         response_content = response.get('message', {}).get('content', '')

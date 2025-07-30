@@ -86,9 +86,10 @@ class ScoutAgent:
             )
             
             response = ollama_manager.chat_concurrent_safe(
-                model=config.LLM_DECISION_MODEL,
+                model=config.SCOUT_OLLAMA_MODEL,
                 messages=[{"role": "user", "content": assessment_prompt}],
-                stream=False
+                stream=False,
+                options=config.LLM_GENERATION_OPTIONS
             )
             
             confidence_text = response.get('message', {}).get('content', '0').strip()

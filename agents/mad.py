@@ -164,11 +164,11 @@ Analyze this turn: What new information about Ian or his interests should be sto
             # Get M.A.D. analysis
             response = ollama_manager.chat_concurrent_safe(
                 host=config.OLLAMA_BASE_URL,
-                model=config.DEFAULT_MODEL,
+                model=config.MAD_OLLAMA_MODEL,
                 messages=messages,
                 tools=self.mad_tools,
                 stream=False,
-                options=config.THINKING_MODE_OPTIONS
+                options=config.LLM_GENERATION_OPTIONS
             )
             
             response_message = response.get('message', {})

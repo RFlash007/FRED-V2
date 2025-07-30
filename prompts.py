@@ -775,3 +775,7 @@ TOOL USAGE:
 Keep analysis brief and focused. Only use tools when you identify genuinely new information.
 </ToolUsageGuidelines>
 """
+
+# Placeholder prompts for legacy components
+CRAP_SYSTEM_PROMPT = ""
+CRAP_USER_PROMPT = ""
