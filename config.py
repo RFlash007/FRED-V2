@@ -160,79 +160,39 @@ class Config:
     Number: Timeout in seconds (use for production with SLA requirements)
     """
     
-    # --- Language Model Assignments ---
-    # Original models for all system components
-    DEFAULT_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL'
-    """
-    Default language model for system components.
-    Current: Qwen3-30B (high-quality, thinking-capable model)
-    Used by: All system components except FRED's personality
-    """
-    
-    # FRED's personality model (only used for FRED's personality responses)
-    FRED_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL'
-    """
-    Language model specifically for F.R.E.D.'s personality and general responses.
-    This is the ONLY model that defines F.R.E.D.'s personality and conversational style.
-    Current: Qwen3-30B-A3B-Instruct-2507 (high-quality, instruction-tuned model)
-    Affects: Only FRED's personality and conversational responses
-    """
-    
+    # --- Ollama Model Assignments ---
+    # Centralized model names for all agents
+
+    FRED_OLLAMA_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL'
+    """Model for F.R.E.D.'s personality and conversation style."""
+
+    GATE_OLLAMA_MODEL = os.getenv('GATE_OLLAMA_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL')
+    MAD_OLLAMA_MODEL = os.getenv('MAD_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
+    SCOUT_OLLAMA_MODEL = os.getenv('SCOUT_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
+    SYNAPSE_OLLAMA_MODEL = os.getenv('SYNAPSE_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
+
+    ARCH_OLLAMA_MODEL = os.getenv('ARCH_OLLAMA_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL')
+    DELVE_OLLAMA_MODEL = os.getenv('DELVE_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
+    VET_OLLAMA_MODEL = os.getenv('VET_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
+    SAGE_OLLAMA_MODEL = os.getenv('SAGE_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
+
+    GIST_OLLAMA_MODEL = os.getenv('GIST_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
+    REFLEX_OLLAMA_MODEL = os.getenv('REFLEX_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
+    CRAP_OLLAMA_MODEL = os.getenv('CRAP_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
+
+    L2_ANALYSIS_OLLAMA_MODEL = os.getenv('L2_ANALYSIS_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
+    VISION_OLLAMA_MODEL = os.getenv('VISION_OLLAMA_MODEL', 'qwen2.5vl:7b')
+
     EMBED_MODEL = os.getenv('EMBED_MODEL', 'nomic-embed-text')
-    """
-    Text embedding model for semantic search and memory operations.
-    Current: nomic-embed-text (768-dim, good quality/speed balance)
-    Alternative: all-minilm (smaller, faster), sentence-transformers (larger)
-    Affects: Memory search quality and semantic understanding
-    """
-    
     DEFAULT_EMBEDDING_MODEL = os.getenv('DEFAULT_EMBEDDING_MODEL', 'nomic-embed-text')
-    """
-    Default embedding model for agenda system and general embedding tasks.
-    Should match EMBED_MODEL for consistency across the system.
-    """
-    
-    LLM_DECISION_MODEL = os.getenv('LLM_DECISION_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL')
-    THINKING_MODEL = DEFAULT_MODEL
-    """
-    Model for complex decision-making and reasoning tasks.
-    Should be high-quality model with strong reasoning capabilities.
-    Used for: Agent routing, complex analysis, strategic decisions
-    """
-    
-    # --- Consolidated Research Model ---
-    CONSOLIDATED_MODEL = os.getenv('CONSOLIDATED_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL')
-    """
-    Unified model for all research agents (ARCH, DELVE, VET, SAGE) to prevent multiple model loads.
-    Using same model with different system prompts for different agent personalities.
-    Memory optimization: Single model instance shared across all research components.
-    """
-    
-    # --- AI Reasoning Parameters ---
-    THINKING_MODE_OPTIONS = {
-        "temperature": 0.6, 
-        "min_p": 0.0, 
-        "top_p": 0.95, 
-        "top_k": 20,
-        "num_ctx": 4096,
-        "num_thread": 16
+
+    # --- Generation Options ---
+    LLM_GENERATION_OPTIONS = {
+        'temperature': 0.6,
+        'top_p': 0.95,
+        'top_k': 20,
+        'num_ctx': 4096,  # Context window
     }
-    """
-    Optimized parameters for Qwen3 thinking mode.
-    - temperature: 0.6 (balanced creativity/consistency)
-    - min_p: 0.0 (no minimum probability threshold)
-    - top_p: 0.95 (nucleus sampling for quality)
-    - top_k: 20 (limit consideration to top 20 tokens)
-    Source: Official Qwen3 documentation recommendations
-    """
-    
-    # --- Specialized Model Assignments ---
-    CRAP_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL'
-    """
-    Model for C.R.A.P. (Context Retrieval for Augmented Prompts) memory analysis.
-    Q4_K_M quantization: Slightly compressed for faster memory operations
-    while maintaining quality for context retrieval tasks.
-    """
     
     # ============================================================================
     # 3. AUDIO PROCESSING CONFIGURATION
@@ -834,12 +794,7 @@ class Config:
     Used by Phase 4 quality assessment system for comprehensive confidence scoring.
     """
     
-    # --- Specialized Agent Models ---
-    GIST_SUMMARY_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
-    """Model for G.I.S.T. (Global Information Sanitation Tool) content filtering."""
-    
-    REFLEX_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
-    """Model for R.E.F.L.E.X. (Research Executive For Learning EXtraction) processing."""
+
     
     # ============================================================================
     # 7. AGENT SYSTEM CONFIGURATION
@@ -907,9 +862,6 @@ class Config:
     # --- Vision Processing Configuration ---
     VISION_PROCESSING_INTERVAL = 10
     """Time interval in seconds between visual processing cycles."""
-    
-    VISION_MODEL = "qwen2.5vl:7b"
-    """Multimodal model for analyzing visual input from smart glasses."""
     
     VISION_ENABLED = True
     """Enable/disable visual processing system."""
@@ -1019,13 +971,13 @@ class Config:
 
 
 # Global Ollama connection manager instance
-ollama_manager = OllamaConnectionManager(Config.OLLAMA_BASE_URL, Config.THINKING_MODE_OPTIONS)
+ollama_manager = OllamaConnectionManager(Config.OLLAMA_BASE_URL, Config.LLM_GENERATION_OPTIONS)
 
 # Global config instance
 config = Config()
 
 # Make CRAP_MODEL available for direct import
-CRAP_MODEL = Config.CRAP_MODEL
+CRAP_MODEL = Config.CRAP_OLLAMA_MODEL
 
 # Re-attach prompts and tools to the Config class to maintain the config.VARIABLE access pattern
 config.FRED_SYSTEM_PROMPT = FRED_SYSTEM_PROMPT
@@ -1049,7 +1001,7 @@ config.VISION_SYSTEM_PROMPT = VISION_SYSTEM_PROMPT
 config.VISION_USER_PROMPT = VISION_USER_PROMPT
 config.CRAP_SYSTEM_PROMPT = CRAP_SYSTEM_PROMPT
 config.CRAP_USER_PROMPT = CRAP_USER_PROMPT
-config.CRAP_MODEL = Config.CRAP_MODEL
+config.CRAP_MODEL = Config.CRAP_OLLAMA_MODEL
 
 config.MEMORY_TOOLS = MEMORY_TOOLS
 config.CRAP_TOOLS = CRAP_TOOLS

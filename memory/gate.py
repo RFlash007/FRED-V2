@@ -89,9 +89,9 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
         ]
 
         response = ollama_manager.chat_concurrent_safe(
-            model=config.LLM_DECISION_MODEL,
+            model=config.GATE_OLLAMA_MODEL,
             messages=messages,
-            options=config.THINKING_MODE_OPTIONS,
+            options=config.LLM_GENERATION_OPTIONS,
             format="json"  # Ensure JSON output
         )
 

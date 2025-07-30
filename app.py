@@ -513,8 +513,8 @@ def chat_endpoint():
             return jsonify({'error': 'Invalid JSON payload'}), 400
         
         user_message = data.get('message')
-        # Use FRED_MODEL for personality responses, but allow override from client
-        model_name = data.get('model', config.FRED_MODEL)
+        # Use FRED_OLLAMA_MODEL for personality responses, but allow override from client
+        model_name = data.get('model', config.FRED_OLLAMA_MODEL)
         ollama_base_url = data.get('ollama_url', config.OLLAMA_BASE_URL).strip()
         max_tool_iterations = data.get('max_tool_iterations', config.MAX_TOOL_ITERATIONS)
         mute_fred = data.get('mute_fred', False)
@@ -646,7 +646,7 @@ SUBCONSCIOUS PROCESSING RESULTS:
                     messages=messages,
                     tools=AGENT_MANAGEMENT_TOOLS,
                     stream=False,
-                    options=config.THINKING_MODE_OPTIONS
+                    options=config.LLM_GENERATION_OPTIONS
                 )
                 
                 response_message = response.get('message', {})
@@ -791,7 +791,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     model=model_name,
                     messages=messages,
                     stream=True,
-                    options=config.THINKING_MODE_OPTIONS
+                    options=config.LLM_GENERATION_OPTIONS
                 )
                 
                 streaming_response = ""
@@ -899,7 +899,7 @@ def process_transcription(text, from_pi=False):
             # Prepare request data
             request_data = {
                 'message': text,
-                'model': config.FRED_MODEL,  # Use FRED's personality model for voice responses
+                'model': config.FRED_OLLAMA_MODEL,  # Use FRED's personality model for voice responses
                 'mute_fred': False
             }
             

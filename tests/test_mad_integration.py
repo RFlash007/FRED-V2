@@ -27,7 +27,7 @@ class TestMadIntegration(unittest.TestCase):
     def setUpClass(cls):
         """Preload the model once and prepare shared MADAgent instance."""
         from config import config
-        ollama_manager.preload_model(config.DEFAULT_MODEL)
+        ollama_manager.preload_model(config.MAD_OLLAMA_MODEL)
 
         # Patch the actual memory-writing Tools so we don't write to a real database
         cls.add_memory_patcher = patch('Tools.tool_add_memory', MagicMock(return_value={"success": True, "id": 1}))

@@ -22,7 +22,7 @@ from ollie_print import olliePrint_simple
 # All agents (ARCH, DELVE, SAGE, VET) use the same model to prevent multiple model loads
 # Model personality is defined by system prompts, not different model instances
 # Import unified model from centralized config
-CONSOLIDATED_MODEL = config.CONSOLIDATED_MODEL
+CONSOLIDATED_MODEL = config.ARCH_OLLAMA_MODEL
 
 # Use same response handling pattern as app.py (which works)
 
@@ -1293,7 +1293,7 @@ def run_enhanced_arch_iteration(session: ArchDelveState, enable_streaming: bool 
                 messages=messages,
                 tools=arch_tools,
                 stream=True,
-                options=config.THINKING_MODE_OPTIONS
+                options=config.LLM_GENERATION_OPTIONS
             )
             
             raw_content = ""
@@ -1378,7 +1378,7 @@ def run_enhanced_arch_iteration(session: ArchDelveState, enable_streaming: bool 
                 messages=messages,
                 tools=arch_tools,
                 stream=False,
-                options=config.THINKING_MODE_OPTIONS
+                options=config.LLM_GENERATION_OPTIONS
             )
         
         call_duration = time.time() - start_time
@@ -1497,7 +1497,7 @@ def run_fresh_delve_iteration(arch_instruction: str, task_id: str, iteration_cou
                     tools=delve_tools,
                     stream=True,
                     format="json",
-                    options=config.THINKING_MODE_OPTIONS
+                    options=config.LLM_GENERATION_OPTIONS
                 )
                 
                 raw_content = ""
@@ -1585,7 +1585,7 @@ def run_fresh_delve_iteration(arch_instruction: str, task_id: str, iteration_cou
                 tools=delve_tools,
                 stream=False,
                 format="json",
-                options=config.THINKING_MODE_OPTIONS
+                options=config.LLM_GENERATION_OPTIONS
             )
             
             # Extract content and tool calls using app.py pattern
@@ -1774,7 +1774,7 @@ def run_fresh_vet_iteration(delve_data: dict, arch_instruction: str, task_id: st
                 model=CONSOLIDATED_MODEL,
                 messages=messages,
                 stream=True,
-                options=config.THINKING_MODE_OPTIONS
+                options=config.LLM_GENERATION_OPTIONS
             )
             
             raw_verified_report = ""
@@ -1852,7 +1852,7 @@ def run_fresh_vet_iteration(delve_data: dict, arch_instruction: str, task_id: st
             model=CONSOLIDATED_MODEL,
             messages=messages,
             stream=False,
-            options=config.THINKING_MODE_OPTIONS
+            options=config.LLM_GENERATION_OPTIONS
         )
 
         # Extract content using app.py pattern
