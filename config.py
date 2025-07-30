@@ -166,12 +166,12 @@ class Config:
     FRED_OLLAMA_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL'
     """Model for F.R.E.D.'s personality and conversation style."""
 
-    GATE_OLLAMA_MODEL = os.getenv('GATE_OLLAMA_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL')
+    GATE_OLLAMA_MODEL = os.getenv('GATE_OLLAMA_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL')
     MAD_OLLAMA_MODEL = os.getenv('MAD_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
     SCOUT_OLLAMA_MODEL = os.getenv('SCOUT_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
     SYNAPSE_OLLAMA_MODEL = os.getenv('SYNAPSE_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
 
-    ARCH_OLLAMA_MODEL = os.getenv('ARCH_OLLAMA_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL')
+    ARCH_OLLAMA_MODEL = os.getenv('ARCH_OLLAMA_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL')
     DELVE_OLLAMA_MODEL = os.getenv('DELVE_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
     VET_OLLAMA_MODEL = os.getenv('VET_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
     SAGE_OLLAMA_MODEL = os.getenv('SAGE_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
@@ -474,7 +474,7 @@ class Config:
     L2_SIMILARITY_THRESHOLD = 0.6
     """Semantic similarity threshold for detecting topic changes."""
     
-    L2_ROLLING_AVERAGE_WINDOW = 6
+    L2_ROLLING_AVERAGE_WINDOW = 6   
     """Number of recent turns for topic change detection."""
     
     L2_ANALYSIS_WINDOW = 15
