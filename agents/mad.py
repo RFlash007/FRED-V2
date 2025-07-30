@@ -122,6 +122,8 @@ Analyze this turn: What new information about Ian or his interests should be sto
 
     def _extract_think_content(self, text: str) -> str:
         """Extract thinking content from <think>...</think> tags."""
+        if not text:
+            return ""
         import re
         think_pattern = r'<think>(.*?)</think>'
         matches = re.findall(think_pattern, text, re.DOTALL)
@@ -129,6 +131,8 @@ Analyze this turn: What new information about Ian or his interests should be sto
 
     def _strip_think_tags(self, text: str) -> str:
         """Remove <think>...</think> blocks from text."""
+        if not text:
+            return ""
         import re
         return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
