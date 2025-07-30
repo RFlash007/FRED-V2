@@ -140,6 +140,7 @@ async def offer(request):
                     "model": config.FRED_OLLAMA_MODEL,  # Use FRED's personality model for Pi transcriptions
                     "mute_fred": False,
                     "from_pi_glasses": True,
+                    "generation_options": config.Instruct_Generation_Options  # Use instruct options for better responses
                 }
 
                 def _call_fred():

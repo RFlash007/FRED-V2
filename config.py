@@ -191,7 +191,18 @@ class Config:
         'temperature': 0.6,
         'top_p': 0.95,
         'top_k': 20,
-        'num_ctx': 4096,  # Context window
+        'min_p':0,
+        'num_ctx': 8192,  # Context window
+        'num_threads': 16
+    }
+    Instruct_Generation_Options = {
+        'Temperature':0.7, 
+        'TopP':0.8, 
+        'TopK':20, 
+        'MinP':0,
+        'repeat_penalty':1.1,
+        'num_ctx':8192,
+        'num_threads':16
     }
     
     # ============================================================================

@@ -646,7 +646,7 @@ SUBCONSCIOUS PROCESSING RESULTS:
                     messages=messages,
                     tools=AGENT_MANAGEMENT_TOOLS,
                     stream=False,
-                    options=config.LLM_GENERATION_OPTIONS
+                    options=config.Instruct_Generation_Options
                 )
                 
                 response_message = response.get('message', {})
@@ -791,7 +791,7 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     model=model_name,
                     messages=messages,
                     stream=True,
-                    options=config.LLM_GENERATION_OPTIONS
+                    options=config.Instruct_Generation_Options
                 )
                 
                 streaming_response = ""
