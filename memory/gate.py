@@ -6,6 +6,7 @@ from config import config, ollama_manager
 from utils import strip_think_tags
 
 from agents.dispatcher import AgentDispatcher
+import memory.L2_memory as L2
 
 def run_gate_analysis(user_message: str, conversation_history: list, agent_dispatcher: AgentDispatcher, visual_context: str = "") -> str:
     """
