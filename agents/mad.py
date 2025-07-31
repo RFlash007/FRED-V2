@@ -41,20 +41,9 @@ class MADAgent:
         """Prepare optimized context for M.A.D. analysis."""
         messages = [{"role": "system", "content": self.system_prompt}]
         
-        # Add M.A.D.'s own analysis history (with thinking truncation)
+        # Add M.A.D.'s own analysis history without thinking content
         for turn in self.analysis_history:
-            if turn['role'] == 'user':
-                messages.append({"role": "user", "content": turn['content']})
-            elif turn['role'] == 'assistant':
-                content = turn['content']
-                thinking = turn.get('thinking', '')
-                
-                # Apply thinking truncation like main pipeline
-                if thinking and len(self.analysis_history) > 6:  # Keep thinking for recent messages only
-                    full_content = f"<think>\n{thinking}\n</think>\n{content}"
-                    messages.append({"role": "assistant", "content": full_content})
-                else:
-                    messages.append({"role": "assistant", "content": content})
+            messages.append({"role": turn['role'], "content": turn['content']})
         
         # Add minimal F.R.E.D. context (last 2-3 messages)
         recent_fred_context = fred_context[-4:] if len(fred_context) > 4 else fred_context
@@ -192,13 +181,12 @@ Analyze this turn: What new information about Ian or his interests should be sto
             analysis_turn = f"USER: {user_message}\nFRED: {fred_response}"
             with self._lock:
                 self.analysis_history.append({
-                    'role': 'user', 
+                    'role': 'user',
                     'content': analysis_turn
                 })
                 self.analysis_history.append({
-                    'role': 'assistant', 
-                    'content': clean_content,
-                    'thinking': thinking
+                    'role': 'assistant',
+                    'content': clean_content
                 })
             
             # Truncate history if needed

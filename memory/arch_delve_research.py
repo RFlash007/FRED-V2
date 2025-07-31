@@ -226,8 +226,8 @@ class ArchDelveState:
         self.task_id = task_id
         self.original_task = original_task
         self.conversation_history = []
-        self.arch_context = []  # A.R.C.H.'s thinking context (last 5 messages)
-        self.delve_context = []  # D.E.L.V.E.'s thinking context (last 5 messages)
+        self.arch_context = []  # A.R.C.H. context (last 5 messages)
+        self.delve_context = []  # D.E.L.V.E. context (last 5 messages)
         self.research_complete = False
         self.final_findings = ""
         self._lock = threading.Lock()
@@ -284,15 +284,14 @@ class ArchDelveState:
             return ""
         return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
     
-    def add_conversation_turn(self, role: str, content: str, model_type: str, thinking: str = ""):
-        """Add a turn to conversation history with thinking context management - thread safe."""
+    def add_conversation_turn(self, role: str, content: str, model_type: str):
+        """Add a turn to conversation history without storing thinking content."""
         with self._lock:
             # Create full turn record
             turn = {
                 'role': role,
                 'content': content,
                 'model_type': model_type,  # 'arch' or 'delve'
-                'thinking': thinking,
                 'timestamp': datetime.now().isoformat()
             }
             
@@ -335,7 +334,7 @@ class ArchDelveState:
                     olliePrint_simple(f"[STATE MANAGEMENT] Error managing DELVE context: {e}", level='error')
     
     def get_context_for_model(self, model_type: str) -> List[Dict]:
-        """Get conversation context for specific model with thinking limited to past 3 messages - thread safe."""
+        """Get conversation context for specific model without thinking content - thread safe."""
         with self._lock:
             try:
                 # Get context safely with error handling
@@ -360,33 +359,16 @@ class ArchDelveState:
                 if not context or not isinstance(context, list):
                     return []
                 
-                # Prepare messages with thinking only from past 3 messages
+                # Prepare messages without thinking content
                 messages = []
-                total_turns = len(context)
-                
+
                 for i, turn in enumerate(context):
                     try:
-                        # Validate turn structure
                         if not isinstance(turn, dict) or 'role' not in turn or 'content' not in turn:
                             olliePrint_simple(f"[STATE MANAGEMENT] Invalid turn structure at index {i}, skipping", level='warning')
                             continue
-                            
-                        if turn['role'] == 'user':
-                            messages.append({"role": "user", "content": turn['content']})
-                        elif turn['role'] == 'assistant':
-                            # Only include thinking for the LAST 3 assistant messages
-                            turns_from_end = total_turns - i
-                            assistant_turns_from_end = sum(1 for t in context[i:] if isinstance(t, dict) and t.get('role') == 'assistant')
-                            
-                            if assistant_turns_from_end <= 3 and turn.get('thinking'):
-                                # Recent message: include thinking
-                                thinking_content = turn.get('thinking', '')
-                                main_content = turn.get('content', '')
-                                full_content = f"<think>{thinking_content}</think>\n{main_content}"
-                                messages.append({"role": "assistant", "content": full_content})
-                            else:
-                                # Older message: only final content, no thinking
-                                messages.append({"role": "assistant", "content": turn.get('content', '')})
+
+                        messages.append({"role": turn['role'], "content": turn['content']})
                     except Exception as e:
                         olliePrint_simple(f"[STATE MANAGEMENT] Error processing turn {i}: {e}", level='error')
                         continue
@@ -1297,57 +1279,21 @@ def run_enhanced_arch_iteration(session: ArchDelveState, enable_streaming: bool 
             )
             
             raw_content = ""
-            thinking_buffer = ""
             clean_buffer = ""
             tool_calls = None
-            in_thinking = False
             
             olliePrint_simple("🧠 [A.R.C.H. THINKING]:")
-            
+
             for chunk in response_stream:
                 chunk_message = chunk.get('message', {})
                 chunk_content = chunk_message.get('content', '')
                 if chunk_content:
                     raw_content += chunk_content
-                    
-                    # Buffer the content and process thinking tags properly
-                    thinking_buffer += chunk_content
-                    
-                    # Check for complete thinking blocks with safety limits
-                    thinking_loop_count = 0
-                    max_thinking_loops = 100  # Prevent infinite loops
-                    max_buffer_size = 50000   # Prevent memory bloat
-                    
-                    while ('<think>' in thinking_buffer and '</think>' in thinking_buffer and 
-                           thinking_loop_count < max_thinking_loops and 
-                           len(thinking_buffer) < max_buffer_size):
-                        
-                        start_idx = thinking_buffer.find('<think>')
-                        end_idx = thinking_buffer.find('</think>')
-                        
-                        # Handle malformed tags gracefully
-                        if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
-                            olliePrint_simple("[WARNING] Malformed thinking tags detected, clearing buffer", level='warning')
-                            thinking_buffer = ""
-                            break
-                            
-                        thinking_block = thinking_buffer[start_idx+7:end_idx]
-                        
-                        # Print thinking content cleanly
-                        if thinking_block.strip():
-                            print(f"   {thinking_block.strip()}")
-                        
-                        thinking_buffer = thinking_buffer[end_idx+8:]
-                        thinking_loop_count += 1
-                    
-                    # Log if we hit safety limits
-                    if thinking_loop_count >= max_thinking_loops:
-                        olliePrint_simple("[WARNING] Thinking tag processing hit loop limit", level='warning')
-                    if len(thinking_buffer) >= max_buffer_size:
-                        olliePrint_simple("[WARNING] Thinking buffer hit size limit, truncating", level='warning')
-                        thinking_buffer = thinking_buffer[:1000]  # Keep first 1000 chars
-                    
-                    # Extract clean content for non-thinking parts
+
+                    chunk_thinking = session.extract_think_content(chunk_content)
+                    if chunk_thinking.strip():
+                        olliePrint_simple(f"   {chunk_thinking.strip()}")
+
                     clean_chunk = session.strip_think_tags(chunk_content)
                     if clean_chunk.strip():
                         clean_buffer += clean_chunk
@@ -1433,7 +1379,7 @@ def run_enhanced_arch_iteration(session: ArchDelveState, enable_streaming: bool 
             return error_response, False
         
         # Store A.R.C.H.'s response (only ARCH maintains context in enhanced system)
-        session.add_conversation_turn('assistant', clean_content, 'arch', thinking)
+        session.add_conversation_turn('assistant', clean_content, 'arch')
         session.save_conversation_state()
         
         # Memory cleanup - clear large variables
@@ -1502,7 +1448,6 @@ def run_fresh_delve_iteration(arch_instruction: str, task_id: str, iteration_cou
                 
                 raw_content = ""
                 tool_calls = None
-                thinking_buffer = ""
                 clean_buffer = ""
                 
                 olliePrint_simple("🔍 [D.E.L.V.E. THINKING]:")
@@ -1516,44 +1461,10 @@ def run_fresh_delve_iteration(arch_instruction: str, task_id: str, iteration_cou
                     if chunk_content:
                         raw_content += chunk_content
                         
-                        # Buffer and process thinking tags properly
-                        thinking_buffer += chunk_content
-                        
-                        # Check for complete thinking blocks with safety limits
-                        thinking_loop_count = 0
-                        max_thinking_loops = 100  # Prevent infinite loops
-                        max_buffer_size = 50000   # Prevent memory bloat
-                        
-                        while ('<think>' in thinking_buffer and '</think>' in thinking_buffer and 
-                               thinking_loop_count < max_thinking_loops and 
-                               len(thinking_buffer) < max_buffer_size):
-                            
-                            start_idx = thinking_buffer.find('<think>')
-                            end_idx = thinking_buffer.find('</think>')
-                            
-                            # Handle malformed tags gracefully
-                            if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
-                                olliePrint_simple("[WARNING] Malformed thinking tags detected, clearing buffer", level='warning')
-                                thinking_buffer = ""
-                                break
-                                
-                            thinking_block = thinking_buffer[start_idx+7:end_idx]
-                            
-                            # Print thinking content cleanly
-                            if thinking_block.strip():
-                                olliePrint_simple(f"   {thinking_block.strip()}")
-                            
-                            thinking_buffer = thinking_buffer[end_idx+8:]
-                            thinking_loop_count += 1
-                        
-                        # Log if we hit safety limits
-                        if thinking_loop_count >= max_thinking_loops:
-                            olliePrint_simple("[WARNING] Thinking tag processing hit loop limit", level='warning')
-                        if len(thinking_buffer) >= max_buffer_size:
-                            olliePrint_simple("[WARNING] Thinking buffer hit size limit, truncating", level='warning')
-                            thinking_buffer = thinking_buffer[:1000]  # Keep first 1000 chars
-                        
-                        # Extract clean content
+                        chunk_thinking = extract_think_content_helper(chunk_content)
+                        if chunk_thinking.strip():
+                            olliePrint_simple(f"   {chunk_thinking.strip()}")
+
                         clean_chunk = strip_think_tags_helper(chunk_content)
                         if clean_chunk.strip() and not chunk_tool_calls:
                             clean_buffer += clean_chunk
@@ -1778,7 +1689,6 @@ def run_fresh_vet_iteration(delve_data: dict, arch_instruction: str, task_id: st
             )
             
             raw_verified_report = ""
-            thinking_buffer = ""
             clean_buffer = ""
             
             olliePrint_simple("🔬 [V.E.T. THINKING]:")
@@ -1789,44 +1699,10 @@ def run_fresh_vet_iteration(delve_data: dict, arch_instruction: str, task_id: st
                 if chunk_content:
                     raw_verified_report += chunk_content
                     
-                    # Buffer and process thinking tags properly
-                    thinking_buffer += chunk_content
-                    
-                    # Check for complete thinking blocks with safety limits
-                    thinking_loop_count = 0
-                    max_thinking_loops = 100  # Prevent infinite loops
-                    max_buffer_size = 50000   # Prevent memory bloat
-                    
-                    while ('<think>' in thinking_buffer and '</think>' in thinking_buffer and 
-                           thinking_loop_count < max_thinking_loops and 
-                           len(thinking_buffer) < max_buffer_size):
-                        
-                        start_idx = thinking_buffer.find('<think>')
-                        end_idx = thinking_buffer.find('</think>')
-                        
-                        # Handle malformed tags gracefully
-                        if start_idx == -1 or end_idx == -1 or end_idx <= start_idx:
-                            olliePrint_simple("[WARNING] Malformed thinking tags detected, clearing buffer", level='warning')
-                            thinking_buffer = ""
-                            break
-                            
-                        thinking_block = thinking_buffer[start_idx+7:end_idx]
-                        
-                        # Print thinking content cleanly
-                        if thinking_block.strip():
-                            olliePrint_simple(f"   {thinking_block.strip()}")
-                        
-                        thinking_buffer = thinking_buffer[end_idx+8:]
-                        thinking_loop_count += 1
-                    
-                    # Log if we hit safety limits
-                    if thinking_loop_count >= max_thinking_loops:
-                        olliePrint_simple("[WARNING] Thinking tag processing hit loop limit", level='warning')
-                    if len(thinking_buffer) >= max_buffer_size:
-                        olliePrint_simple("[WARNING] Thinking buffer hit size limit, truncating", level='warning')
-                        thinking_buffer = thinking_buffer[:1000]  # Keep first 1000 chars
-                    
-                    # Extract clean content
+                    chunk_thinking = extract_think_content_helper(chunk_content)
+                    if chunk_thinking.strip():
+                        olliePrint_simple(f"   {chunk_thinking.strip()}")
+
                     clean_chunk = strip_think_tags_helper(chunk_content)
                     if clean_chunk.strip():
                         clean_buffer += clean_chunk

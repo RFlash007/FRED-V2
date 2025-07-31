@@ -48,12 +48,10 @@ class FREDState:
         self.stewie_voice_available = False  # Track if Stewie voice cloning is available
         self._lock = threading.Lock()
     
-    def add_conversation_turn(self, role, content, thinking=None):
-        """Thread-safe conversation history management with automatic cleanup."""
+    def add_conversation_turn(self, role, content):
+        """Thread-safe conversation history management without thinking content."""
         with self._lock:
             turn = {'role': role, 'content': content}
-            if thinking:
-                turn['thinking'] = thinking
             self.conversation_history.append(turn)
             
             # Check if we need to remove old messages
@@ -590,19 +588,9 @@ def chat_endpoint():
             # Prepare messages for F.R.E.D. using the context from G.A.T.E./C.R.A.P.
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-            # Add conversation history with thinking context
+            # Add conversation history without thinking content
             for turn in fred_state.get_conversation_history():
-                if turn['role'] == 'user':
-                    messages.append({"role": "user", "content": turn['content']})
-                elif turn['role'] == 'assistant':
-                    content = turn['content']
-                    thinking = turn.get('thinking', '')
-                    # Always include thinking if present, model will use what it needs
-                    if thinking:
-                        full_content = f"<think>\n{thinking}\n</think>\n{content}"
-                        messages.append({"role": "assistant", "content": full_content})
-                    else:
-                        messages.append({"role": "assistant", "content": content})
+                messages.append({"role": turn['role'], "content": turn['content']})
             
 
             # Check for F.R.E.D. research summaries (direct injection bypassing agents)
@@ -822,8 +810,8 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                 # Direct response
                 yield json.dumps({'response': assistant_response}) + '\n'
             
-            # Store response with thinking in history
-            fred_state.add_conversation_turn('assistant', assistant_response, raw_thinking.strip())
+            # Store assistant response in history (thinking omitted)
+            fred_state.add_conversation_turn('assistant', assistant_response)
             
 
             # TTS - route audio to appropriate device (use outer-scope flag)
