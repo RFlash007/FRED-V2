@@ -71,11 +71,6 @@ class SynapseAgent:
             if isinstance(mem_data, dict) and mem_data.get('memories'):
                 prompt_parts.append(f"RETRIEVED KNOWLEDGE:\n{mem_data['memories']}")
         
-        if agent_outputs.get('scout'):
-            scout_data = agent_outputs['scout']
-            if isinstance(scout_data, dict) and scout_data.get('search_result'):
-                confidence = scout_data.get('confidence_score', 0)
-                prompt_parts.append(f"WEB SEARCH (confidence: {confidence}%):\n{scout_data['search_result']}")
         
         if agent_outputs.get('remind'):
             remind_data = agent_outputs['remind']

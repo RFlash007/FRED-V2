@@ -636,31 +636,6 @@ Transform agent outputs into F.R.E.D.'s internal monologue. These thoughts shoul
 The thoughts should feel like F.R.E.D.'s internal monologue as he processes the user's query.
 </OutputStyle>"""
 
-SCOUT_CONFIDENCE_PROMPT = """<Identity>
-You are S.C.O.U.T., analyzing search results for confidence.
-</Identity>
-
-<Input>
-QUERY: {query}
-CONTEXT: {context}
-
-SEARCH RESULTS:
-{search_content}
-</Input>
-
-<Instruction>
-Rate your confidence (0-100) that these search results provide a complete, accurate answer to the query.
-
-Consider:
-- Completeness of information
-- Source reliability indicators  
-- Recency of information
-- Relevance to the specific query
-</Instruction>
-
-<OutputFormat>
-Respond with ONLY a number between 0-100.
-</OutputFormat>"""
 
 VISION_SYSTEM_PROMPT = """<Identity>
 ## Core Identity: F.R.E.D. Visual Processing Component
