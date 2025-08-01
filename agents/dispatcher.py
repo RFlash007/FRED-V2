@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Tuple, Callable
 from ollie_print import olliePrint_simple
 from config import config
 
-from .scout import ScoutAgent
 from .remind import RemindAgent
 from .pivot import PivotAgent
 from .synapse import SynapseAgent
@@ -29,9 +28,7 @@ class AgentDispatcher:
     
     def _create_agent(self, agent_type: str):
         """Create agent instance on-demand for proper memory management."""
-        if agent_type == 'scout':
-            return ScoutAgent()
-        elif agent_type == 'remind':
+        if agent_type == 'remind':
             return RemindAgent()
         elif agent_type == 'pivot':
             return PivotAgent()
@@ -101,10 +98,7 @@ class AgentDispatcher:
         
         
         
-        if routing_flags.get('needs_web_search', False):
-            def run_scout():
-                return self._create_agent('scout').search_and_assess(user_message)
-            tasks.append(('scout', run_scout))
+        # Web search now handled by new intelligent search system in Gate
         
         if routing_flags.get('needs_reminders', True):  # Default to True
             def run_remind():

@@ -1,5 +1,5 @@
-
 import json
+import uuid
 from datetime import datetime
 from ollie_print import olliePrint_simple
 from config import config, ollama_manager
@@ -57,6 +57,22 @@ def run_gate_analysis(user_message: str, conversation_history: list, agent_dispa
         
         olliePrint_simple(f"[G.A.T.E.] Routing flags: {routing_flags}")
 
+        # Handle web search routing before dispatching agents
+        web_search_strategy = routing_flags.get('web_search_strategy', {})
+        if web_search_strategy.get('needed', False):
+            search_priority = web_search_strategy.get('search_priority', 'quick')
+            search_query = web_search_strategy.get('search_query', user_message)
+            
+            if search_priority == 'thorough':
+                # Route thorough searches to arch/delve queue
+                return _handle_thorough_search(search_query, user_message, conversation_history)
+            else:
+                # Handle quick searches with intelligent_search
+                search_results = _handle_quick_search(search_query)
+                # Add search results to memory context for main agent dispatch
+                if search_results and search_results.get('summary'):
+                    memory_context += f"\n\nWeb Search Results:\n{search_results['summary']}"
+        
         database_content = agent_dispatcher.dispatch_agents(
             routing_flags=routing_flags,
             user_message=user_message,
@@ -105,29 +121,99 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
         try:
             routing_flags = json.loads(response_content)
             
-            required_keys = ['needs_memory', 'needs_web_search', 'needs_deep_research', 'needs_pi_tools', 'needs_reminders']
+            required_keys = ['needs_memory', 'needs_pi_tools', 'needs_reminders']
             for key in required_keys:
                 if key not in routing_flags:
                     routing_flags[key] = False
+            
+            # Ensure web_search_strategy has proper structure
+            if 'web_search_strategy' not in routing_flags:
+                routing_flags['web_search_strategy'] = {
+                    'needed': False,
+                    'search_priority': 'quick',
+                    'search_query': ''
+                }
             
             return routing_flags
             
         except json.JSONDecodeError as e:
             olliePrint_simple(f"[G.A.T.E.] JSON parse error: {e}. Using default flags.", level='warning')
             return _get_default_routing_flags()
-
+            
     except Exception as e:
         olliePrint_simple(f"[G.A.T.E.] Routing analysis error: {e}. Using default flags.", level='error')
         return _get_default_routing_flags()
+
+
+def _handle_thorough_search(search_query: str, user_message: str, conversation_history: list) -> str:
+    """Route thorough search requests to arch/delve queue for deep research."""
+    try:
+        from memory.arch_delve_research import enhanced_conduct_iterative_research_with_quality
+        
+        # Generate unique task ID
+        task_id = f"thorough_search_{uuid.uuid4().hex[:8]}"
+        
+        olliePrint_simple(f"[G.A.T.E.] Routing thorough search to A.R.C.H./D.E.L.V.E. queue: {search_query}")
+        
+        # Format the search query as a research task
+        research_task = f"Conduct comprehensive web research on: {search_query}"
+        
+        # Queue the research (this runs in the background)
+        research_result = enhanced_conduct_iterative_research_with_quality(
+            task_id=task_id,
+            original_task=research_task
+        )
+        
+        if research_result.get('success'):
+            findings = research_result.get('findings', 'No findings available')
+            return f"I've initiated a thorough research investigation on '{search_query}'. Here are the comprehensive findings:\n\n{findings}"
+        else:
+            # Fallback to quick search if thorough search fails
+            olliePrint_simple(f"[G.A.T.E.] Thorough search failed, falling back to quick search", level='warning')
+            return _handle_quick_search(search_query)
+            
+    except Exception as e:
+        olliePrint_simple(f"[G.A.T.E.] Error in thorough search routing: {e}", level='error')
+        # Fallback to quick search
+        return _handle_quick_search(search_query)
+
+
+def _handle_quick_search(search_query: str) -> dict:
+    """Handle quick web searches using the new intelligent_search function."""
+    try:
+        from web_search_core import intelligent_search
+        
+        olliePrint_simple(f"[G.A.T.E.] Executing quick web search: {search_query}")
+        
+        # Use intelligent search in quick mode
+        search_results = intelligent_search(
+            query=search_query,
+            search_priority="quick",
+            mode="auto"
+        )
+        
+        return search_results
+        
+    except Exception as e:
+        olliePrint_simple(f"[G.A.T.E.] Error in quick search: {e}", level='error')
+        return {
+            'query': search_query,
+            'summary': f"Web search error: {str(e)}",
+            'links': [],
+            'extracted_content': []
+        }
 
 def _get_default_routing_flags() -> dict:
     """Get default routing flags when analysis fails."""
     return {
         "needs_memory": True,
-        "needs_web_search": False,
-        "needs_deep_research": False,
         "needs_pi_tools": False,
-        "needs_reminders": True
+        "needs_reminders": True,
+        "web_search_strategy": {
+            "needed": False,
+            "search_priority": "quick",
+            "search_query": ""
+        }
     }
 
 def _generate_fallback_database(user_message: str) -> str:
