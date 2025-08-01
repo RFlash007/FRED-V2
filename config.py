@@ -832,8 +832,6 @@ class Config:
     """Standardized error messages shown to users when agent operations fail."""
     
     # --- Agent-Specific Thresholds ---
-    SCOUT_CONFIDENCE_THRESHOLD = 70
-    """S.C.O.U.T. confidence threshold - below this triggers deep research escalation."""
     
     L2_RETRIEVAL_THRESHOLD = 0.6
     """Minimum similarity threshold for L2 memory retrieval."""
@@ -1006,7 +1004,6 @@ config.GIST_USER_PROMPT = GIST_USER_PROMPT
 config.REFLEX_SYSTEM_PROMPT = REFLEX_SYSTEM_PROMPT
 config.REFLEX_USER_PROMPT = REFLEX_USER_PROMPT
 config.SYNAPSE_SYSTEM_PROMPT = SYNAPSE_SYSTEM_PROMPT
-config.SCOUT_CONFIDENCE_PROMPT = SCOUT_CONFIDENCE_PROMPT
 config.VISION_SYSTEM_PROMPT = VISION_SYSTEM_PROMPT
 config.VISION_USER_PROMPT = VISION_USER_PROMPT
 config.CRAP_SYSTEM_PROMPT = CRAP_SYSTEM_PROMPT

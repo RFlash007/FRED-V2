@@ -136,7 +136,7 @@ This is a multi-agent conversational framework that simulates a research team to
 
 ### 4.3. Multi-Agent Coordination and Context Generation
 
-F.R.E.D.'s ability to process complex queries and maintain robust contextual awareness is orchestrated by a sophisticated multi-agent system that funnels relevant information to the core LLM. This system primarily revolves around **G.A.T.E. (Global Analysis & Task Evaluator)**, **C.R.A.P. (Context Retrieval for Augmented Prompts)**, **S.C.O.U.T. (Search & Confidence Optimization Utility Tool)**, and **S.Y.N.A.P.S.E. (Synthesized Neural Activation & Prompt Structuring Engine)**.
+F.R.E.D.'s ability to process complex queries and maintain robust contextual awareness is orchestrated by a sophisticated multi-agent system that funnels relevant information to the core LLM. This system primarily revolves around **G.A.T.E. (Global Analysis & Task Evaluator)**, **C.R.A.P. (Context Retrieval for Augmented Prompts)** and **S.Y.N.A.P.S.E. (Synthesized Neural Activation & Prompt Structuring Engine)**.
 
 #### G.A.T.E. (Global Analysis & Task Evaluator) - The Primary Router (`memory/gate.py`)
 
@@ -156,17 +156,9 @@ F.R.E.D.'s ability to process complex queries and maintain robust contextual awa
     - **Crucially, C.R.A.P. does not generate direct responses or answer the user.** Its sole output is a structured block of "MEMORY CONTEXT" containing relevant facts and recent conversational context, which is then passed to S.Y.N.A.P.S.E.
 - **Memory Update Protocol:** C.R.A.P. also handles updating F.R.E.D.'s memory. When new information is learned or existing information is corrected by the user, C.R.A.P. is responsible for searching for existing memories and either adding new nodes or superseding outdated ones.
 
-#### S.C.O.U.T. (Search & Confidence Optimization Utility Tool) - The Web Scout (`agents/scout.py`)
-
-- **Role:** S.C.O.U.T. is F.R.E.D.'s rapid reconnaissance specialist, activated by the `AgentDispatcher` when G.A.T.E.'s routing flags indicate `needs_web_search`. Its mission is to perform quick web searches and assess the confidence level of its findings.
-- **Process:**
-    - It uses web search tools (e.g., `search_general`, `search_news`) to find relevant information.
-    - It assesses the completeness, source reliability, recency, and relevance of the search results.
-    - If its confidence in the findings is below a certain threshold (e.g., 70%), it can automatically escalate the task to the deep research agenda (`addTaskToAgenda`), signaling that a more comprehensive investigation is required by the A.R.C.H./D.E.L.V.E./V.E.T. team.
-
 #### S.Y.N.A.P.S.E. (Synthesized Neural Activation & Prompt Structuring Engine) - The Context Synthesizer (`agents/synapse.py`)
 
-- **Role:** S.Y.N.A.P.S.E. is the final agent in the context generation pipeline before the core F.R.E.D. LLM receives its prompt. Its crucial role is to synthesize the raw outputs from all activated data-gathering agents (like C.R.A.P., S.C.O.U.T., Vision Service, etc.) and the L2 summaries into a coherent, "humanoid" internal monologue.
+- **Role:** S.Y.N.A.P.S.E. is the final agent in the context generation pipeline before the core F.R.E.D. LLM receives its prompt. Its crucial role is to synthesize the raw outputs from all activated data-gathering agents (like C.R.A.P., Vision Service, etc.) and the L2 summaries into a coherent, "humanoid" internal monologue.
 - **Process:**
     - S.Y.N.A.P.S.E. receives the outputs from all dispatched agents, the relevant L2 summaries, the user query, and the visual context.
     - It uses its system prompt (`SYNAPSE_SYSTEM_PROMPT`) to transform these disparate pieces of information into a natural-sounding `NEURAL PROCESSING CORE` block. This block reads like F.R.E.D.'s own fleeting thoughts, insights, and observations, making it seamlessly integrable into F.R.E.D.'s final prompt.
@@ -214,7 +206,7 @@ This section details how F.R.E.D. perceives the world and the overall flow of da
 
 1.  **Input:** User speaks to the Pi. Speech is transcribed locally and sent to the server.
 2.  **Initial Processing & Routing:** The Main Server receives the transcribed text. **G.A.T.E. (`memory/gate.py`)** analyzes the user's message and conversation history to determine which specialized agents (e.g., memory, web search, visual) need to be activated. It also retrieves relevant L2 (recent conversations) and L3 (long-term knowledge) context.
-3.  **Context Gathering & Synthesis:** Based on G.A.T.E.'s routing flags, the `AgentDispatcher` (`agents/dispatcher.py`) orchestrates the execution of agents like **C.R.A.P. (`memory/crap.py`)** for memory retrieval and **S.C.O.U.T. (`agents/scout.py`)** for web search. The `VisionService` (`vision_service.py`) also provides current visual context. All gathered information is then sent to **S.Y.N.A.P.S.E. (`agents/synapse.py`)**, which synthesizes it into a cohesive "NEURAL PROCESSING CORE" (F.R.E.D.'s internal thoughts).
+3.  **Context Gathering & Synthesis:** Based on G.A.T.E.'s routing flags, the `AgentDispatcher` (`agents/dispatcher.py`) orchestrates the execution of agents like **C.R.A.P. (`memory/crap.py`)** for memory retrieval. The `VisionService` (`vision_service.py`) also provides current visual context. All gathered information is then sent to **S.Y.N.A.P.S.E. (`agents/synapse.py`)**, which synthesizes it into a cohesive "NEURAL PROCESSING CORE" (F.R.E.D.'s internal thoughts).
 4.  **Reasoning & Response Generation:** The rich, contextual "NEURAL PROCESSING CORE," along with the base system prompt, conversational history, and direct subconscious processing results from completed research, is sent to the primary Ollama LLM (`app.py`). The LLM generates a direct text response or uses a tool from `FRED_TOOLS`.
 5.  **Action/Output:**
     - If a text response, it's converted to audio (`app.py`) and sent back to the Pi.
