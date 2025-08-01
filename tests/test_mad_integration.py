@@ -20,6 +20,7 @@ from agents.mad import MADAgent  # noqa: E402
 from config import ollama_manager  # noqa: E402
 
 
+@unittest.skip("Integration test requires Ollama service")
 class TestMadIntegration(unittest.TestCase):
     """Integration tests for the Memory Addition Daemon (M.A.D.) agent."""
 

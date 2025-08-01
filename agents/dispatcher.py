@@ -40,9 +40,9 @@ class AgentDispatcher:
     def dispatch_agents(self, routing_flags: Dict, user_message: str, conversation_history: List[Dict], visual_context: str = "", memory_context: str = "") -> str:
         """
         Dispatch agents based on G.A.T.E. routing flags and return synthesized NEURAL PROCESSING CORE.
-        
+
         Args:
-            routing_flags: Dict with needs_memory, needs_web_search, needs_deep_research, needs_pi_tools, needs_reminders
+            routing_flags: Dict with needs_memory, web_search_strategy, needs_pi_tools, needs_reminders
             user_message: Current user message
             conversation_history: Full conversation history
             visual_context: Visual context from Pi glasses if available
@@ -112,8 +112,8 @@ class AgentDispatcher:
                     return self._create_agent('pivot').process_pi_command(pi_command, pi_params)
                 tasks.append(('pivot', run_pivot))
         
-        if routing_flags.get('needs_deep_research', False):
-            olliePrint_simple("[DISPATCHER] Deep research flagged - will be added to agenda")
+        # Deep research flag deprecated; thorough searches are handled via
+        # web_search_strategy in G.A.T.E.
         
         return tasks
     
