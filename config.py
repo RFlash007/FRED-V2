@@ -981,7 +981,8 @@ class Config:
 
 
 # Global Ollama connection manager instance
-ollama_manager = OllamaConnectionManager(Config.OLLAMA_BASE_URL, Config.LLM_GENERATION_OPTIONS)
+ollama_manager_instance = OllamaConnectionManager(Config.OLLAMA_BASE_URL, Config.LLM_GENERATION_OPTIONS)
+ollama_manager = ollama_manager_instance
 
 # Global config instance
 config = Config()

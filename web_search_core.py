@@ -12,11 +12,12 @@ import trafilatura
 from datetime import datetime
 
 import config
-from memory.ollama_manager import OllamaManager
+from ollama_manager import OllamaConnectionManager
 from Tools import search_brave, search_searchapi  # Import existing search functions
 
 # Initialize Ollama manager
-ollama_manager = OllamaManager()
+ollama_manager_instance = OllamaConnectionManager(config.OLLAMA_BASE_URL, config.LLM_GENERATION_OPTIONS)
+ollama_manager = ollama_manager_instance
 
 # Domain blacklist for spam/ad filtering
 SPAM_DOMAINS = {
@@ -341,8 +342,8 @@ def calculate_relevance_score(query: str, title: str) -> float:
     """
     try:
         # Get embeddings for both query and title
-        query_embedding = ollama_manager.get_embeddings(query, config.EMBED_MODEL)
-        title_embedding = ollama_manager.get_embeddings(title, config.EMBED_MODEL)
+        query_embedding = ollama_manager.embeddings(model=config.EMBED_MODEL, prompt=query)
+        title_embedding = ollama_manager.embeddings(model=config.EMBED_MODEL, prompt=title)
         
         if not query_embedding or not title_embedding:
             return 0.0
