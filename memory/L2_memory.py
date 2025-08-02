@@ -12,7 +12,13 @@ import threading
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
-from sklearn.metrics.pairwise import cosine_similarity
+try:
+    from sklearn.metrics.pairwise import cosine_similarity
+except Exception:  # Fallback if sklearn is unavailable
+    def cosine_similarity(a, b):
+        a = np.array(a)
+        b = np.array(b)
+        return np.dot(a, b.T) / (np.linalg.norm(a, axis=1)[:, None] * np.linalg.norm(b, axis=1))
 from config import config, ollama_manager
 from ollie_print import olliePrint_simple
 
