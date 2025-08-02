@@ -30,47 +30,12 @@ def _init_reminder_db():
                     completed_at TIMESTAMP
                 );
             """)
-            
+
             conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_status ON reminders(status, target_datetime);")
-        
+
         olliePrint_simple("[G.A.T.E.] Reminder database initialized")
     except Exception as e:
         olliePrint_simple(f"[G.A.T.E.] Reminder database init error: {e}", level='error')
-
-def _parse_target_datetime(target_time: str) -> Optional[datetime]:
-    """Parse target time string to datetime object."""
-    if not target_time or target_time == "null":
-        return None
-    
-    now = datetime.now()
-    target_time_lower = target_time.lower()
-    
-    try:
-        # Handle relative times
-        if target_time_lower == "tomorrow":
-            return now.replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(days=1)
-        elif target_time_lower == "next week":
-            return now.replace(hour=9, minute=0, second=0, microsecond=0) + timedelta(weeks=1)
-        elif target_time_lower == "later":
-            return now + timedelta(hours=2)
-        elif target_time_lower == "tonight":
-            return now.replace(hour=20, minute=0, second=0, microsecond=0)
-        elif target_time_lower == "morning":
-            target_date = now if now.hour < 9 else now + timedelta(days=1)
-            return target_date.replace(hour=9, minute=0, second=0, microsecond=0)
-        elif target_time_lower == "afternoon":
-            target_date = now if now.hour < 14 else now + timedelta(days=1)
-            return target_date.replace(hour=14, minute=0, second=0, microsecond=0)
-        elif target_time_lower == "evening":
-            target_date = now if now.hour < 18 else now + timedelta(days=1)
-            return target_date.replace(hour=18, minute=0, second=0, microsecond=0)
-        
-        # Try to parse as ISO datetime
-        return datetime.fromisoformat(target_time)
-        
-    except Exception:
-        olliePrint_simple(f"[G.A.T.E.] Could not parse target time: {target_time}", level='warning')
-        return None
 
 def _create_reminder(content: str, target_time: str = None, is_recurring: str = None, append_mode: bool = False) -> Optional[str]:
     """Create a new reminder in the database."""
