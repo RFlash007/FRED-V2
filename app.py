@@ -632,7 +632,6 @@ SUBCONSCIOUS PROCESSING RESULTS:
                     host=ollama_base_url,
                     model=model_name,
                     messages=messages,
-                    tools=AGENT_MANAGEMENT_TOOLS,
                     stream=False,
                     options=config.Instruct_Generation_Options
                 )

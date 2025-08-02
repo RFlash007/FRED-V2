@@ -466,34 +466,26 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
 
 
 def _handle_thorough_search(search_query: str, user_message: str, conversation_history: list) -> str:
-    """Route thorough search requests to arch/delve queue for deep research."""
+    """Route thorough search requests to the Agenda System for background research."""
     try:
-        from memory.arch_delve_research import enhanced_conduct_iterative_research_with_quality
+        import memory.agenda_system as agenda
         
-        # Generate unique task ID
-        task_id = f"thorough_search_{uuid.uuid4().hex[:8]}"
-        
-        olliePrint_simple(f"[G.A.T.E.] Routing thorough search to A.R.C.H./D.E.L.V.E. queue: {search_query}")
-        
-        # Format the search query as a research task
+        # Build task description and enqueue via Agenda System
         research_task = f"Conduct comprehensive web research on: {search_query}"
-        
-        # Queue the research (this runs in the background)
-        research_result = enhanced_conduct_iterative_research_with_quality(
-            task_id=task_id,
-            original_task=research_task
-        )
-        
-        if research_result.get('success'):
-            findings = research_result.get('findings', 'No findings available')
-            return f"I've initiated a thorough research investigation on '{search_query}'. Here are the comprehensive findings:\n\n{findings}"
+        task_id = agenda.add_task_to_agenda(research_task, priority=2)
+
+        if task_id:
+            olliePrint_simple(f"[G.A.T.E.] Thorough search enqueued in Agenda System (task_id={task_id})")
+            return (
+                f"I've queued a thorough background research task (ID: {task_id}) for '{search_query}'. "
+                "I'll share the findings once they are ready."
+            )
         else:
-            # Fallback to quick search if thorough search fails
-            olliePrint_simple(f"[G.A.T.E.] Thorough search failed, falling back to quick search", level='warning')
+            olliePrint_simple("[G.A.T.E.] Failed to enqueue thorough search; falling back to quick search", level='warning')
             return _handle_quick_search(search_query)
             
     except Exception as e:
-        olliePrint_simple(f"[G.A.T.E.] Error in thorough search routing: {e}", level='error')
+        olliePrint_simple(f"[G.A.T.E.] Error enqueuing thorough search: {e}", level='error')
         # Fallback to quick search
         return _handle_quick_search(search_query)
 

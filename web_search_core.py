@@ -174,17 +174,29 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
         Dictionary with search results and analysis
     """
     # --------------------------------------------------------------
-    # Special handling: a *thorough* search delegates to the full
-    # A.R.C.H./D.E.L.V.E. research pipeline for richer analysis.
+    # Special handling: in *thorough* mode we enqueue a background
+    # research task in the Agenda System instead of executing it
+    # synchronously. Results will surface once the agenda processor
+    # completes the task.
     # --------------------------------------------------------------
     if search_priority == "thorough" and mode != "links_only":
         try:
-            from memory.arch_delve_research import conduct_enhanced_iterative_research
-            task_id = str(uuid.uuid4())
-            return conduct_enhanced_iterative_research(task_id, query)
+            import memory.agenda_system as agenda
+            research_task = f"Conduct comprehensive web research on: {query}"
+            task_id = agenda.add_task_to_agenda(research_task, priority=2)
+            if task_id:
+                return {
+                    'query': query,
+                    'links': [],
+                    'extracted_content': [],
+                    'summary': f"Thorough research queued as Agenda task {task_id}. Results will be provided once ready.",
+                    'task_id': task_id,
+                    'search_priority': search_priority,
+                    'mode': mode
+                }
         except Exception as e:
-            print(f"[WARNING] Fallback to quick search – A.D.R. pipeline failed: {e}")
-            # Continue with quick search fallback
+            print(f"[WARNING] Agenda enqueue failed: {e}; continuing with quick search fallback")
+        # If enqueue fails, continue with quick search fallback
     
     try:
         # Step 1: Gather initial links
@@ -237,11 +249,30 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
                 )}
             ]
             
-            summary = ollama_manager.chat_concurrent_safe(
+            # Call Ollama to generate the summary. The API returns a ``ChatResponse``
+            # (or a plain ``dict`` depending on the client version) which is **not**
+            # directly JSON-serialisable.  Extract the assistant message content so
+            # the returned ``results`` dictionary only contains primitive types.
+            raw_response = ollama_manager.chat_concurrent_safe(
                 model=config.GIST_OLLAMA_MODEL,
                 messages=gist_messages,
-                options=config.LLM_GENERATION_OPTIONS
+                options=config.Instruct_Generation_Options
             )
+
+            # Attempt to normalise the response into a plain string.  The newest
+            # Python Ollama client returns a ``ChatResponse`` object whose
+            # ``message`` attribute (or key) holds the assistant reply.
+            if isinstance(raw_response, dict):
+                # Official client >=0.1.8 returns a dict
+                message = raw_response.get("message", {}) if isinstance(raw_response.get("message", {}), dict) else {}
+                summary = message.get("content", str(raw_response))
+            else:
+                # Fallback: use ``getattr`` for older/alternative client versions
+                try:
+                    msg_obj = getattr(raw_response, "message", None)
+                    summary = getattr(msg_obj, "content", str(raw_response))
+                except Exception:
+                    summary = str(raw_response)
         else:
             summary = "No content could be extracted from the search results."
         

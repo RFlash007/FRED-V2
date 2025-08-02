@@ -178,7 +178,7 @@ class Config:
     VET_OLLAMA_MODEL = os.getenv('VET_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
     SAGE_OLLAMA_MODEL = os.getenv('SAGE_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
 
-    GIST_OLLAMA_MODEL = os.getenv('GIST_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
+    GIST_OLLAMA_MODEL = os.getenv('GIST_OLLAMA_MODEL', INSTRUCT_OLLAMA_MODEL)
     REFLEX_OLLAMA_MODEL = os.getenv('REFLEX_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
     CRAP_OLLAMA_MODEL = os.getenv('CRAP_OLLAMA_MODEL', ARCH_OLLAMA_MODEL)
 
@@ -198,13 +198,13 @@ class Config:
         'num_threads': 16
     }
     Instruct_Generation_Options = {
-        'Temperature':0.7, 
-        'TopP':0.8, 
-        'TopK':20, 
-        'MinP':0,
-        'repeat_penalty':1.1,
-        'num_ctx':8192,
-        'num_threads':16
+        'temperature': 0.7,
+        'top_p': 0.8,
+        'top_k': 20,
+        'min_p': 0,
+        'repeat_penalty': 1.1,
+        'num_ctx': 8192,
+        'num_threads': 16
     }
     
     # ============================================================================
@@ -1003,6 +1003,7 @@ EMBED_MODEL = Config.EMBED_MODEL
 GIST_OLLAMA_MODEL = Config.GIST_OLLAMA_MODEL
 OLLAMA_BASE_URL = Config.OLLAMA_BASE_URL
 LLM_GENERATION_OPTIONS = Config.LLM_GENERATION_OPTIONS
+Instruct_Generation_Options = Config.Instruct_Generation_Options
 
 # Make CRAP_MODEL available for direct import
 CRAP_MODEL = Config.CRAP_OLLAMA_MODEL
