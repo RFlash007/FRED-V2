@@ -143,7 +143,7 @@ F.R.E.D.'s ability to process complex queries and maintain robust contextual awa
 - **Role:** G.A.T.E. acts as the central routing component of F.R.E.D.'s cognitive architecture. Its sole purpose is to analyze incoming user queries and recent conversational context, then determine which specialized agents need to be activated to gather the necessary information. It replaces older, less sophisticated triage functionalities.
 - **Process:**
     - G.A.T.E. receives the user's message, the L2 episodic context (`memory/L2_memory.py`), and a truncated history of the most recent conversation turns (without F.R.E.D.'s internal thinking).
-    - It uses an LLM (governed by `GATE_SYSTEM_PROMPT`) to generate a JSON object containing boolean routing flags (e.g., `needs_memory`, `needs_web_search`, `needs_deep_research`, `needs_pi_tools`, `needs_reminders`).
+    - It uses an LLM (governed by `GATE_SYSTEM_PROMPT`) to generate a JSON object containing routing flags (e.g., `needs_memory`, `web_search_strategy`, `needs_deep_research`, `needs_pi_tools`, `needs_reminders`).
     - **L2 Context Bypass Protocol:** G.A.T.E. can bypass memory agents if the provided L2 context contains sufficient information to fully answer the user's query.
 - **Output:** The routing flags are then passed to the `AgentDispatcher` (`agents/dispatcher.py`), which orchestrates the execution of the flagged agents.
 
