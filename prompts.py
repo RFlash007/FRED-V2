@@ -169,7 +169,7 @@ GATE_USER_PROMPT = """<Header>
 </Context>
 
 <Directive>
-**Directive**: Analyze the query and context. Return ONLY a JSON object with routing flags: needs_memory, needs_web_search, needs_deep_research, needs_pi_tools, needs_reminders.
+**Directive**: Analyze the query and context. Return ONLY a JSON object with routing flags: needs_memory, web_search_strategy, needs_deep_research, needs_pi_tools, needs_reminders.
 </Directive>"""
 
 # --- Enhanced Research System Prompts ---

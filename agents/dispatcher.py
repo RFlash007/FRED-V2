@@ -42,7 +42,7 @@ class AgentDispatcher:
         Dispatch agents based on G.A.T.E. routing flags and return synthesized NEURAL PROCESSING CORE.
         
         Args:
-            routing_flags: Dict with needs_memory, needs_web_search, needs_deep_research, needs_pi_tools, needs_reminders
+            routing_flags: Dict with needs_memory, web_search_strategy object, needs_deep_research, needs_pi_tools, needs_reminders
             user_message: Current user message
             conversation_history: Full conversation history
             visual_context: Visual context from Pi glasses if available

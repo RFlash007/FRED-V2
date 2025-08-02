@@ -2,7 +2,7 @@
 """A.R.C.H./D.E.L.V.E. research demo (not part of automated tests)."""
 
 import pytest
-# pytest.skip("manual integration script", allow_module_level=True)  # Commented out to allow manual testing
+pytest.skip("manual integration script", allow_module_level=True)
 
 import sys
 import uuid
