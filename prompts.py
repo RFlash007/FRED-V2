@@ -169,7 +169,7 @@ GATE_USER_PROMPT = """<Header>
 </Context>
 
 <Directive>
-**Directive**: Analyze the query and context. Return ONLY a JSON object with routing flags: needs_memory, needs_web_search, needs_deep_research, needs_pi_tools, needs_reminders.
+**Directive**: Analyze the query and context. Return ONLY a JSON object with routing flags: needs_memory, web_search_strategy, needs_pi_tools, needs_reminders.
 </Directive>"""
 
 # --- Enhanced Research System Prompts ---
@@ -636,31 +636,6 @@ Transform agent outputs into F.R.E.D.'s internal monologue. These thoughts shoul
 The thoughts should feel like F.R.E.D.'s internal monologue as he processes the user's query.
 </OutputStyle>"""
 
-SCOUT_CONFIDENCE_PROMPT = """<Identity>
-You are S.C.O.U.T., analyzing search results for confidence.
-</Identity>
-
-<Input>
-QUERY: {query}
-CONTEXT: {context}
-
-SEARCH RESULTS:
-{search_content}
-</Input>
-
-<Instruction>
-Rate your confidence (0-100) that these search results provide a complete, accurate answer to the query.
-
-Consider:
-- Completeness of information
-- Source reliability indicators  
-- Recency of information
-- Relevance to the specific query
-</Instruction>
-
-<OutputFormat>
-Respond with ONLY a number between 0-100.
-</OutputFormat>"""
 
 VISION_SYSTEM_PROMPT = """<Identity>
 ## Core Identity: F.R.E.D. Visual Processing Component

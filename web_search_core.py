@@ -12,11 +12,12 @@ import trafilatura
 from datetime import datetime
 
 import config
-from memory.ollama_manager import OllamaManager
+from ollama_manager import OllamaConnectionManager
 from Tools import search_brave, search_searchapi  # Import existing search functions
 
 # Initialize Ollama manager
-ollama_manager = OllamaManager()
+ollama_manager_instance = OllamaConnectionManager(config.OLLAMA_BASE_URL, config.LLM_GENERATION_OPTIONS)
+ollama_manager = ollama_manager_instance
 
 # Domain blacklist for spam/ad filtering
 SPAM_DOMAINS = {
@@ -135,19 +136,20 @@ def extract_page_content(url: str) -> Optional[Dict[str, str]]:
         
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        
-        # Use trafilatura for content extraction
-        downloaded = trafilatura.fetch_url(url)
-        if not downloaded:
-            return None
-            
-        # Extract main content
-        content = trafilatura.extract(downloaded, include_comments=False, include_tables=True)
+
+        html = response.text
+
+        # Try extracting from the downloaded HTML first
+        content = trafilatura.extract(html, include_comments=False, include_tables=True)
+        metadata = trafilatura.extract_metadata(html) if content else None
         if not content:
-            return None
-        
-        # Extract metadata
-        metadata = trafilatura.extract_metadata(downloaded)
+            downloaded = trafilatura.fetch_url(url)
+            if not downloaded:
+                return None
+            content = trafilatura.extract(downloaded, include_comments=False, include_tables=True)
+            if not content:
+                return None
+            metadata = trafilatura.extract_metadata(downloaded)
         
         # Build result dictionary
         result = {
@@ -171,14 +173,19 @@ def extract_page_content(url: str) -> Optional[Dict[str, str]]:
 
 
 def intelligent_search(query: str, search_priority: str = "quick", mode: str = "auto") -> Dict:
-    """
-    LLM-based intelligent search with flexible modes.
-    
+    """Perform a web search and rank links by semantic similarity.
+
+    The function gathers links using the configured search engines and then
+    ranks them using :func:`calculate_relevance_score`.  Links with the highest
+    semantic similarity between the query and the page title are selected for
+    content extraction.  This avoids the previous LLM-based link analysis and
+    relies solely on embedding similarity.
+
     Args:
         query: Search query string
-        search_priority: "quick" or "thorough" 
-        mode: "links_only", "auto", or "deep"
-        
+        search_priority: ``"quick"`` or ``"thorough"``
+        mode: ``"links_only"``, ``"auto"``, or ``"deep"``
+
     Returns:
         Dictionary with search results and analysis
     """
@@ -194,34 +201,17 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
                 'summary': "Links only mode - no content extracted"
             }
         
-        # Step 2: Use LLM to determine which links to extract content from
-        link_analysis_prompt = f"""
-        Analyze these search result links for the query: "{query}"
-        
-        Links:
-        {json.dumps(links, indent=2)}
-        
-        Select the 3 most promising links that are likely to contain relevant, authoritative information.
-        Consider: relevance to query, domain authority, title quality, description relevance.
-        
-        Respond with JSON: {{"selected_urls": ["url1", "url2", "url3"], "reasoning": "brief explanation"}}
-        """
-        
-        messages = [{"role": "user", "content": link_analysis_prompt}]
-        
-        analysis_response = ollama_manager.chat_concurrent_safe(
-            model=config.INSTRUCT_OLLAMA_MODEL,
-            messages=messages,
-            options=config.LLM_GENERATION_OPTIONS,
-            format="json"
-        )
-        
-        try:
-            analysis = json.loads(analysis_response)
-            selected_urls = analysis.get('selected_urls', [url['url'] for url in links[:3]])
-        except:
-            # Fallback: use first 3 URLs
-            selected_urls = [link['url'] for link in links[:3]]
+        # Step 2: Rank links using semantic similarity
+        scored_links = []
+        for link in links:
+            score = calculate_relevance_score(query, link.get('title', ''))
+            link_with_score = link.copy()
+            link_with_score['score'] = score
+            scored_links.append(link_with_score)
+
+        scored_links.sort(key=lambda x: x['score'], reverse=True)
+        links = scored_links
+        selected_urls = [item['url'] for item in links[:3]]
         
         # Step 3: Extract content from selected URLs
         extracted_content = []
@@ -341,8 +331,8 @@ def calculate_relevance_score(query: str, title: str) -> float:
     """
     try:
         # Get embeddings for both query and title
-        query_embedding = ollama_manager.get_embeddings(query, config.EMBED_MODEL)
-        title_embedding = ollama_manager.get_embeddings(title, config.EMBED_MODEL)
+        query_embedding = ollama_manager.embeddings(model=config.EMBED_MODEL, prompt=query)
+        title_embedding = ollama_manager.embeddings(model=config.EMBED_MODEL, prompt=title)
         
         if not query_embedding or not title_embedding:
             return 0.0

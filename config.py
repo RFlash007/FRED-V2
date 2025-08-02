@@ -166,6 +166,9 @@ class Config:
     FRED_OLLAMA_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL'
     """Model for F.R.E.D.'s personality and conversation style."""
 
+    INSTRUCT_OLLAMA_MODEL = os.getenv('INSTRUCT_OLLAMA_MODEL', FRED_OLLAMA_MODEL)
+    """General instruction-following model used for utility tasks."""
+
     GATE_OLLAMA_MODEL = os.getenv('GATE_OLLAMA_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL')
     MAD_OLLAMA_MODEL = os.getenv('MAD_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
     SYNAPSE_OLLAMA_MODEL = os.getenv('SYNAPSE_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
@@ -832,8 +835,6 @@ class Config:
     """Standardized error messages shown to users when agent operations fail."""
     
     # --- Agent-Specific Thresholds ---
-    SCOUT_CONFIDENCE_THRESHOLD = 70
-    """S.C.O.U.T. confidence threshold - below this triggers deep research escalation."""
     
     L2_RETRIEVAL_THRESHOLD = 0.6
     """Minimum similarity threshold for L2 memory retrieval."""
@@ -981,7 +982,8 @@ class Config:
 
 
 # Global Ollama connection manager instance
-ollama_manager = OllamaConnectionManager(Config.OLLAMA_BASE_URL, Config.LLM_GENERATION_OPTIONS)
+ollama_manager_instance = OllamaConnectionManager(Config.OLLAMA_BASE_URL, Config.LLM_GENERATION_OPTIONS)
+ollama_manager = ollama_manager_instance
 
 # Global config instance
 config = Config()
@@ -1006,7 +1008,6 @@ config.GIST_USER_PROMPT = GIST_USER_PROMPT
 config.REFLEX_SYSTEM_PROMPT = REFLEX_SYSTEM_PROMPT
 config.REFLEX_USER_PROMPT = REFLEX_USER_PROMPT
 config.SYNAPSE_SYSTEM_PROMPT = SYNAPSE_SYSTEM_PROMPT
-config.SCOUT_CONFIDENCE_PROMPT = SCOUT_CONFIDENCE_PROMPT
 config.VISION_SYSTEM_PROMPT = VISION_SYSTEM_PROMPT
 config.VISION_USER_PROMPT = VISION_USER_PROMPT
 config.CRAP_SYSTEM_PROMPT = CRAP_SYSTEM_PROMPT

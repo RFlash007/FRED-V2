@@ -1022,12 +1022,20 @@ def tool_read_webpage(url: str) -> dict:
             return {"success": False, "error": f"{error_prefix} Reason: PDF extraction failed. Details: {e}"}
     else:
         try:
-            downloaded = fetch_url(url)
-            if not downloaded:
-                return {"success": False, "error": f"{error_prefix} Reason: Failed to download webpage content."}
-            content = extract(downloaded, include_links=False)
+            import requests
+            response = requests.get(url)
+            response.raise_for_status()
+
+            # Try extracting directly from the response
+            content = extract(response.text, include_links=False)
             if not content:
-                return {"success": False, "error": f"{error_prefix} Reason: No main content could be extracted from the webpage."}
+                downloaded = fetch_url(url)
+                if not downloaded:
+                    return {"success": False, "error": f"{error_prefix} Reason: Failed to download webpage content."}
+                content = extract(downloaded, include_links=False)
+                if not content:
+                    return {"success": False, "error": f"{error_prefix} Reason: No main content could be extracted from the webpage."}
+
             return {"success": True, "url": url, "content": gist_summarize_source(content), "links_found": len(content.split())}
         except Exception as e:
             return {"success": False, "error": f"{error_prefix} Reason: General error during webpage processing. Details: {e}"}

@@ -11,3 +11,10 @@ with:
 ```bash
 python client.py --server http://<fred-ip>:8080
 ```
+
+## Intelligent Search
+
+FRED-V2 performs web searches using `intelligent_search`, which ranks result
+links purely by semantic similarity between your query and the page title. The
+relevance score is computed via embeddings in `calculate_relevance_score` and
+the top results are fetched without any additional LLM analysis.
