@@ -48,72 +48,53 @@ SPAM_URL_PATTERNS = [
 
 
 def gather_links(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+    """Gather links from web search using Brave → SearchAPI fallback.
+
+    This implementation expects :pyfunc:`Tools.search_brave` and
+    :pyfunc:`Tools.search_searchapi` to return a **dict** with at least a
+    ``"web"`` key whose value is a ``List[Dict]`` containing the fields
+    ``url``, ``title`` and ``snippet`` / ``description``.  The previous
+    implementation incorrectly assumed the helpers returned a newline
+    delimited ``str`` and therefore never parsed any results, which led to an
+    empty link list and the downstream "No content could be extracted from the
+    search results" message.
     """
-    Gather links from web search using Brave → SearchAPI fallback.
-    
-    Args:
-        query: Search query string
-        max_results: Maximum number of links to return (default: 5)
-        
-    Returns:
-        List of dictionaries with 'url', 'title', 'description' keys
-    """
-    all_results = []
-    seen_urls = set()
-    
-    # Try Brave Search first
+
+    all_results: List[Dict[str, str]] = []
+    seen_urls: set[str] = set()
+
+    def _add_items(items: List[Dict[str, str]]):  # local helper
+        nonlocal all_results, seen_urls
+        for item in items:
+            url = item.get("url")
+            if not url or url in seen_urls or _is_spam_url(url):
+                continue
+            all_results.append({
+                "url": url,
+                "title": item.get("title", "No title").strip(),
+                "description": item.get("snippet", item.get("description", "")).strip(),
+            })
+            seen_urls.add(url)
+            if len(all_results) >= max_results:
+                break
+
+    # --- Primary: Brave Search ------------------------------------------------
     try:
         brave_results = search_brave(query)
-        if brave_results and isinstance(brave_results, str):
-            # Parse Brave results (assuming it returns formatted string)
-            # This would need to be adapted based on actual Brave function output
-            for line in brave_results.split('\n'):
-                if line.strip() and 'http' in line:
-                    # Extract URL from Brave result line
-                    url_match = re.search(r'https?://[^\s]+', line)
-                    if url_match:
-                        url = url_match.group()
-                        title = line.split(' - ')[0] if ' - ' in line else "No title"
-                        
-                        if url not in seen_urls and not _is_spam_url(url):
-                            all_results.append({
-                                'url': url,
-                                'title': title.strip(),
-                                'description': line.replace(url, '').strip()
-                            })
-                            seen_urls.add(url)
-                            
-                            if len(all_results) >= max_results:
-                                break
+        if brave_results and isinstance(brave_results, dict):
+            _add_items(brave_results.get("web", []))
     except Exception as e:
         print(f"Brave search failed: {e}")
-    
-    # If we don't have enough results, try SearchAPI fallback
+
+    # --- Fallback: SearchAPI --------------------------------------------------
     if len(all_results) < max_results:
         try:
             searchapi_results = search_searchapi(query)
-            if searchapi_results and isinstance(searchapi_results, str):
-                # Parse SearchAPI results
-                for line in searchapi_results.split('\n'):
-                    if line.strip() and 'http' in line:
-                        url_match = re.search(r'https?://[^\s]+', line)
-                        if url_match:
-                            url = url_match.group()
-                            title = line.split(' - ')[0] if ' - ' in line else "No title"
-                            
-                            if url not in seen_urls and not _is_spam_url(url):
-                                all_results.append({
-                                    'url': url,
-                                    'title': title.strip(),
-                                    'description': line.replace(url, '').strip()
-                                })
-                                seen_urls.add(url)
-                                
-                                if len(all_results) >= max_results:
-                                    break
+            if searchapi_results and isinstance(searchapi_results, dict):
+                _add_items(searchapi_results.get("web", []))
         except Exception as e:
             print(f"SearchAPI fallback failed: {e}")
-    
+
     return all_results[:max_results]
 
 
@@ -172,7 +153,10 @@ def extract_page_content(url: str) -> Optional[Dict[str, str]]:
         return None
 
 
-def intelligent_search(query: str, search_priority: str = "quick", mode: str = "auto") -> Dict:
+import uuid
+from typing import Any
+
+def intelligent_search(query: str, search_priority: str = "quick", mode: str = "auto") -> Dict[str, Any]:
     """Perform a web search and rank links by semantic similarity.
 
     The function gathers links using the configured search engines and then
@@ -189,9 +173,22 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
     Returns:
         Dictionary with search results and analysis
     """
+    # --------------------------------------------------------------
+    # Special handling: a *thorough* search delegates to the full
+    # A.R.C.H./D.E.L.V.E. research pipeline for richer analysis.
+    # --------------------------------------------------------------
+    if search_priority == "thorough" and mode != "links_only":
+        try:
+            from memory.arch_delve_research import conduct_enhanced_iterative_research
+            task_id = str(uuid.uuid4())
+            return conduct_enhanced_iterative_research(task_id, query)
+        except Exception as e:
+            print(f"[WARNING] Fallback to quick search – A.D.R. pipeline failed: {e}")
+            # Continue with quick search fallback
+    
     try:
         # Step 1: Gather initial links
-        links = gather_links(query, max_results=8 if search_priority == "thorough" else 5)
+        links = gather_links(query, max_results=5)
         
         if mode == "links_only":
             return {
@@ -211,7 +208,10 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
 
         scored_links.sort(key=lambda x: x['score'], reverse=True)
         links = scored_links
-        selected_urls = [item['url'] for item in links[:3]]
+
+        # Decide how many links to process based on search_priority
+        max_selected = 2 if search_priority == "quick" else 3
+        selected_urls = [item['url'] for item in links[:max_selected]]
         
         # Step 3: Extract content from selected URLs
         extracted_content = []
@@ -330,21 +330,54 @@ def calculate_relevance_score(query: str, title: str) -> float:
         Similarity score between 0 and 1
     """
     try:
-        # Get embeddings for both query and title
-        query_embedding = ollama_manager.embeddings(model=config.EMBED_MODEL, prompt=query)
-        title_embedding = ollama_manager.embeddings(model=config.EMBED_MODEL, prompt=title)
-        
-        if not query_embedding or not title_embedding:
+        # ------------------------------------------------------------------
+        # Helper to normalize embedding responses from Ollama client.
+        # The client may return:
+        #   * a plain list[float]
+        #   * a dict with key "embedding" -> list[float]
+        #   * a dict with key "data" -> [{"embedding": [...] }]
+        #   * an EmbeddingsResponse object with attribute .embedding
+        # ------------------------------------------------------------------
+        def _get_vec(resp):
+            if resp is None:
+                return None
+            # 1. EmbeddingsResponse or similar object
+            if hasattr(resp, "embedding"):
+                return resp.embedding
+            # 2. dict variants
+            if isinstance(resp, dict):
+                if "embedding" in resp and isinstance(resp["embedding"], (list, tuple)):
+                    return resp["embedding"]
+                if "data" in resp and resp["data"]:
+                    first = resp["data"][0]
+                    if isinstance(first, dict) and "embedding" in first:
+                        return first["embedding"]
+            # 3. Already a list / tuple
+            if isinstance(resp, (list, tuple)):
+                return resp
+            return None
+
+        # Obtain embeddings
+        query_resp = ollama_manager.embeddings(model=config.EMBED_MODEL, prompt=query)
+        title_resp = ollama_manager.embeddings(model=config.EMBED_MODEL, prompt=title)
+
+        query_vec = _get_vec(query_resp)
+        title_vec = _get_vec(title_resp)
+
+        if not query_vec or not title_vec:
             return 0.0
-        
-        # Calculate cosine similarity
+
         import numpy as np
-        query_vec = np.array(query_embedding)
-        title_vec = np.array(title_embedding)
-        
-        cosine_sim = np.dot(query_vec, title_vec) / (np.linalg.norm(query_vec) * np.linalg.norm(title_vec))
-        return max(0.0, cosine_sim)  # Ensure non-negative
-        
+        query_arr = np.array(query_vec, dtype=float)
+        title_arr = np.array(title_vec, dtype=float)
+
+        # Guard against zero vectors
+        if query_arr.size == 0 or title_arr.size == 0:
+            return 0.0
+
+        cosine_sim = float(np.dot(query_arr, title_arr) / (np.linalg.norm(query_arr) * np.linalg.norm(title_arr) + 1e-8))
+        return max(0.0, cosine_sim)
+
     except Exception as e:
         print(f"Relevance calculation failed: {e}")
         return 0.0

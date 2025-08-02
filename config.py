@@ -988,6 +988,22 @@ ollama_manager = ollama_manager_instance
 # Global config instance
 config = Config()
 
+# ---------------------------------------------------------------------------
+# Convenience re-exports
+# ---------------------------------------------------------------------------
+# Some modules import `config` (this module) and expect to access configuration
+# values directly as attributes, e.g. `config.EMBED_MODEL`.  While the
+# `Config` class defines these attributes, they are *class* attributes—not
+# module attributes—so direct access would otherwise raise ``AttributeError``.
+#
+# To maintain backward-compatibility, we expose the most commonly used
+# attributes at the module level by copying them from the ``Config`` class.
+# Add new re-exports here as needed.
+EMBED_MODEL = Config.EMBED_MODEL
+GIST_OLLAMA_MODEL = Config.GIST_OLLAMA_MODEL
+OLLAMA_BASE_URL = Config.OLLAMA_BASE_URL
+LLM_GENERATION_OPTIONS = Config.LLM_GENERATION_OPTIONS
+
 # Make CRAP_MODEL available for direct import
 CRAP_MODEL = Config.CRAP_OLLAMA_MODEL
 
