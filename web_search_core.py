@@ -135,19 +135,20 @@ def extract_page_content(url: str) -> Optional[Dict[str, str]]:
         
         response = requests.get(url, headers=headers, timeout=10)
         response.raise_for_status()
-        
-        # Use trafilatura for content extraction
-        downloaded = trafilatura.fetch_url(url)
-        if not downloaded:
-            return None
-            
-        # Extract main content
-        content = trafilatura.extract(downloaded, include_comments=False, include_tables=True)
+
+        html = response.text
+
+        # Try extracting from the downloaded HTML first
+        content = trafilatura.extract(html, include_comments=False, include_tables=True)
+        metadata = trafilatura.extract_metadata(html) if content else None
         if not content:
-            return None
-        
-        # Extract metadata
-        metadata = trafilatura.extract_metadata(downloaded)
+            downloaded = trafilatura.fetch_url(url)
+            if not downloaded:
+                return None
+            content = trafilatura.extract(downloaded, include_comments=False, include_tables=True)
+            if not content:
+                return None
+            metadata = trafilatura.extract_metadata(downloaded)
         
         # Build result dictionary
         result = {
