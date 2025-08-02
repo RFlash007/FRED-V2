@@ -143,7 +143,7 @@ F.R.E.D.'s ability to process complex queries and maintain robust contextual awa
 - **Role:** G.A.T.E. acts as the central routing component of F.R.E.D.'s cognitive architecture. Its sole purpose is to analyze incoming user queries and recent conversational context, then determine which specialized agents need to be activated to gather the necessary information. It replaces older, less sophisticated triage functionalities.
 - **Process:**
     - G.A.T.E. receives the user's message, the L2 episodic context (`memory/L2_memory.py`), and a truncated history of the most recent conversation turns (without F.R.E.D.'s internal thinking).
-    - It uses an LLM (governed by `GATE_SYSTEM_PROMPT`) to generate a JSON object containing boolean routing flags (e.g., `needs_memory`, `needs_web_search`, `needs_deep_research`, `needs_pi_tools`, `needs_reminders`).
+    - It uses an LLM (governed by `GATE_SYSTEM_PROMPT`) to generate a JSON object containing routing flags (e.g., `needs_memory`, `web_search_strategy`, `needs_deep_research`, `needs_pi_tools`, `needs_reminders`).
     - **L2 Context Bypass Protocol:** G.A.T.E. can bypass memory agents if the provided L2 context contains sufficient information to fully answer the user's query.
 - **Output:** The routing flags are then passed to the `AgentDispatcher` (`agents/dispatcher.py`), which orchestrates the execution of the flagged agents.
 
@@ -158,7 +158,7 @@ F.R.E.D.'s ability to process complex queries and maintain robust contextual awa
 
 #### S.C.O.U.T. (Search & Confidence Optimization Utility Tool) - The Web Scout (`agents/scout.py`)
 
-- **Role:** S.C.O.U.T. is F.R.E.D.'s rapid reconnaissance specialist, activated by the `AgentDispatcher` when G.A.T.E.'s routing flags indicate `needs_web_search`. Its mission is to perform quick web searches and assess the confidence level of its findings.
+- **Role:** S.C.O.U.T. is F.R.E.D.'s rapid reconnaissance specialist, activated when `web_search_strategy.needed` is true. Its mission is to perform quick web searches and assess the confidence level of its findings.
 - **Process:**
     - It uses web search tools (e.g., `search_general`, `search_news`) to find relevant information.
     - It assesses the completeness, source reliability, recency, and relevance of the search results.

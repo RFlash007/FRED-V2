@@ -13,6 +13,7 @@ sys.modules['requests'] = MagicMock()
 sys.modules['trafilatura'] = MagicMock()
 sys.modules['duckdb'] = MagicMock()
 sys.modules['numpy'] = MagicMock()
+sys.modules['memory.L2_memory'] = MagicMock()
 
 # Now, import the modules to be tested
 from memory import gate
@@ -29,7 +30,14 @@ class TestGateAgent(unittest.TestCase):
         # Arrange
         mock_dispatcher = MagicMock(spec=AgentDispatcher)
         mock_dispatcher.dispatch_agents.return_value = "Dispatcher processed memory task."
-        expected_flags = {"needs_memory": True, "needs_web_search": False}
+        expected_flags = {
+            "needs_memory": True,
+            "web_search_strategy": {
+                "needed": False,
+                "search_priority": "quick",
+                "search_query": ""
+            }
+        }
         mock_ollama.return_value = {'message': {'content': json.dumps(expected_flags)}}
         mock_l2_query.return_value = "No relevant context."
 
@@ -41,7 +49,10 @@ class TestGateAgent(unittest.TestCase):
         call_kwargs = mock_dispatcher.dispatch_agents.call_args.kwargs
         self.assertIn('routing_flags', call_kwargs)
         self.assertEqual(call_kwargs['routing_flags']['needs_memory'], True)
-        self.assertEqual(call_kwargs['routing_flags']['needs_web_search'], False)
+        self.assertEqual(
+            call_kwargs['routing_flags']['web_search_strategy']['needed'],
+            False
+        )
         print("PASSED: Correctly routed to memory agent.")
 
     @patch('memory.gate.L2.query_l2_context')
@@ -52,7 +63,15 @@ class TestGateAgent(unittest.TestCase):
         # Arrange
         mock_dispatcher = MagicMock(spec=AgentDispatcher)
         mock_dispatcher.dispatch_agents.return_value = "Dispatcher processed multi-agent task."
-        expected_flags = {"needs_memory": True, "needs_web_search": True, "needs_pi_tools": False}
+        expected_flags = {
+            "needs_memory": True,
+            "needs_pi_tools": False,
+            "web_search_strategy": {
+                "needed": True,
+                "search_priority": "quick",
+                "search_query": ""
+            }
+        }
         mock_ollama.return_value = {'message': {'content': json.dumps(expected_flags)}}
         mock_l2_query.return_value = "User mentioned AI hardware."
 
@@ -64,7 +83,10 @@ class TestGateAgent(unittest.TestCase):
         call_kwargs = mock_dispatcher.dispatch_agents.call_args.kwargs
         self.assertIn('routing_flags', call_kwargs)
         self.assertEqual(call_kwargs['routing_flags']['needs_memory'], True)
-        self.assertEqual(call_kwargs['routing_flags']['needs_web_search'], True)
+        self.assertEqual(
+            call_kwargs['routing_flags']['web_search_strategy']['needed'],
+            True
+        )
         self.assertEqual(call_kwargs['routing_flags']['needs_pi_tools'], False)
         print("PASSED: Correctly routed to multiple agents.")
 
