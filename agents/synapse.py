@@ -72,18 +72,7 @@ class SynapseAgent:
                 prompt_parts.append(f"RETRIEVED KNOWLEDGE:\n{mem_data['memories']}")
         
         
-        if agent_outputs.get('remind'):
-            remind_data = agent_outputs['remind']
-            if isinstance(remind_data, dict):
-                if remind_data.get('detected_reminders'):
-                    reminders = remind_data['detected_reminders']
-                    reminder_text = ", ".join([r.get('content', '') for r in reminders])
-                    prompt_parts.append(f"NEW REMINDERS: {reminder_text}")
-                
-                if remind_data.get('active_reminders'):
-                    active = remind_data['active_reminders']
-                    active_text = ", ".join([r.get('content', '') for r in active])
-                    prompt_parts.append(f"ACTIVE REMINDERS: {active_text}")
+        # R.E.M.I.N.D. agent removed - reminder context now handled directly by G.A.T.E. in memory_context
         
         if agent_outputs.get('pivot'):
             pivot_data = agent_outputs['pivot']

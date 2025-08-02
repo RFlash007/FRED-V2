@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Tuple, Callable
 from ollie_print import olliePrint_simple
 from config import config
 
-from .remind import RemindAgent
 from .pivot import PivotAgent
 from .synapse import SynapseAgent
 
@@ -28,9 +27,7 @@ class AgentDispatcher:
     
     def _create_agent(self, agent_type: str):
         """Create agent instance on-demand for proper memory management."""
-        if agent_type == 'remind':
-            return RemindAgent()
-        elif agent_type == 'pivot':
+        if agent_type == 'pivot':
             return PivotAgent()
         elif agent_type == 'synapse':
             return SynapseAgent()
@@ -99,11 +96,7 @@ class AgentDispatcher:
         
         
         # Web search now handled by new intelligent search system in Gate
-        
-        if routing_flags.get('needs_reminders', True):  # Default to True
-            def run_remind():
-                return self._create_agent('remind').process_conversation_turn(user_message)
-            tasks.append(('remind', run_remind))
+        # Reminders now handled directly by G.A.T.E. - no separate agent needed
         
         if routing_flags.get('needs_pi_tools', False):
             pi_command, pi_params = self._extract_pi_command(user_message)
