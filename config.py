@@ -166,6 +166,9 @@ class Config:
     FRED_OLLAMA_MODEL = 'hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL'
     """Model for F.R.E.D.'s personality and conversation style."""
 
+    INSTRUCT_OLLAMA_MODEL = os.getenv('INSTRUCT_OLLAMA_MODEL', FRED_OLLAMA_MODEL)
+    """General instruction-following model used for utility tasks."""
+
     GATE_OLLAMA_MODEL = os.getenv('GATE_OLLAMA_MODEL', 'hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL')
     MAD_OLLAMA_MODEL = os.getenv('MAD_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
     SYNAPSE_OLLAMA_MODEL = os.getenv('SYNAPSE_OLLAMA_MODEL', GATE_OLLAMA_MODEL)
