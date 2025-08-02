@@ -49,6 +49,8 @@ class TestGateAgent(unittest.TestCase):
         self.assertIn('routing_flags', call_kwargs)
         self.assertEqual(call_kwargs['routing_flags']['needs_memory'], True)
         self.assertEqual(call_kwargs['routing_flags']['web_search_strategy']['needed'], False)
+        self.assertIn('search_priority', call_kwargs['routing_flags']['web_search_strategy'])
+        self.assertIn('search_query', call_kwargs['routing_flags']['web_search_strategy'])
         print("PASSED: Correctly routed to memory agent.")
 
     @patch('memory.gate.L2.query_l2_context')
@@ -76,6 +78,8 @@ class TestGateAgent(unittest.TestCase):
         self.assertIn('routing_flags', call_kwargs)
         self.assertEqual(call_kwargs['routing_flags']['needs_memory'], True)
         self.assertEqual(call_kwargs['routing_flags']['web_search_strategy']['needed'], True)
+        self.assertIn('search_priority', call_kwargs['routing_flags']['web_search_strategy'])
+        self.assertIn('search_query', call_kwargs['routing_flags']['web_search_strategy'])
         self.assertEqual(call_kwargs['routing_flags']['needs_pi_tools'], False)
         print("PASSED: Correctly routed to multiple agents.")
 
