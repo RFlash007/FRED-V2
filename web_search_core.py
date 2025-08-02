@@ -3,7 +3,6 @@ Core Web Search Functions for F.R.E.D. V2
 Modular, robust web search system with spam filtering and intelligent routing.
 """
 
-import json
 import re
 import requests
 from typing import Dict, List, Optional, Tuple
@@ -172,7 +171,11 @@ def extract_page_content(url: str) -> Optional[Dict[str, str]]:
 
 def intelligent_search(query: str, search_priority: str = "quick", mode: str = "auto") -> Dict:
     """
-    LLM-based intelligent search with flexible modes.
+    Intelligent search with flexible modes.
+    Links are ranked by `calculate_relevance_score`, which measures
+    cosine similarity between the query and each result title. The top
+    results by this score are selected directly without an additional LLM
+    link analysis step.
     
     Args:
         query: Search query string
@@ -185,6 +188,15 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
     try:
         # Step 1: Gather initial links
         links = gather_links(query, max_results=8 if search_priority == "thorough" else 5)
+
+        # Score links by semantic relevance to the query
+        for link in links:
+            link["score"] = round(
+                calculate_relevance_score(query, link.get("title", "")), 4
+            )
+
+        # Rank links from most to least relevant
+        links = sorted(links, key=lambda l: l.get("score", 0), reverse=True)
         
         if mode == "links_only":
             return {
@@ -194,34 +206,8 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
                 'summary': "Links only mode - no content extracted"
             }
         
-        # Step 2: Use LLM to determine which links to extract content from
-        link_analysis_prompt = f"""
-        Analyze these search result links for the query: "{query}"
-        
-        Links:
-        {json.dumps(links, indent=2)}
-        
-        Select the 3 most promising links that are likely to contain relevant, authoritative information.
-        Consider: relevance to query, domain authority, title quality, description relevance.
-        
-        Respond with JSON: {{"selected_urls": ["url1", "url2", "url3"], "reasoning": "brief explanation"}}
-        """
-        
-        messages = [{"role": "user", "content": link_analysis_prompt}]
-        
-        analysis_response = ollama_manager.chat_concurrent_safe(
-            model=config.INSTRUCT_OLLAMA_MODEL,
-            messages=messages,
-            options=config.LLM_GENERATION_OPTIONS,
-            format="json"
-        )
-        
-        try:
-            analysis = json.loads(analysis_response)
-            selected_urls = analysis.get('selected_urls', [url['url'] for url in links[:3]])
-        except:
-            # Fallback: use first 3 URLs
-            selected_urls = [link['url'] for link in links[:3]]
+        # Step 2: Select top links purely by semantic relevance
+        selected_urls = [link['url'] for link in links[:3]]
         
         # Step 3: Extract content from selected URLs
         extracted_content = []

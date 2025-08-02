@@ -12,9 +12,19 @@ import threading
 import uuid
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional, Tuple
-from sklearn.metrics.pairwise import cosine_similarity
 from config import config, ollama_manager
 from ollie_print import olliePrint_simple
+
+def _cosine_similarity(v1: np.ndarray, v2: np.ndarray) -> float:
+    """Lightweight cosine similarity to avoid scikit-learn dependency."""
+    if v1 is None or v2 is None:
+        return 0.0
+    v1 = np.array(v1)
+    v2 = np.array(v2)
+    denom = np.linalg.norm(v1) * np.linalg.norm(v2)
+    if denom == 0:
+        return 0.0
+    return float(np.dot(v1, v2) / denom)
 
 # L2 Database path
 L2_DB_PATH = "memory/L2_episodic_cache.db"
@@ -72,7 +82,7 @@ class L2State:
             # Semantic trigger: topic change detection
             rolling_avg = self.get_rolling_average_embedding()
             if rolling_avg is not None:
-                similarity = cosine_similarity([current_embedding], [rolling_avg])[0][0]
+                similarity = _cosine_similarity(current_embedding, rolling_avg)
                 if similarity < config.L2_SIMILARITY_THRESHOLD:
                     self.last_topic_start_turn = current_turn
                     self.last_l2_creation_turn = current_turn
@@ -320,7 +330,7 @@ def query_l2_context(user_message: str) -> str:
                 topic, summary, created_at, embedding_list, turn_start, turn_end = row
                 if embedding_list:
                     embedding = np.array(embedding_list, dtype=np.float32)
-                    similarity = cosine_similarity([query_embedding], [embedding])[0][0]
+                    similarity = _cosine_similarity(query_embedding, embedding)
                     
                     if similarity > config.L2_RETRIEVAL_THRESHOLD:
                         relevant_summaries.append({
