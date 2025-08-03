@@ -7,6 +7,7 @@ import sys
 
 try:
     from config import config, ollama_manager
+    from ollie_print import olliePrint_simple
 except ImportError:
     print("Error: Could not import project modules ('config', 'ollama_manager').")
     print("Please run this script from the root of your F.R.E.D. project directory.")
@@ -18,10 +19,10 @@ MODEL_NAME = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
 # --- Main Chat Logic ---
 def main():
     """Main function to run the terminal chat client."""
-    print(f"--- Starting chat with '{MODEL_NAME}' ---")
-    print(f"(Parameters: num_ctx={config.LLM_GENERATION_OPTIONS.get('num_ctx')})")
-    print("Type 'quit', 'exit', or press Ctrl+C to end the chat.")
-    print("--------------------------------------------------")
+    olliePrint_simple(f"Starting chat with '{MODEL_NAME}'")
+    olliePrint_simple(f"(Parameters: num_ctx={config.LLM_GENERATION_OPTIONS.get('num_ctx')})")
+    olliePrint_simple("Type 'quit', 'exit', or press Ctrl+C to end the chat.")
+    olliePrint_simple("--------------------------------------------------")
 
     messages = []
 
@@ -30,7 +31,7 @@ def main():
             prompt = input("\n>>> You: ")
 
             if prompt.lower() in ['quit', 'exit']:
-                print("--- Exiting chat. Goodbye! ---")
+                olliePrint_simple("Exiting chat. Goodbye!")
                 break
 
             messages.append({
@@ -38,8 +39,7 @@ def main():
                 'content': prompt,
             })
 
-            print(f"... {MODEL_NAME} is thinking ...", end="\r")
-            sys.stdout.flush()
+            olliePrint_simple(f"... {MODEL_NAME} is thinking ...")
 
             full_response = ""
             # Use the project's concurrent-safe chat method
@@ -50,13 +50,10 @@ def main():
                 stream=True,
             )
             
-            print(" " * 50, end="\r") 
-            print(f"<<< AI: ", end="")
-            sys.stdout.flush()
-
             for chunk in stream:
                 response_piece = chunk['message']['content']
-                print(response_piece, end="", flush=True)
+                sys.stdout.write(response_piece)
+                sys.stdout.flush()
                 full_response += response_piece
 
             messages.append({
@@ -65,11 +62,11 @@ def main():
             })
 
         except KeyboardInterrupt:
-            print("\n--- Exiting chat. Goodbye! ---")
+            olliePrint_simple("Exiting chat. Goodbye!")
             break
         except Exception as e:
-            print(f"\nAn error occurred: {e}")
-            print("Please ensure the Ollama server is running.")
+            olliePrint_simple(f"An error occurred: {e}", level='error')
+            olliePrint_simple("Please ensure the Ollama server is running.")
             break
 
 if __name__ == "__main__":

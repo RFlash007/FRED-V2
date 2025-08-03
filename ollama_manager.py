@@ -5,10 +5,14 @@ from typing import Optional, Dict, Any
 import ollama
 
 try:
-    from ollie_print import olliePrint_simple
+    from ollie_print import olliePrint_simple, log_model_io
 except ImportError:
     def olliePrint_simple(msg, level='info'):
         print(f"[{level.upper()}] {msg}")
+
+    def log_model_io(model, inputs, outputs):
+        print(f"[MODEL {model} INPUT]: {inputs}")
+        print(f"[MODEL {model} OUTPUT]: {outputs}")
 
 
 class OllamaConnectionManager:
@@ -92,8 +96,28 @@ class OllamaConnectionManager:
         # Remove timeout-related options to prevent timeouts during long research cycles
         if 'timeout' in kwargs:
             del kwargs['timeout']
-        
-        return client.chat(**kwargs)
+
+        model_name = kwargs.get('model', 'unknown')
+        messages = kwargs.get('messages')
+
+        if kwargs.get('stream'):
+            stream = client.chat(**kwargs)
+
+            def generator():
+                output_text = ""
+                for chunk in stream:
+                    content = chunk.get('message', {}).get('content', '')
+                    if content:
+                        output_text += content
+                    yield chunk
+                log_model_io(model_name, messages, output_text)
+
+            return generator()
+        else:
+            response = client.chat(**kwargs)
+            output_text = response.get('message', {}).get('content', response)
+            log_model_io(model_name, messages, output_text)
+            return response
     
     def embeddings(self, model: str, prompt: str, host: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -108,7 +132,9 @@ class OllamaConnectionManager:
             Dict: Response from Ollama embeddings API
         """
         client = self.get_client(host)
-        return client.embeddings(model=model, prompt=prompt)
+        response = client.embeddings(model=model, prompt=prompt)
+        log_model_io(model, prompt, response)
+        return response
     
     def preload_model(self, model_name: str) -> bool:
         """

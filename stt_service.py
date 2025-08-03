@@ -13,7 +13,7 @@ import re
 from datetime import datetime
 from config import config
 from ollietec_theme import apply_theme
-from ollie_print import olliePrint_simple
+from ollie_print import olliePrint_simple, log_model_io
 
 apply_theme()
 
@@ -367,6 +367,7 @@ class STTService:
                 self.last_speech_time = time.time()
                 olliePrint_simple(f"📝 Speech: '{original_text}'")
                 print_transcription_to_terminal(f"SPEECH: '{original_text}'", "SPEECH BUFFER")
+                log_model_io("VOSK_STT", "[audio]", original_text)
     
     def _handle_partial_text(self, text: str, from_pi: bool):
         """Handle partial transcription results"""
@@ -424,8 +425,10 @@ class STTService:
                 final_result = json.loads(file_recognizer.FinalResult())
                 if final_result.get('text'):
                     results.append(final_result['text'])
-                
-                return ' '.join(results)
+
+                transcript = ' '.join(results)
+                log_model_io("VOSK_STT", f"[file:{audio_file_path}]", transcript)
+                return transcript
                 
         except Exception as e:
             olliePrint_simple(f"File transcription error: {e}")

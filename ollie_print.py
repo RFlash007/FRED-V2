@@ -485,6 +485,20 @@ def olliePrint_concise(message: Any, level: str = 'info', module: Optional[str] 
     else:
         print(f"{FRED_COLORS['timestamp']}{timestamp}{FRED_COLORS['reset']} {color}{message}{FRED_COLORS['reset']}")
 
+
+# === Model Input/Output Logging ===
+_last_model_io: Dict[str, Dict[str, Any]] = {}
+
+
+def log_model_io(model: str, inputs: Any, outputs: Any) -> None:
+    """Log model inputs and outputs with deduplication"""
+    entry = {"in": inputs, "out": outputs}
+    if _last_model_io.get(model) == entry:
+        return
+    _last_model_io[model] = entry
+    olliePrint_concise(f"INPUT: {inputs}", module=model)
+    olliePrint_concise(f"OUTPUT: {outputs}", module=model)
+
 # === Testing Function ===
 if __name__ == "__main__":
     print("=== F.R.E.D. Enhanced Logging System Test ===\n")
