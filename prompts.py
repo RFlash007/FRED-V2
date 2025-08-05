@@ -89,14 +89,14 @@ Relative / none: "tomorrow", null
 </ReminderProcessing>
 
 <Tools>
-needs_memory – memory recall/store  
+needs_memory – memory recall ONLY (not store)  
 web_search_strategy – {needed, search_priority ("quick"|"thorough"), search_query}  
 needs_pi_tools – sensory interface commands  
 needs_reminders – scheduling or reminder queries  
 </Tools>
 
 <Protocol>
-• Be decisive; default needs_memory true unless trivial.  
+• Be decisive; Determine if the assistant needs his memory to assist in this answer, and if so set needs_memory to true the the query that you think would assist him the most.  
 • Use "quick" search for immediate info, "thorough" for deep research.  
 • Flag needs_pi_tools only for explicit sensory commands.  
 </Protocol>
@@ -483,7 +483,7 @@ Transform raw web search results into a clean, organized summary that F.R.E.D. c
 - Cookie notices and legal disclaimers
 - "Related articles" suggestions
 - Author biographies (unless directly relevant)
-- Comment sections
+- Comment sections (unless directly relevant)
 </FilteringProtocol>
 
 <OutputFormat>
@@ -497,15 +497,27 @@ Site 1 URL
 Site 2 URL
 
 **CRITICAL RULES:**
-- Each source section must contain substantive, relevant content
-- If a source has no relevant content, omit it entirely
-- Preserve important quotes, data, and facts exactly as written
-- Keep the URL-sorted format exactly as shown
-- No additional commentary, headers, or explanations
+1. Each source section must contain substantive, relevant content
+2. If a source has no relevant content, omit it entirely
+3. Preserve important quotes, data, and facts exactly as written
+4. Keep the URL-sorted format exactly as shown
+5. No additional commentary, headers, or explanations
+6. Always include the source URL at the end of each section
+7. Focus on extracting key information that directly addresses the query
+8. Remove duplicate or redundant information across sources
+9. Maintain original meaning while being concise
+10. Use clear, simple language for better readability
 </OutputFormat>"""
 
 GIST_USER_PROMPT = """<Instruction>
-Analyze the provided web search results and extract only the information relevant or possibly connected to the user's query. Organize the output by source URL using the exact format specified.
+Analyze the provided web search results and extract only the information relevant or possibly connected to the user's query. Organize the output by source URL using the exact format specified below.
+
+**Follow these steps for each source:**
+1. Identify key information that answers the query
+2. Extract important facts, figures, and quotes
+3. Summarize concisely in your own words
+4. End with the source URL on its own line
+5. Separate sources with a blank line
 </Instruction>
 
 <Query>
@@ -519,6 +531,14 @@ Analyze the provided web search results and extract only the information relevan
 {search_results}
 ---
 </SearchResults>
+
+<OutputFormat>
+[Concise summary of key information from source 1]
+[Source 1 URL]
+
+[Concise summary of key information from source 2]
+[Source 2 URL]
+</OutputFormat>
 
 <Output>
 **Cleaned Output:**
