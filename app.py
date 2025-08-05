@@ -638,15 +638,7 @@ SUBCONSCIOUS PROCESSING RESULTS:
                 
                 response_message = response.get('message', {})
                 raw_content = response_message.get('content', '')
-                
-                # Print the model's full response including thinking
-                if raw_content:
-                    olliePrint_simple(f"\n{'='*60}")
-                    olliePrint_simple(f"[MODEL RESPONSE] Full response from iteration {iteration + 1}:")
-                    olliePrint_simple(f"{'='*60}")
-                    olliePrint_simple(raw_content)
-                    olliePrint_simple(f"{'='*60}\n")
-                
+
                 # Extract and store thinking
                 current_thinking = extract_think_content(raw_content)
                 if current_thinking:
@@ -781,29 +773,20 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                     options=config.Instruct_Generation_Options
                 )
                 
-                streaming_response = ""
                 for chunk in final_stream:
                     content_chunk = chunk.get('message', {}).get('content')
                     if content_chunk:
-                        streaming_response += content_chunk
                         # Extract thinking from streaming chunks
                         chunk_thinking = extract_think_content(content_chunk)
                         if chunk_thinking:
                             raw_thinking += chunk_thinking + "\n"
-                        
+
                         clean_chunk = strip_think_tags(content_chunk)
                         if clean_chunk:
                             assistant_response += clean_chunk
                             yield json.dumps({'response': clean_chunk}) + '\n'
-                    
+
                     if chunk.get('done', False):
-                        # Print full streaming response when done
-                        if streaming_response:
-                            olliePrint_simple(f"\n{'='*60}")
-                            olliePrint_simple("[MODEL RESPONSE] Full streaming response:")
-                            olliePrint_simple(f"{'='*60}")
-                            olliePrint_simple(streaming_response)
-                            olliePrint_simple(f"{'='*60}\n")
                         break
             else:
                 # Direct response
