@@ -137,19 +137,48 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
             )
             return _get_default_routing_flags()
 
+        def _normalize_and_fill_defaults(flags: dict) -> dict:
+            required_keys = ["needs_memory", "needs_pi_tools"]
+            for key in required_keys:
+                if key not in flags:
+                    flags[key] = False
+            if "web_search_strategy" not in flags or not isinstance(
+                flags.get("web_search_strategy"), dict
+            ):
+                flags["web_search_strategy"] = {
+                    "needed": False,
+                    "search_priority": "quick",
+                    "search_query": "",
+                }
+            return flags
+
+        if isinstance(response, dict) and any(
+            key in response for key in ["needs_memory", "needs_pi_tools", "web_search_strategy"]
+        ) and "message" not in response:
+            routing_flags = _normalize_and_fill_defaults(response)
+            olliePrint_simple("\n┏━━[G.A.T.E.] Raw Routing Response (direct JSON) ━━")
+            olliePrint_simple(json.dumps(routing_flags, ensure_ascii=False))
+            olliePrint_simple("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+            return routing_flags
+
         if isinstance(response, dict):
             message_dict = response.get("message")
         else:
             message_dict = getattr(response, "message", None)
 
-        if not message_dict or not isinstance(message_dict, dict):
+        response_content = None
+
+        if isinstance(message_dict, dict):
+            response_content = (message_dict.get("content") or "").strip()
+        elif isinstance(response, str):
+            response_content = response.strip()
+
+        if not response_content:
             olliePrint_simple(
-                "[G.A.T.E.] LLM response missing 'message' field – using default routing flags",
+                "[G.A.T.E.] LLM response missing usable content – using default routing flags",
                 level="warning",
             )
             return _get_default_routing_flags()
-
-        response_content = message_dict.get("content", "").strip()
 
         olliePrint_simple("\n┏━━[G.A.T.E.] Raw Routing Response ━━")
         olliePrint_simple(response_content)
@@ -157,21 +186,8 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
 
         try:
             routing_flags = json.loads(response_content)
-
-            required_keys = ["needs_memory", "needs_pi_tools"]
-            for key in required_keys:
-                if key not in routing_flags:
-                    routing_flags[key] = False
-
-            if "web_search_strategy" not in routing_flags:
-                routing_flags["web_search_strategy"] = {
-                    "needed": False,
-                    "search_priority": "quick",
-                    "search_query": "",
-                }
-
+            routing_flags = _normalize_and_fill_defaults(routing_flags)
             return routing_flags
-
         except json.JSONDecodeError as e:
             olliePrint_simple(
                 f"[G.A.T.E.] JSON parse error: {e}. Using default flags.",

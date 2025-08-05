@@ -183,6 +183,13 @@ def detect_terminal_capabilities() -> Dict[str, bool]:
         'wide_terminal': False
     }
     
+    # Environment override to force ANSI colors
+    if os.environ.get('OLLIE_FORCE_COLOR', '').strip() == '1':
+        capabilities['ansi_colors'] = True
+        capabilities['unicode'] = True
+        capabilities['wide_terminal'] = True
+        return capabilities
+    
     # Check if we're in a TTY
     if not (hasattr(sys.stdout, 'isatty') and sys.stdout.isatty()):
         return capabilities
@@ -471,20 +478,33 @@ def banner(component: str) -> str:
     """Compatibility banner function - redirects to startup_block"""
     return startup_block(component, [])
 
+def olliePrint_raw(message: Any, level: str = 'info', end: str = '', flush: bool = False) -> None:
+    """Low-level print with optional color, supports no-newline streaming output.
+    Avoids banners and comments, intended for incremental streaming.
+    """
+    if os.environ.get('OLLIE_FORCE_COLOR') or detect_terminal_capabilities()['ansi_colors']:
+        color = FRED_COLORS.get(level, FRED_COLORS['info'])
+        print(f"{color}{message}{FRED_COLORS['reset']}", end=end, flush=flush)
+    else:
+        print(str(message), end=end, flush=flush)
+
 def olliePrint_concise(message: Any, level: str = 'info', module: Optional[str] = None) -> None:
     """Ultra-concise logging - single line, no banner, minimal formatting"""
-    if not detect_terminal_capabilities()['ansi_colors']:
-        print(f"[{level.upper()}] {message}")
-        return
-    
-    color = FRED_COLORS.get(level, FRED_COLORS['info'])
-    timestamp = datetime.now().strftime('%H:%M:%S')
-    
-    # Ultra-minimal format: timestamp + module + message
-    if module:
-        print(f"{FRED_COLORS['timestamp']}{timestamp}{FRED_COLORS['reset']} {color}[{module}]{FRED_COLORS['reset']} {message}")
+    if os.environ.get('OLLIE_FORCE_COLOR') or detect_terminal_capabilities()['ansi_colors']:
+        color = FRED_COLORS.get(level, FRED_COLORS['info'])
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        
+        # Ultra-minimal format: timestamp + module + message
+        if module:
+            # Highlight INPUT:/OUTPUT: labels even if indented
+            msg_str = str(message)
+            msg_str = re.sub(r"^(\s*)(INPUT:)", f"\\1{ANSIColors.BOLD}{FRED_COLORS['network']}\\2{FRED_COLORS['reset']}", msg_str)
+            msg_str = re.sub(r"^(\s*)(OUTPUT:)", f"\\1{ANSIColors.BOLD}{FRED_COLORS['success']}\\2{FRED_COLORS['reset']}", msg_str)
+            print(f"{FRED_COLORS['timestamp']}{timestamp}{FRED_COLORS['reset']} {color}[{module}]{FRED_COLORS['reset']} {color}{msg_str}{FRED_COLORS['reset']}")
+        else:
+            print(f"{FRED_COLORS['timestamp']}{timestamp}{FRED_COLORS['reset']} {color}{message}{FRED_COLORS['reset']}")
     else:
-        print(f"{FRED_COLORS['timestamp']}{timestamp}{FRED_COLORS['reset']} {color}{message}{FRED_COLORS['reset']}")
+        print(f"[{level.upper()}] {message}")
 
 
 # === Model Input/Output Logging ===
@@ -496,24 +516,83 @@ def _clean_text(text: str) -> str:
     return re.sub(r"\s+", " ", str(text)).strip()
 
 
+def _summarize_retrieved_knowledge_in_text(text: str) -> str:
+    """Collapse verbose RETRIEVED KNOWLEDGE JSON into a short summary."""
+    try:
+        pattern = r"RETRIEVED KNOWLEDGE:\s*(\[[\s\S]*?\])"
+        match = re.search(pattern, text)
+        if not match:
+            return text
+        raw_json = match.group(1)
+        count = 0
+        try:
+            import json
+            data = json.loads(raw_json)
+            if isinstance(data, list):
+                count = len(data)
+        except Exception:
+            # Fallback: count nodeid occurrences as an estimate
+            count = len(re.findall(r"\"nodeid\"", raw_json))
+        summary = f"RETRIEVED KNOWLEDGE: [{count} items]"
+        start, end = match.span(1)
+        # Replace the entire JSON array with a compact summary
+        compact = text[:match.start()] + summary + text[match.end():]
+        return compact
+    except Exception:
+        return text
+
+
 def _format_inputs(inputs: Any) -> str:
-    """Return only the most recent user message from an Ollama messages list."""
+    """Return only the most recent user message; summarize noisy sections."""
+    content = None
     if isinstance(inputs, list):
         for message in reversed(inputs):
             if isinstance(message, dict) and message.get("role") == "user":
-                return _clean_text(message.get("content", ""))
-    return _clean_text(inputs)
+                content = str(message.get("content", ""))
+                break
+    if content is None:
+        content = str(inputs)
+    # Summarize heavy sections like retrieved knowledge
+    content = _summarize_retrieved_knowledge_in_text(content)
+    return _clean_text(content)
+
+
+def _strip_think_blocks(text: str) -> str:
+    """Remove <think>...</think> blocks and NEURAL CORE dumps for readability."""
+    # Remove <think> blocks
+    text = re.sub(r"<think>[\s\S]*?</think>", "", str(text), flags=re.IGNORECASE)
+    # Collapse NEURAL PROCESSING CORE blocks if present
+    text = re.sub(r"\(NEURAL PROCESSING CORE\)[\s\S]*?\(END NEURAL PROCESSING CORE\)",
+                  "[NEURAL CORE elided]", text, flags=re.IGNORECASE)
+    return text
+
+
+def _dedupe_bullets(text: str) -> str:
+    """De-duplicate repeated bullet lines while preserving order."""
+    lines = str(text).splitlines()
+    seen = set()
+    result = []
+    for ln in lines:
+        if ln.strip().startswith("•"):
+            if ln not in seen:
+                seen.add(ln)
+                result.append(ln)
+        else:
+            result.append(ln)
+    return "\n".join(result)
 
 
 def _format_outputs(outputs: Any) -> str:
-    """Hide large embeddings and ensure concise model outputs."""
+    """Hide large embeddings and ensure concise, readable model outputs."""
     if isinstance(outputs, dict) and "embedding" in outputs:
         embedding = outputs["embedding"]
         if isinstance(embedding, (list, tuple)):
             return f"[{len(embedding)}-dimensional embedding]"
     if isinstance(outputs, (list, tuple)) and all(isinstance(x, (int, float)) for x in outputs):
         return f"[{len(outputs)}-dimensional vector]"
-    return _clean_text(outputs)
+    text = _strip_think_blocks(outputs)
+    text = _dedupe_bullets(text)
+    return _clean_text(text)
 
 
 def log_model_io(model: str, inputs: Any, outputs: Any) -> None:

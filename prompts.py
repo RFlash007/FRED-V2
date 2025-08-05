@@ -122,27 +122,59 @@ You are G.A.T.E., the neural routing component for the F.R.E.D. cognitive archit
 * `needs_pi_tools`: boolean
 
 2.2 Formatting Rules
-**MUST:** Output only raw JSON without markdown fences, code blocks, or explanatory text.
+**MUST:** Output ONLY a single, top-level JSON object with EXACTLY the specified fields. No markdown fences, no code blocks, no natural language, no surrounding keys like `message` or `content`.
+The output must be valid JSON that can be parsed directly. Do not include trailing commas or comments.
 
 2.3 Note
-**Note: If a tool-specific object like `web_search_strategy` is not used, its value MUST be `null`. Similarly, `memory_search_query` must be `null` if `needs_memory` is `false`.**
+**Note:** If a tool-specific object like `web_search_strategy` is not used, its value MUST be `null`. Similarly, `memory_search_query` must be `null` if `needs_memory` is `false`.
+If uncertain, default to: `{"needs_memory": false, "memory_search_query": null, "web_search_strategy": null, "needs_pi_tools": false}`.
 
-2.3.1 Example:
-Example:
-```json
+2.3.1 Example (top-level JSON only):
 {
- "needs_memory": true,
- "memory_search_query": "summary of last meeting with marketing team",
- "web_search_strategy": null,
- "needs_pi_tools": false
+  "needs_memory": true,
+  "memory_search_query": "summary of last meeting with marketing team",
+  "web_search_strategy": null,
+  "needs_pi_tools": false
+}
+
+2.4 JSON Schema (informative):
+{
+  "type": "object",
+  "required": ["needs_memory", "memory_search_query", "web_search_strategy", "needs_pi_tools"],
+  "additionalProperties": false,
+  "properties": {
+    "needs_memory": {"type": "boolean"},
+    "memory_search_query": {"type": ["string", "null"]},
+    "web_search_strategy": {
+      "type": ["object", "null"],
+      "required": ["needed", "search_priority", "search_query"],
+      "properties": {
+        "needed": {"type": "boolean"},
+        "search_priority": {"enum": ["quick", "thorough"]},
+        "search_query": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "needs_pi_tools": {"type": "boolean"}
+  }
 }
 </ResponseFormat>
 
 <Tools>
 3. Tools
 3.1 needs_memory
-3.1.1 needs_memory: Use for memory recall ONLY (e.g., summarizing past conversations). This tool CANNOT store information.
-3.1.2 Connection: If needs_memory is true, you may provide memory_search_query (the retrieval string). If false, memory_search_query must be null.
+3.1.1 Decision Rule: Set `needs_memory` to TRUE only when the user’s request requires recalling prior conversation, user-specific facts, stored tasks/notes, or long-range context that is NOT contained in the current turn.
+
+3.1.2 MUST set `needs_memory` to FALSE for trivial greetings, pleasantries, meta-questions about capabilities, or simple questions answerable without prior context. Examples (not exhaustive):
+   - "hi", "hello", "thanks", "goodbye"
+   - "who are you?", "what can you do?"
+   - Simple definitional or factual queries (e.g., "what's 2+2?", "define latency")
+
+3.1.3 Set `needs_memory` to TRUE when the user references prior context explicitly or implicitly, such as: "as we discussed", "last time", "that plan you made", follow-ups requiring details from earlier turns, or named entities/IDs introduced previously and not present in the current turn.
+
+3.1.4 If the provided <Context> (recent_history) already contains the necessary information to answer accurately, keep `needs_memory` FALSE and rely on that context.
+
+3.1.5 Connection: When `needs_memory` is TRUE, provide a concise `memory_search_query` (≤ 12 words) describing exactly what to retrieve. When `needs_memory` is FALSE, `memory_search_query` MUST be null.
 
 3.2 web_search_strategy
 3.2.1 web_search_strategy: Use for queries requiring real-time information. Object has keys: needed (boolean), search_priority ("quick"|"thorough"), and search_query (string).
@@ -177,7 +209,7 @@ GATE_USER_PROMPT = """
 
 4. Directive
 <Directive>
-**Directive**: Analyze the query and context. **Your entire output must be a single, raw JSON object containing the following fields: `needs_memory`, `memory_search_query`, `web_search_strategy`, `needs_pi_tools`. Do not provide any other text or explanation.**
+**Directive**: Analyze the query and context. Your entire output MUST be a single, top-level JSON object with EXACTLY these fields: `needs_memory`, `memory_search_query`, `web_search_strategy`, `needs_pi_tools`. Output nothing else. No markdown, no code fences, no explanations, no wrapper keys like `message` or `content`. If uncertain, output the safe default: {"needs_memory": false, "memory_search_query": null, "web_search_strategy": null, "needs_pi_tools": false}.
 </Directive>   
 """
 # --- Enhanced Research System Prompts ---
@@ -808,10 +840,12 @@ If the user explicitly states new personal facts (e.g., roles, workplaces, inter
 - **Description**: Enhanced version of add_memory for complex information requiring structured details.
 - **Parameters**:
   - All parameters from `add_memory` plus:
-  - `observations` (object, optional): Additional structured observations about the memory.
-    - `confidence` (number): Confidence level in the accuracy of this memory (0.0 to 1.0).
+  - `observations` (array of objects, optional): Additional structured observations about the memory. Each observation object may include:
+    - `confidence` (number): Confidence level in the accuracy of this observation (0.0 to 1.0).
     - `source` (string): The source of this information.
     - `context` (string): Additional context about when/where this was learned.
+    - `note` (string, optional): Free-form note or additional detail.
+  - `metadata` (object or null, optional): Arbitrary key/value metadata to persist with the memory.
 </Tools>
 
 <ToolUsageGuidelines>
@@ -828,10 +862,9 @@ If the user explicitly states new personal facts (e.g., roles, workplaces, inter
 TOOL USAGE:
 - **add_memory**: Adds a new memory node to the knowledge graph. Use for new information, facts, events, or procedures. Required parameters: label (string), text (string), memory_type ("Semantic"|"Episodic"|"Procedural"). Optional: parent_id (integer|null), target_date (ISO date string|null).
 
-- **add_memory_with_observations**: Enhanced version of add_memory for complex information requiring structured details. Same parameters as add_memory plus additional observation fields.
+- **add_memory_with_observations**: Enhanced version of add_memory for complex information requiring structured details. Same parameters as add_memory plus `observations` (array of objects with confidence/source/context/note) and optional `metadata` (object|null).
 
 Keep analysis brief and focused. Only use tools when you identify genuinely new information.
 MUST: Do not include chain-of-thought in outputs. Provide only tool calls or concise labels/text as required.
 </ToolUsageGuidelines>
-
 """

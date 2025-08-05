@@ -183,11 +183,78 @@ MEMORY_TOOLS = [
     }
 ]
 
-# --- C.R.A.P. Tool Mapping (Read-Only Memory Operations) ---
-# C.R.A.P. is now read-only: superseding happens automatically in background edge creation
-CRAP_TOOLS = [
-    tool for tool in MEMORY_TOOLS 
-    if tool['name'] in ['search_memory', 'get_node_by_id', 'get_subgraph']
+# --- M.A.D. (Memory Addition Daemon) Tools ---
+# Focused, minimal toolset for dedicated memory creation flows
+MAD_TOOLS = [
+    {
+        "name": "add_memory",
+        "description": "Adds a new memory node to the knowledge graph. Use for new information, facts, events, or procedures.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "label": {
+                    "type": "string",
+                    "description": "A concise label or title for the memory node."
+                },
+                "text": {
+                    "type": "string",
+                    "description": "The detailed text content of the memory."
+                },
+                "memory_type": {
+                    "type": "string",
+                    "description": "The type of memory.",
+                    "enum": ["Semantic", "Episodic", "Procedural"]
+                },
+                "parent_id": {
+                    "type": ["integer", "null"],
+                    "description": "Optional. The ID of a parent node if this memory is hierarchically related."
+                },
+                "target_date": {
+                    "type": ["string", "null"],
+                    "description": "Optional. ISO format date (YYYY-MM-DD) or datetime (YYYY-MM-DDTHH:MM:SS) for future events or activities."
+                }
+            },
+            "required": ["label", "text", "memory_type"]
+        }
+    },
+    {
+        "name": "add_memory_with_observations",
+        "description": "Enhanced memory addition supporting structured observations and arbitrary metadata for richer context.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "label": {"type": "string", "description": "Concise label/title for the memory."},
+                "text": {"type": "string", "description": "Full textual content of the memory."},
+                "memory_type": {
+                    "type": "string",
+                    "description": "Memory category.",
+                    "enum": ["Semantic", "Episodic", "Procedural"]
+                },
+                "observations": {
+                    "type": ["array", "null"],
+                    "description": "Optional list of structured observations to attach to the memory.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "confidence": {"type": ["number", "null"], "description": "Confidence in this observation (0.0-1.0)."},
+                            "source": {"type": ["string", "null"], "description": "Source of the information."},
+                            "context": {"type": ["string", "null"], "description": "Context about when/where this was learned."},
+                            "note": {"type": ["string", "null"], "description": "Free-form note or detail."}
+                        },
+                        "additionalProperties": True
+                    }
+                },
+                "parent_id": {"type": ["integer", "null"], "description": "Optional parent node ID for hierarchical linkage."},
+                "target_date": {"type": ["string", "null"], "description": "Optional ISO date/datetime for scheduling or future events."},
+                "metadata": {
+                    "type": ["object", "null"],
+                    "description": "Optional arbitrary key/value metadata to persist with the memory.",
+                    "additionalProperties": True
+                }
+            },
+            "required": ["label", "text", "memory_type"]
+        }
+    }
 ]
 
 # --- Research & Web Search Tools ---
@@ -351,24 +418,13 @@ UTILITY_TOOLS = [
     }
 ]
 
-# --- M.A.D. Memory Addition Daemon Tools ---
-# M.A.D. has focused memory creation responsibilities only
-MAD_TOOLS = [
-    tool for tool in MEMORY_TOOLS 
-    if tool['name'] in ['add_memory', 'add_memory_with_observations']
-]
-
 # ============================================================================
 # MODEL-SPECIFIC TOOL MAPPINGS
 # ============================================================================
 FRED_TOOLS = AGENT_MANAGEMENT_TOOLS.copy()
-CRAP_TOOLS = [
-    tool for tool in MEMORY_TOOLS 
-    if tool['name'] in ['search_memory', 'get_node_by_id', 'get_subgraph']
-]
 DELVE_TOOLS = RESEARCH_TOOLS.copy()
 ARCH_TOOLS = PIPELINE_CONTROL_TOOLS.copy()
-AVAILABLE_TOOLS = (MEMORY_TOOLS + RESEARCH_TOOLS + UTILITY_TOOLS).copy()
+AVAILABLE_TOOLS = (MEMORY_TOOLS + MAD_TOOLS + RESEARCH_TOOLS + UTILITY_TOOLS).copy()
 
 # ============================================================================
 # TOOL SCHEMA VALIDATION & UTILITIES
@@ -378,14 +434,13 @@ def get_tool_set(agent_type: str) -> list:
     Get the appropriate tool set for a specific agent type.
     
     Args:
-        agent_type: One of 'FRED', 'CRAP', 'DELVE', 'ARCH'
+        agent_type: One of 'FRED', 'DELVE', 'ARCH'
         
     Returns:
         list: Tool schema list for the specified agent
     """
     mappings = {
         'FRED': FRED_TOOLS,
-        'CRAP': CRAP_TOOLS, 
         'DELVE': DELVE_TOOLS,
         'ARCH': ARCH_TOOLS
     }
@@ -398,7 +453,7 @@ def get_all_tool_names() -> set:
     Returns:
         set: All unique tool names
     """
-    all_tools = (MEMORY_TOOLS + RESEARCH_TOOLS + 
-                AGENT_MANAGEMENT_TOOLS + PIPELINE_CONTROL_TOOLS + 
+    all_tools = (MEMORY_TOOLS + MAD_TOOLS + RESEARCH_TOOLS +
+                AGENT_MANAGEMENT_TOOLS + PIPELINE_CONTROL_TOOLS +
                 UTILITY_TOOLS)
     return {tool['name'] for tool in all_tools}

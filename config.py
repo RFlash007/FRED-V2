@@ -167,31 +167,26 @@ class Config:
     FRED_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL"
     """Model for F.R.E.D.'s personality and conversation style."""
 
-    INSTRUCT_OLLAMA_MODEL = os.getenv("INSTRUCT_OLLAMA_MODEL", FRED_OLLAMA_MODEL)
+    INSTRUCT_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL"
     """General instruction-following model used for utility tasks."""
 
-    GATE_OLLAMA_MODEL = os.getenv(
-        "GATE_OLLAMA_MODEL", "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
-    )
-    MAD_OLLAMA_MODEL = os.getenv("MAD_OLLAMA_MODEL", GATE_OLLAMA_MODEL)
-    SYNAPSE_OLLAMA_MODEL = os.getenv("SYNAPSE_OLLAMA_MODEL", GATE_OLLAMA_MODEL)
+    GATE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    MAD_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    SYNAPSE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
 
-    ARCH_OLLAMA_MODEL = os.getenv(
-        "ARCH_OLLAMA_MODEL", "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
-    )
-    DELVE_OLLAMA_MODEL = os.getenv("DELVE_OLLAMA_MODEL", ARCH_OLLAMA_MODEL)
-    VET_OLLAMA_MODEL = os.getenv("VET_OLLAMA_MODEL", ARCH_OLLAMA_MODEL)
-    SAGE_OLLAMA_MODEL = os.getenv("SAGE_OLLAMA_MODEL", ARCH_OLLAMA_MODEL)
+    ARCH_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    DELVE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    VET_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    SAGE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
 
-    GIST_OLLAMA_MODEL = os.getenv("GIST_OLLAMA_MODEL", INSTRUCT_OLLAMA_MODEL)
-    REFLEX_OLLAMA_MODEL = os.getenv("REFLEX_OLLAMA_MODEL", ARCH_OLLAMA_MODEL)
-    CRAP_OLLAMA_MODEL = os.getenv("CRAP_OLLAMA_MODEL", ARCH_OLLAMA_MODEL)
+    GIST_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL"
+    REFLEX_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
 
-    L2_ANALYSIS_OLLAMA_MODEL = os.getenv("L2_ANALYSIS_OLLAMA_MODEL", ARCH_OLLAMA_MODEL)
-    VISION_OLLAMA_MODEL = os.getenv("VISION_OLLAMA_MODEL", "qwen2.5vl:7b")
+    L2_ANALYSIS_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    VISION_OLLAMA_MODEL = "qwen2.5vl:7b"
 
-    EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
-    DEFAULT_EMBEDDING_MODEL = os.getenv("DEFAULT_EMBEDDING_MODEL", "nomic-embed-text")
+    EMBED_MODEL = "nomic-embed-text"
+    DEFAULT_EMBEDDING_MODEL = "nomic-embed-text"
 
     # --- Generation Options ---
     LLM_GENERATION_OPTIONS = {
@@ -471,9 +466,6 @@ class Config:
     FRED_MAX_CONVERSATION_MESSAGES = 50
     """Maximum conversation history length for F.R.E.D.'s context."""
 
-    CRAP_MAX_CONVERSATION_MESSAGES = 10
-    """Maximum conversation history for C.R.A.P. memory analysis."""
-
     GATE_MAX_CONVERSATION_MESSAGES = 5
     """Maximum recent history for G.A.T.E. routing analysis."""
 
@@ -579,9 +571,6 @@ class Config:
     # --- Basic Tool Configuration ---
     MAX_TOOL_ITERATIONS = 5
     """Maximum consecutive tool calls in a single reasoning chain."""
-
-    CRAP_MAX_TOOL_ITERATIONS = 3
-    """Maximum tool iterations for C.R.A.P. memory analysis."""
 
     WEB_SEARCH_MAX_RESULTS = 3
     """Maximum web search results per query."""
@@ -1024,9 +1013,6 @@ OLLAMA_BASE_URL = Config.OLLAMA_BASE_URL
 LLM_GENERATION_OPTIONS = Config.LLM_GENERATION_OPTIONS
 Instruct_Generation_Options = Config.Instruct_Generation_Options
 
-# Make CRAP_MODEL available for direct import
-CRAP_MODEL = Config.CRAP_OLLAMA_MODEL
-
 # Re-attach prompts and tools to the Config class to maintain the config.VARIABLE access pattern
 config.FRED_SYSTEM_PROMPT = FRED_SYSTEM_PROMPT
 config.GATE_SYSTEM_PROMPT = GATE_SYSTEM_PROMPT
@@ -1046,12 +1032,8 @@ config.REFLEX_USER_PROMPT = REFLEX_USER_PROMPT
 config.SYNAPSE_SYSTEM_PROMPT = SYNAPSE_SYSTEM_PROMPT
 config.VISION_SYSTEM_PROMPT = VISION_SYSTEM_PROMPT
 config.VISION_USER_PROMPT = VISION_USER_PROMPT
-config.CRAP_SYSTEM_PROMPT = CRAP_SYSTEM_PROMPT
-config.CRAP_USER_PROMPT = CRAP_USER_PROMPT
-config.CRAP_MODEL = Config.CRAP_OLLAMA_MODEL
 
 config.MEMORY_TOOLS = MEMORY_TOOLS
-config.CRAP_TOOLS = CRAP_TOOLS
 config.RESEARCH_TOOLS = RESEARCH_TOOLS
 config.AGENT_MANAGEMENT_TOOLS = AGENT_MANAGEMENT_TOOLS
 config.PIPELINE_CONTROL_TOOLS = PIPELINE_CONTROL_TOOLS
