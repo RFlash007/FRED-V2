@@ -429,14 +429,32 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
             model=config.GATE_OLLAMA_MODEL,
             messages=messages,
             options=config.LLM_GENERATION_OPTIONS,
-            format="json"  # Ensure JSON output
+            format="json",  # Ensure JSON output
+            stream=False  # Require full JSON dict, not streaming generator
         )
 
-        response_content = response.get('message', {}).get('content', '').strip()
+        # Defensive guard against null or malformed responses
+        if not response:
+            olliePrint_simple("[G.A.T.E.] Null or empty LLM response – using default routing flags", level='warning')
+            return _get_default_routing_flags()
 
-        print("\n--- G.A.T.E. Raw Routing Response ---")
-        print(response_content)
-        print("-------------------------------------\n")
+        # Ollama client >=0.1.8 returns a dict; older versions return ChatResponse objects
+        if isinstance(response, dict):
+            message_dict = response.get('message')
+        else:
+            # Fallback for ChatResponse-like objects
+            message_dict = getattr(response, 'message', None)
+
+        if not message_dict or not isinstance(message_dict, dict):
+            olliePrint_simple("[G.A.T.E.] LLM response missing 'message' field – using default routing flags", level='warning')
+            return _get_default_routing_flags()
+
+        response_content = message_dict.get('content', '').strip()
+        
+        # Pretty, readable terminal output (colorized via olliePrint_simple)
+        olliePrint_simple("\n┏━━[G.A.T.E.] Raw Routing Response ━━")
+        olliePrint_simple(response_content)
+        olliePrint_simple("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
         
         try:
             routing_flags = json.loads(response_content)

@@ -10,6 +10,7 @@ import uuid
 import subprocess
 import platform
 import glob
+import logging
 # Import only non-memory tools for F.R.E.D.
 from Tools import handle_tool_calls
 
@@ -139,6 +140,15 @@ APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = config.get_db_path(APP_ROOT)
 L3.DB_FILE = DB_PATH
 FRED_CORE_NODE_ID = "FRED_CORE"
+
+# Quiet down Werkzeug/Flask request logs (switch to ERROR)
+try:
+    werkzeug_logger = logging.getLogger('werkzeug')
+    werkzeug_logger.setLevel(logging.ERROR)
+    app.logger.setLevel(logging.ERROR)
+    olliePrint_simple("[LOGGING] Suppressing HTTP request noise (werkzeug -> ERROR)")
+except Exception:
+    pass
 
 def initialize_tts():
     """Initialize TTS engine once during startup."""

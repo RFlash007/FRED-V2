@@ -1,0 +1,52 @@
+{
+  "query": "Any good AI news today?",
+  "timestamp": "2025-08-04T20:37:13.700713",
+  "results": {
+    "query": "Any good AI news today?",
+    "links": [
+      {
+        "url": "https://www.artificialintelligence-news.com",
+        "title": "AI News | Latest AI News, Analysis & Events",
+        "description": "<strong>AI</strong> <strong>News</strong> reports on the latest artificial intelligence <strong>news</strong> and insights. Explore industry trends from the frontline of <strong>AI</strong>.",
+        "score": 0.7988194808750265
+      },
+      {
+        "url": "https://aimagazine.com/",
+        "title": "Home of AI and Artificial Intelligence News | AI Magazine",
+        "description": "The No.1 Magazine, Website, Newsletter &amp; Webinar service covering <strong>AI</strong>, Machine Learning, AR &amp; VR, Data, Technology and <strong>AI</strong> Applications.",
+        "score": 0.7576292261340786
+      },
+      {
+        "url": "https://www.reuters.com/technology/artificial-intelligence/",
+        "title": "Reuters AI News | Latest Headlines and Developments | Reuters",
+        "description": "How Artificial Intelligence is creating the next normal",
+        "score": 0.7561958643208482
+      },
+      {
+        "url": "https://techcrunch.com/category/artificial-intelligence/",
+        "title": "AI News & Artificial Intelligence | TechCrunch",
+        "description": "<strong>News</strong> coverage on artificial intelligence and machine learning tech, the companies building them, and the ethical issues <strong>AI</strong> raises <strong>today</strong>.",
+        "score": 0.7329629382755292
+      },
+      {
+        "url": "https://news.mit.edu/topic/artificial-intelligence2",
+        "title": "Artificial intelligence | MIT News | Massachusetts Institute of Technology",
+        "description": "Displaying 1 - 15 of 1406 <strong>news</strong> articles related to this topic. This new approach could lead to enhanced <strong>AI</strong> models for drug and materials discovery.",
+        "score": 0.6702722458939172
+      }
+    ],
+    "extracted_content": [
+      {
+        "url": "https://aimagazine.com/",
+        "title": "Home of AI and Artificial Intelligence News",
+        "content": "Accenture’s study finds that despite rising investment in Gen AI, only 8% of enterprises have successfully scaled multiple strategic AI initiatives\nBoston Consulting Group has revealed that only half of frontline employees use AI regularly while leaders embrace generative technology for day-to-day work\nCrowdStrike’s 2025 Threat Hunting Report says that evolving cybersecurity threats have intensified from AI adoption, offering insights for enterprises\nSamsung secures a US$16.5bn contract to manufacture advanced AI semiconductor chips for Tesla, in the race for next-generation AI hardware capabilities\nInterviews\nDC BLOX’s community-focused strategy and AI-ready infrastructure is driving data centre growth in the southeastern United States\nBob Hackney, CTO at PerfectServe, leverages military focus and cloud expertise to drive AI-powered healthcare innovation and smarter clinical workflows\n“Our core mission is to send the right message to the right caregiver at the right time”\nRockwell Automation uses AI to drive sustainability across global manufacturing, achieving reduced emissions, waste and optimised resource use\nThe Miami Marlins are pioneering the use of AI and ML in Major League Baseball, improving player performance, fan engagement and business success\nGlobal lubricant brand Castrol is using its expertise to pivot towards immersion cooling technology solutions for data centres handling increased AI deman\nDC BLOX’s community-focused strategy and AI-ready infrastructure is driving data centre growth in the southeastern United States\nBob Hackney, CTO at PerfectServe, leverages military focus and cloud expertise to drive AI-powered healthcare innovation and smarter clinical workflows\nRockwell Automation uses AI to drive sustainability across global manufacturing, achieving reduced emissions, waste and optimised resource use\nThe Miami Marlins are pioneering the use of AI and ML in Major League Baseball, improving player performance, fan engagement and business success\nGlobal lubricant brand Castrol is using its expertise to pivot towards immersion cooling technology solutions for data centres handling increased AI deman\nTop 10\nAI is evolving HR operations worldwide, boosting productivity, enhancing employee experience and leading executives to adapt their strategies\nSupply chain platforms are accelerating global logistics through AI from reducing costs to building resilient supply networks across industries\nArtificial Intelligence\nThe Middle East’s AI economy is growing rapidly, attracting investments from overseas while projects like Stargate set a new bar for tech infrastructure\nMachine Learning\nAs deepfake risks accelerate alongside AI, businesses face fraud, identity theft and financial loss, urging regulation, protection and prevention strategie\nVideos\nAt DTW Ignite 2024 in Copenhagen, AI Magazine speaks exclusively with industry leaders about how AI can be leveraged by the telco industry to fuel progress\nEvents\nJoin us at Marina Bay Sands, Singapore, on 8–9 October 2025 for the leading event dedicated to Big Data & AI professionals!\nJoin leading experts and decision-makers to uncover how cloud and AI infrastructure are reshaping industries and accelerating digital progress\nUnleashing AI Innovation For Decision Makers\nGITEX GLOBAL 2025, marking its 45th edition, stands as the world's largest tech & AI event.\nTechnology\nAI Magazine highlights this week’s top stories, from Mark Zuckerberg’s ‘Personal Superintelligence’ to who’s next singing the EU AI Code of Practice\nAI Applications\nOpenAI introduces Study Mode for ChatGPT, an AI learning feature built to guide students rather than give them the answers as ethical concerns rise",
+        "description": "The No.1 Magazine, Website, Newsletter & Webinar service covering AI, Machine Learning, AR & VR, Data, Technology and AI Applications.",
+        "publish_date": "2025-03-04",
+        "author": ""
+      }
+    ],
+    "summary": "Accenture’s study reveals that despite increased investment in generative AI, only 8% of enterprises have successfully scaled multiple strategic AI initiatives. Boston Consulting Group reports that while leaders are actively using generative AI daily, only half of frontline employees do so regularly. CrowdStrike’s 2025 Threat Hunting Report highlights rising cybersecurity threats linked to AI adoption. Samsung has secured a US$16.5 billion contract to produce advanced AI semiconductor chips for Tesla, underscoring the race for next-generation AI hardware. DC BLOX is expanding data center growth in the southeastern U.S. through community-focused strategy and AI-ready infrastructure. Bob Hackney, CTO at PerfectServe, applies military discipline and cloud expertise to advance AI-driven healthcare solutions with a focus on timely clinical communication. Rockwell Automation uses AI to enhance sustainability by reducing emissions and waste across manufacturing operations. The Miami Marlins are leveraging AI and machine learning to improve player performance, fan engagement, and business outcomes. Castrol is shifting toward immersion cooling technology for data centers amid rising demand from AI workloads.\n\nhttps://aimagazine.com/",
+    "search_priority": "quick",
+    "mode": "auto"
+  }
+}
