@@ -12,6 +12,7 @@ import trafilatura
 from datetime import datetime
 
 import config
+from ollie_print import olliePrint_simple
 from ollama_manager import OllamaConnectionManager
 from Tools import search_brave, search_searchapi  # Import existing search functions
 
@@ -84,7 +85,7 @@ def gather_links(query: str, max_results: int = 5) -> List[Dict[str, str]]:
         if brave_results and isinstance(brave_results, dict):
             _add_items(brave_results.get("web", []))
     except Exception as e:
-        print(f"Brave search failed: {e}")
+        olliePrint_simple(f"[WEB_SEARCH] Brave search failed: {e}", level='warning')
 
     # --- Fallback: SearchAPI --------------------------------------------------
     if len(all_results) < max_results:
@@ -93,7 +94,7 @@ def gather_links(query: str, max_results: int = 5) -> List[Dict[str, str]]:
             if searchapi_results and isinstance(searchapi_results, dict):
                 _add_items(searchapi_results.get("web", []))
         except Exception as e:
-            print(f"SearchAPI fallback failed: {e}")
+            olliePrint_simple(f"[WEB_SEARCH] SearchAPI fallback failed: {e}", level='warning')
 
     return all_results[:max_results]
 
@@ -149,7 +150,7 @@ def extract_page_content(url: str) -> Optional[Dict[str, str]]:
         return result
         
     except Exception as e:
-        print(f"Failed to extract content from {url}: {e}")
+        olliePrint_simple(f"[WEB_SEARCH] Failed to extract content from {url}: {e}", level='error')
         return None
 
 
@@ -195,7 +196,10 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
                     'mode': mode
                 }
         except Exception as e:
-            print(f"[WARNING] Agenda enqueue failed: {e}; continuing with quick search fallback")
+            olliePrint_simple(
+                f"[WEB_SEARCH] Agenda enqueue failed: {e}; continuing with quick search fallback",
+                level='warning'
+            )
         # If enqueue fails, continue with quick search fallback
     
     try:
@@ -286,7 +290,7 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
         }
         
     except Exception as e:
-        print(f"Intelligent search failed: {e}")
+        olliePrint_simple(f"[WEB_SEARCH] Intelligent search failed: {e}", level='error')
         return {
             'query': query,
             'links': [],
@@ -410,5 +414,5 @@ def calculate_relevance_score(query: str, title: str) -> float:
         return max(0.0, cosine_sim)
 
     except Exception as e:
-        print(f"Relevance calculation failed: {e}")
+        olliePrint_simple(f"[WEB_SEARCH] Relevance calculation failed: {e}", level='error')
         return 0.0
