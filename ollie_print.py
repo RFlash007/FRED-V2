@@ -10,6 +10,7 @@ with graceful degradation for various terminal environments.
 import os
 import sys
 import platform
+import re
 from datetime import datetime
 from typing import Optional, Dict, Any
 
@@ -490,14 +491,39 @@ def olliePrint_concise(message: Any, level: str = 'info', module: Optional[str] 
 _last_model_io: Dict[str, Dict[str, Any]] = {}
 
 
+def _clean_text(text: str) -> str:
+    """Collapse whitespace and ensure single-line output."""
+    return re.sub(r"\s+", " ", str(text)).strip()
+
+
+def _format_inputs(inputs: Any) -> str:
+    """Return only the most recent user message from an Ollama messages list."""
+    if isinstance(inputs, list):
+        for message in reversed(inputs):
+            if isinstance(message, dict) and message.get("role") == "user":
+                return _clean_text(message.get("content", ""))
+    return _clean_text(inputs)
+
+
+def _format_outputs(outputs: Any) -> str:
+    """Hide large embeddings and ensure concise model outputs."""
+    if isinstance(outputs, dict) and "embedding" in outputs:
+        embedding = outputs["embedding"]
+        if isinstance(embedding, (list, tuple)):
+            return f"[{len(embedding)}-dimensional embedding]"
+    if isinstance(outputs, (list, tuple)) and all(isinstance(x, (int, float)) for x in outputs):
+        return f"[{len(outputs)}-dimensional vector]"
+    return _clean_text(outputs)
+
+
 def log_model_io(model: str, inputs: Any, outputs: Any) -> None:
-    """Log model inputs and outputs with deduplication"""
+    """Log model inputs and outputs with deduplication and clean formatting."""
     entry = {"in": inputs, "out": outputs}
     if _last_model_io.get(model) == entry:
         return
     _last_model_io[model] = entry
-    olliePrint_concise(f"INPUT: {inputs}", module=model)
-    olliePrint_concise(f"OUTPUT: {outputs}", module=model)
+    olliePrint_concise(f"INPUT: {_format_inputs(inputs)}", module=model)
+    olliePrint_concise(f"OUTPUT: {_format_outputs(outputs)}", module=model)
 
 # === Testing Function ===
 if __name__ == "__main__":

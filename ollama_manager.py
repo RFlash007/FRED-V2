@@ -11,6 +11,17 @@ except ImportError:
         print(f"[{level.upper()}] {msg}")
 
     def log_model_io(model, inputs, outputs):
+        if isinstance(inputs, list):
+            for m in reversed(inputs):
+                if isinstance(m, dict) and m.get('role') == 'user':
+                    inputs = m.get('content', '')
+                    break
+        if isinstance(outputs, dict) and 'embedding' in outputs:
+            emb = outputs['embedding']
+            if isinstance(emb, (list, tuple)):
+                outputs = f"[{len(emb)}-dimensional embedding]"
+        elif isinstance(outputs, (list, tuple)) and all(isinstance(x, (int, float)) for x in outputs):
+            outputs = f"[{len(outputs)}-dimensional vector]"
         print(f"[MODEL {model} INPUT]: {inputs}")
         print(f"[MODEL {model} OUTPUT]: {outputs}")
 
