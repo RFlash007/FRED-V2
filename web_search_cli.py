@@ -16,6 +16,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 import config as cfg_module
+from ollie_print import olliePrint_simple
 
 # Configure logging
 logging.basicConfig(
@@ -102,20 +103,20 @@ def main() -> None:
         results = run_search(query)
         
         # Print summary
-        print("\n=== Gist Summary ===\n")
+        olliePrint_simple("=== Gist Summary ===")
         summary = results.get("summary", "No summary generated.")
-        print(summary)
-        
+        olliePrint_simple(summary)
+
         # Print top links with ranking
         links = results.get("links", [])
         if links:
-            print("\n=== Top Links ===\n")
+            olliePrint_simple("=== Top Links ===")
             for i, link in enumerate(links, 1):
                 title = link.get("title", "No title")
                 url = link.get("url", "")
                 score = link.get("score", link.get("relevance_score", 0))
-                print(f"{i}. {title} (Relevance: {score:.2f})")
-                print(f"   {url}\n")
+                olliePrint_simple(f"{i}. {title} (Relevance: {score:.2f})")
+                olliePrint_simple(f"   {url}")
         
         # Save results to file
         output_file = args.output or save_results_to_file(query, results)

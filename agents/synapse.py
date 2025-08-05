@@ -29,11 +29,12 @@ class SynapseAgent:
         Creates bullet points that read like F.R.E.D.'s fleeting thoughts.
         """
         try:
-            print(f"\n========== [{self.name}] INPUT ==========")
-            print(
-                json.dumps(agent_outputs, indent=2)[:1000]
+            olliePrint_simple(f"========== [{self.name}] INPUT ==========")
+            olliePrint_simple(
+                json.dumps(agent_outputs, indent=2)[:1000],
+                level='debug'
             )  # truncate to avoid huge log
-            print(f"========== [{self.name}] INPUT END =========\n")
+            olliePrint_simple(f"========== [{self.name}] INPUT END =========")
             olliePrint_simple(
                 f"[{self.name}] Synthesizing context from {len(agent_outputs)} agents..."
             )
@@ -42,9 +43,9 @@ class SynapseAgent:
                 agent_outputs, l2_summaries, user_query, visual_context
             )
 
-            print(f"========== [{self.name}] SYNTHESIS PROMPT ==========")
-            print(synthesis_prompt[:2000])
-            print("========== [{self.name}] SYNTHESIS PROMPT END =========\n")
+            olliePrint_simple(f"========== [{self.name}] SYNTHESIS PROMPT ==========")
+            olliePrint_simple(synthesis_prompt[:2000], level='debug')
+            olliePrint_simple(f"========== [{self.name}] SYNTHESIS PROMPT END =========")
             response = ollama_manager.chat_concurrent_safe(
                 model=config.SYNAPSE_OLLAMA_MODEL,
                 messages=[

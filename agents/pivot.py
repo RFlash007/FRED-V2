@@ -67,9 +67,9 @@ class PivotAgent:
                 }
             }]
 
-            print(f"\n--- P.I.V.O.T. Tool Call ---")
-            print(json.dumps(tool_call, indent=2))
-            print(f"----------------------------\n")
+            olliePrint_simple("--- P.I.V.O.T. Tool Call ---", level='debug')
+            olliePrint_simple(json.dumps(tool_call, indent=2), level='debug')
+            olliePrint_simple("----------------------------", level='debug')
             
             results = handle_tool_calls(tool_call)
             

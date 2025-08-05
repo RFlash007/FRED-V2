@@ -72,13 +72,13 @@ Analyze this turn: What new information about Ian or his interests should be sto
         """Execute M.A.D. tool calls (add_memory and add_memory_with_observations)."""
         results = []
         
-        print(f"\n--- M.A.D. Tool Calls ({len(tool_calls)}) ---")
+        olliePrint_simple(f"--- M.A.D. Tool Calls ({len(tool_calls)}) ---", level='debug')
         for tool_call in tool_calls:
             function_name = tool_call.get("function", {}).get("name")
             function_args_str = tool_call.get("function", {}).get("arguments", "{}")
             
-            print(f"[M.A.D.] Calling tool: {function_name}")
-            print(f"[M.A.D.] Arguments: {function_args_str}")
+            olliePrint_simple(f"[M.A.D.] Calling tool: {function_name}", level='debug')
+            olliePrint_simple(f"[M.A.D.] Arguments: {function_args_str}", level='debug')
 
             try:
                 # The arguments are a JSON string, so we need to parse them
@@ -91,7 +91,7 @@ Analyze this turn: What new information about Ian or his interests should be sto
                 else:
                     result = {"success": False, "error": f"Unknown tool: {function_name}"}
                 
-                print(f"[M.A.D.] Tool Result: {result}")
+                olliePrint_simple(f"[M.A.D.] Tool Result: {result}", level='debug')
 
                 results.append({
                     "tool": function_name,
@@ -105,7 +105,7 @@ Analyze this turn: What new information about Ian or his interests should be sto
                     "args": function_args_str, # Log the raw string on failure
                     "result": {"success": False, "error": str(e)}
                 })
-        print("---------------------------\n")
+        olliePrint_simple("---------------------------", level='debug')
         
         return results
 
@@ -164,18 +164,18 @@ Analyze this turn: What new information about Ian or his interests should be sto
             raw_content = response_message.get('content', '')
             tool_calls = response_message.get('tool_calls', [])
 
-            print("\n--- M.A.D. Raw Response ---")
-            print(raw_content)
-            print("---------------------------\n")
+            olliePrint_simple("--- M.A.D. Raw Response ---", level='debug')
+            olliePrint_simple(raw_content, level='debug')
+            olliePrint_simple("---------------------------", level='debug')
             
             # Extract thinking and clean content
             thinking = self._extract_think_content(raw_content)
             clean_content = self._strip_think_tags(raw_content)
 
             if thinking:
-                print("\n--- M.A.D. Thinking ---")
-                print(thinking)
-                print("------------------------\n")
+                olliePrint_simple("--- M.A.D. Thinking ---", level='debug')
+                olliePrint_simple(thinking, level='debug')
+                olliePrint_simple("------------------------", level='debug')
             
             # Add to M.A.D.'s analysis history
             analysis_turn = f"USER: {user_message}\nFRED: {fred_response}"
