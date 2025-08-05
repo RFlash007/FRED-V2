@@ -49,12 +49,12 @@ def main():
                 messages=messages,
                 stream=True,
             )
-            
+
             for chunk in stream:
                 response_piece = chunk['message']['content']
-                sys.stdout.write(response_piece)
-                sys.stdout.flush()
                 full_response += response_piece
+
+            olliePrint_simple(full_response)
 
             messages.append({
                 'role': 'assistant',

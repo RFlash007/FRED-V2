@@ -28,8 +28,9 @@ if PROJECT_ROOT not in sys.path:
 
 try:
     from Tools import tool_trigger_sleep_cycle  # noqa: E402
+    from ollie_print import olliePrint_simple  # noqa: E402
 except ImportError as exc:  # pragma: no cover
-    sys.stderr.write(f"[trigger_sleep_cycle] Failed to import Tools: {exc}\n")
+    sys.stderr.write(f"[trigger_sleep_cycle] Failed to import dependencies: {exc}\n")
     sys.exit(1)
 
 
@@ -40,13 +41,13 @@ def main() -> None:  # pragma: no cover
     result = tool_trigger_sleep_cycle()
 
     if not result.get("success", False):
-        sys.stderr.write(f"[trigger_sleep_cycle] Sleep cycle failed: {result.get('error')}\n")
+        olliePrint_simple(f"Sleep cycle failed: {result.get('error')}", level='error')
         sys.exit(1)
 
     # Pretty print summary
-    print("==== F.R.E.D. Sleep Cycle Summary ====")
-    print(result.get("summary", "<no summary provided>"))
-    print("======================================\n")
+    olliePrint_simple("==== F.R.E.D. Sleep Cycle Summary ====")
+    olliePrint_simple(result.get("summary", "<no summary provided>"))
+    olliePrint_simple("======================================\n")
 
     # ------------------------------------------------------------------
     # Determine output filename
@@ -65,9 +66,9 @@ def main() -> None:  # pragma: no cover
     try:
         with open(out_path, "w", encoding="utf-8") as fp:
             json.dump(result, fp, ensure_ascii=False, indent=2, default=str)
-        print(f"[trigger_sleep_cycle] Detailed report written to: {out_path}")
+        olliePrint_simple(f"Detailed report written to: {out_path}")
     except (IOError, OSError) as io_err:  # pragma: no cover
-        sys.stderr.write(f"[trigger_sleep_cycle] Failed to write report: {io_err}\n")
+        olliePrint_simple(f"Failed to write report: {io_err}", level='error')
 
 
 if __name__ == "__main__":

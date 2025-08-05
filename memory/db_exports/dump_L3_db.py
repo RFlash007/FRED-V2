@@ -20,10 +20,16 @@ import sys
 from datetime import datetime
 from contextlib import closing
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, os.pardir, os.pardir))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from ollie_print import olliePrint_simple
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # The L3 DB lives two directories up (memory/memory.db)
 DB_PATH = os.path.join(SCRIPT_DIR, "..", "memory.db")
 
@@ -60,7 +66,7 @@ def main():
     with closing(duckdb.connect(DB_PATH)) as conn:
         tables = conn.execute("SHOW TABLES").fetchall()
         if not tables:
-            print("[dump_L3_db] No tables found in the database.")
+            olliePrint_simple("No tables found in the database.")
             return
 
         db_dump: dict[str, list[dict]] = {}
@@ -70,11 +76,11 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(db_dump, f, ensure_ascii=False, indent=2, default=str)
 
-    print(f"[dump_L3_db] Export complete → {out_path}")
+    olliePrint_simple(f"Export complete → {out_path}")
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print(f"[dump_L3_db] Error: {exc}")
+        olliePrint_simple(f"Error: {exc}", level='error')
