@@ -20,7 +20,23 @@ except Exception:  # Fallback if sklearn is unavailable
         b = np.array(b)
         return np.dot(a, b.T) / (np.linalg.norm(a, axis=1)[:, None] * np.linalg.norm(b, axis=1))
 from config import config, ollama_manager
-from ollie_print import olliePrint_simple
+import logging
+
+class _NoOpLogger:
+    def debug(self, *args, **kwargs):
+        pass
+    def info(self, *args, **kwargs):
+        pass
+    def warning(self, *args, **kwargs):
+        pass
+    def error(self, *args, **kwargs):
+        pass
+
+logger = _NoOpLogger()
+
+# Temporary no-op to maintain compatibility during cleanup; will be removed after sweeping usages
+def olliePrint_simple(*args, **kwargs):
+    return None
 
 # L2 Database path
 L2_DB_PATH = "memory/L2_episodic_cache.db"
@@ -71,8 +87,8 @@ class L2State:
             
             # Fallback trigger: single topic too long
             if current_turn - self.last_topic_start_turn >= config.L2_FALLBACK_TURN_LIMIT:
-                self.last_topic_start_turn = current_turn
-                self.last_l2_creation_turn = current_turn
+                # Do not mutate state here; only signal that a summary should be created
+                # State advancement happens after a successful summary creation
                 return True, "fallback_turn_limit"
             
             # Semantic trigger: topic change detection
@@ -80,8 +96,7 @@ class L2State:
             if rolling_avg is not None:
                 similarity = cosine_similarity([current_embedding], [rolling_avg])[0][0]
                 if similarity < config.L2_SIMILARITY_THRESHOLD:
-                    self.last_topic_start_turn = current_turn
-                    self.last_l2_creation_turn = current_turn
+                    # Do not mutate state here; only signal that a summary should be created
                     return True, f"semantic_change_similarity_{similarity:.3f}"
             
             return False, "no_trigger"
@@ -431,7 +446,10 @@ def process_l2_creation(conversation_history: List[Dict], current_turn: int, use
         if should_create:
             # Find the range of messages to summarize
             # We want to capture messages that still have thinking context (turns 1-3 in F.R.E.D.'s window)
-            chunk_start = max(0, l2_state.last_topic_start_turn - 1)  # Start from previous topic
+            # Use a snapshot of the previous topic window start before advancing state
+            with l2_state._lock:
+                previous_topic_start = l2_state.last_topic_start_turn
+            chunk_start = max(0, previous_topic_start - 1)  # Start from previous topic
             chunk_end = current_turn - 1  # Up to but not including current turn
             
             if chunk_end > chunk_start:
@@ -439,6 +457,11 @@ def process_l2_creation(conversation_history: List[Dict], current_turn: int, use
                 success = create_l2_summary(conversation_history, chunk_start, chunk_end, trigger_reason)
                 if not success:
                     olliePrint_simple(f"L2 summary creation failed for turns {chunk_start + 1}-{chunk_end}", level='warning')
+                else:
+                    # Advance topic window markers only after a successful summary creation
+                    with l2_state._lock:
+                        l2_state.last_topic_start_turn = current_turn
+                        l2_state.last_l2_creation_turn = current_turn
             else:
                 olliePrint_simple(f"L2 trigger: {trigger_reason} - but insufficient message range", level='warning')
         else:
@@ -451,3 +474,48 @@ def process_l2_creation(conversation_history: List[Dict], current_turn: int, use
 
 # Initialize database on import
 init_l2_db() 
+
+def search_l2_memory(query_text: str, limit: int = 5) -> List[Dict]:
+    """Search L2 episodic summaries by semantic similarity.
+
+    Returns a list of dicts with keys: topic, raw_text_summary, user_sentiment,
+    entities_mentioned, turn_start, turn_end, created_at, similarity.
+    """
+    try:
+        query_embedding = get_embedding(query_text)
+        if query_embedding is None:
+            return []
+
+        candidates: List[Dict] = []
+        with duckdb.connect(L2_DB_PATH) as conn:
+            rows = conn.execute(
+                """
+                SELECT topic, raw_text_summary, user_sentiment, entities_mentioned,
+                       created_at, embedding, turn_start, turn_end
+                FROM l2_episodic_summaries
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+
+        for row in rows:
+            topic, summary, sentiment, entities, created_at, emb_list, turn_start, turn_end = row
+            if emb_list:
+                emb = np.array(emb_list, dtype=np.float32)
+                sim = cosine_similarity([query_embedding], [emb])[0][0]
+                if sim >= config.L2_RETRIEVAL_THRESHOLD:
+                    candidates.append({
+                        'topic': topic,
+                        'raw_text_summary': summary,
+                        'user_sentiment': sentiment,
+                        'entities_mentioned': entities if entities is not None else [],
+                        'turn_start': turn_start,
+                        'turn_end': turn_end,
+                        'created_at': created_at,
+                        'similarity': sim,
+                    })
+
+        candidates.sort(key=lambda x: x['similarity'], reverse=True)
+        return candidates[: max(1, int(limit))]
+    except Exception as e:
+        olliePrint_simple(f"Error searching L2 memory: {e}", level='error')
+        return []

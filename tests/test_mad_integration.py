@@ -61,7 +61,7 @@ class TestMadIntegration(unittest.TestCase):
 
         result = self.mad_agent.analyze_turn(user_message, fred_response, [])
         self._assert_memory_created(result)
-        print("PASSED: Explicit memory request generated add_memory tool call.")
+        # PASSED: Explicit memory request generated add_memory tool call
 
     def test_implicit_memory_addition(self):
         """Model should infer memory addition without explicit instruction."""
@@ -70,7 +70,7 @@ class TestMadIntegration(unittest.TestCase):
 
         result = self.mad_agent.analyze_turn(user_message, fred_response, [])
         self._assert_memory_created(result)
-        print("PASSED: Implicit user preference triggered add_memory tool call.")
+        # PASSED: Implicit user preference triggered add_memory tool call
 
 
 if __name__ == '__main__':

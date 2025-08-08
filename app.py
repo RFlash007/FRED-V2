@@ -10,7 +10,6 @@ import uuid
 import subprocess
 import platform
 import glob
-import logging
 # Import only non-memory tools for F.R.E.D.
 from Tools import handle_tool_calls
 
@@ -23,11 +22,8 @@ import traceback
 from stt_service import stt_service
 from vision_service import vision_service
 import threading
-from ollietec_theme import apply_theme, banner
-from ollie_print import olliePrint
-from utils import strip_think_tags, olliePrint_simple
+from utils import strip_think_tags
 
-apply_theme()
 import time
 from config import config, ollama_manager, AGENT_MANAGEMENT_TOOLS
 
@@ -59,16 +55,11 @@ class FREDState:
             if len(self.conversation_history) > config.FRED_MAX_CONVERSATION_MESSAGES:
                 messages_to_remove = len(self.conversation_history) - config.FRED_MAX_CONVERSATION_MESSAGES
                 
-                # Log the cleanup action
-                olliePrint_simple(f"Conversation history cleanup: removing {messages_to_remove} old messages (keeping {config.FRED_MAX_CONVERSATION_MESSAGES})")
-                
                 # Remove oldest messages
                 self.conversation_history = self.conversation_history[messages_to_remove:]
                 
                 # Adjust L2 tracking indices to account for removed messages
                 self.last_analyzed_message_index = max(0, self.last_analyzed_message_index - messages_to_remove)
-                
-                olliePrint_simple(f"Adjusted last_analyzed_message_index to {self.last_analyzed_message_index}")
             
             # Increment turn counter and check L2 trigger
             if role == 'assistant':  # Complete turn (user + assistant)
@@ -86,7 +77,7 @@ class FREDState:
                                     user_msg
                                 )
                         except Exception as e:
-                            olliePrint_simple(f"L2 processing failed: {e}", level='error')
+                            pass
                     
                     threading.Thread(
                         target=delayed_l2_processing,
@@ -135,25 +126,15 @@ app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['SECRET_KEY'] = config.SECRET_KEY
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# Configuration handled via olliePrint; reduce Flask request noise
+# Configuration
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = config.get_db_path(APP_ROOT)
 L3.DB_FILE = DB_PATH
 FRED_CORE_NODE_ID = "FRED_CORE"
 
-# Quiet down Werkzeug/Flask request logs (switch to ERROR)
-try:
-    werkzeug_logger = logging.getLogger('werkzeug')
-    werkzeug_logger.setLevel(logging.ERROR)
-    app.logger.setLevel(logging.ERROR)
-    olliePrint_simple("[LOGGING] Suppressing HTTP request noise (werkzeug -> ERROR)")
-except Exception:
-    pass
-
 def initialize_tts():
     """Initialize TTS engine once during startup."""
     try:
-        olliePrint_simple("Voice synthesis initializing...", 'audio')
         
         device = "cuda" if torch.cuda.is_available() else "cpu"
         
@@ -165,14 +146,10 @@ def initialize_tts():
             if stewie_success:
                 # Validate voice samples
                 sample_stats = validate_stewie_samples()
-                olliePrint_simple(f"[STEWIE-CLONE] Found {sample_stats['total_samples']} voice samples", 'audio')
-                olliePrint_simple(f"[STEWIE-CLONE] Total duration: {sample_stats['total_duration']:.1f}s", 'audio')
-                olliePrint_simple(f"[STEWIE-CLONE] Stewie voice cloning ACTIVE!", 'success')
                 
                 # Set a flag to indicate Stewie voice is available
                 fred_state.stewie_voice_available = True
             else:
-                olliePrint_simple("[STEWIE-CLONE] Failed to initialize - falling back to standard TTS", 'warning')
                 fred_state.stewie_voice_available = False
         else:
             fred_state.stewie_voice_available = False
@@ -181,15 +158,7 @@ def initialize_tts():
         tts_engine = TTS(config.XTTS_MODEL_NAME).to(device)
         fred_state.set_tts_engine(tts_engine)
         
-        if config.STEWIE_VOICE_ENABLED and fred_state.stewie_voice_available:
-            olliePrint_simple(f"Voice synthesis ready on {device.upper()} with STEWIE VOICE CLONING", 'success')
-        elif os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-            olliePrint_simple(f"Voice synthesis ready on {device.upper()} with custom voice", 'audio')
-        else:
-            olliePrint_simple(f"Voice synthesis ready on {device.upper()} with default voice", 'audio')
-            
     except Exception as e:
-        olliePrint_simple(f"Voice synthesis failed: {e}", 'critical')
         fred_state.set_tts_engine(None)
         fred_state.stewie_voice_available = False
 
@@ -208,12 +177,10 @@ def extract_think_content(text):
 def play_audio_locally(audio_file_path):
     """Robust cross-platform audio playback with Windows optimization."""
     if not os.path.exists(audio_file_path):
-        olliePrint_simple(f"[ERROR] Audio file not found: {audio_file_path}")
         return
     
     try:
         system = platform.system().lower()
-        olliePrint_simple(f"[AUDIO] Attempting playback on {system.upper()}: {os.path.basename(audio_file_path)}")
         
         if system == "windows":
             # Windows: Use multiple fallback methods
@@ -224,26 +191,19 @@ def play_audio_locally(audio_file_path):
                     f"(New-Object Media.SoundPlayer '{audio_file_path}').PlaySync()"
                 ]
                 subprocess.run(cmd, check=True, capture_output=True, timeout=None)
-                olliePrint_simple(f"[SUCCESS] Audio playback via PowerShell")
                 return
-            except Exception as e1:
-                olliePrint_simple(f"[FALLBACK] PowerShell failed ({e1}), trying playsound...")
-                
+            except Exception:
                 try:
                     # Method 2: playsound library
                     playsound.playsound(audio_file_path, block=False)
-                    olliePrint_simple(f"[SUCCESS] Audio playback via playsound")
                     return
-                except Exception as e2:
-                    olliePrint_simple(f"[FALLBACK] playsound failed ({e2}), trying system call...")
-                    
+                except Exception:
                     try:
                         # Method 3: Direct system call to start with associated program
                         subprocess.run(['start', '/wait', audio_file_path], shell=True, check=True, timeout=None)
-                        olliePrint_simple(f"[SUCCESS] Audio playback via system start")
                         return
-                    except Exception as e3:
-                        olliePrint_simple(f"[ERROR] All Windows audio methods failed: {e3}")
+                    except Exception:
+                        pass
         
         elif system == "linux":
             # Linux: Try multiple audio players
@@ -251,34 +211,28 @@ def play_audio_locally(audio_file_path):
             for player in players:
                 try:
                     subprocess.run([player, audio_file_path], check=True, capture_output=True, timeout=None)
-                    olliePrint_simple(f"[SUCCESS] Audio playback via {player}")
                     return
                 except (subprocess.CalledProcessError, FileNotFoundError):
                     continue
-            olliePrint_simple(f"[ERROR] No working Linux audio player found")
+            pass
         
         elif system == "darwin":  # macOS
             try:
                 subprocess.run(['afplay', audio_file_path], check=True, capture_output=True, timeout=None)
-                olliePrint_simple(f"[SUCCESS] Audio playback via afplay")
                 return
-            except Exception as e:
-                olliePrint_simple(f"[ERROR] macOS audio playback failed: {e}")
+            except Exception:
+                pass
         
         else:
             # Fallback: Try playsound for unknown systems
             try:
                 playsound.playsound(audio_file_path, block=False)
-                olliePrint_simple(f"[SUCCESS] Audio playback via playsound fallback")
                 return
-            except Exception as e:
-                olliePrint_simple(f"[ERROR] Unknown system audio playback failed: {e}")
+            except Exception:
+                pass
     
-    except Exception as e:
-        olliePrint_simple(f"[CRITICAL] Audio playback system failure: {e}")
-        # Last resort: show audio file location
-        olliePrint_simple(f"[INFO] Generated audio file: {audio_file_path}")
-        olliePrint_simple(f"[INFO] You can manually play this file to hear F.R.E.D.'s response")
+    except Exception:
+        pass
 
 def fred_speak(text, mute_fred=False, target_device='local'):
     """Generate and play speech using TTS.
@@ -289,14 +243,10 @@ def fred_speak(text, mute_fred=False, target_device='local'):
         target_device: 'local' for main computer, 'pi' for Pi glasses, 'all' for both
     """
     if mute_fred:
-        olliePrint_simple(f"[SHELTER-NET] Audio protocols disabled - transmission suppressed: '{text[:50]}...'")
         return
         
     if not text.strip():
-        olliePrint_simple("[SHELTER-NET] Warning: Empty transmission detected - aborting voice synthesis")
         return
-
-    olliePrint_simple(f"[F.R.E.D.] Initializing voice synthesis - Target: {target_device.upper()} | '{text[:50]}...'")
 
     # Cleanup previous file
     if fred_state.last_played_wav and os.path.exists(fred_state.last_played_wav):
@@ -310,19 +260,15 @@ def fred_speak(text, mute_fred=False, target_device='local'):
     output_path = os.path.join(APP_ROOT, f"fred_speech_output_{unique_id}.wav")
 
     try:
-        olliePrint_simple(f"[ARC-MODE] Synthesizing neural voice patterns: {output_path}")
-        
         # Priority 1: Use Stewie voice cloning if available
         if config.STEWIE_VOICE_ENABLED and hasattr(fred_state, 'stewie_voice_available') and fred_state.stewie_voice_available:
             from stewie_voice_clone import generate_stewie_speech
             
-            olliePrint_simple(f"[STEWIE-CLONE] Generating speech with Stewie's voice", 'audio')
             stewie_success = generate_stewie_speech(text, output_path)
             
             if stewie_success:
-                olliePrint_simple(f"[STEWIE-CLONE] ✅ Voice generation successful!", 'success')
+                pass
             else:
-                olliePrint_simple(f"[STEWIE-CLONE] ❌ Failed - falling back to standard TTS", 'warning')
                 # Fall through to standard TTS
                 stewie_success = False
         else:
@@ -332,12 +278,10 @@ def fred_speak(text, mute_fred=False, target_device='local'):
         if not stewie_success:
             tts_engine = fred_state.get_tts_engine()
             if tts_engine is None:
-                olliePrint_simple("TTS engine not initialized, skipping speech generation", 'warning')
                 return
 
             # Check if we have a voice sample for cloning
             if os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-                olliePrint_simple(f"[VOICE-CLONE] Using custom voice sample: {config.FRED_SPEAKER_WAV_PATH}")
                 tts_engine.tts_to_file(
                     text=text,
                     speaker_wav=config.FRED_SPEAKER_WAV_PATH,
@@ -345,7 +289,6 @@ def fred_speak(text, mute_fred=False, target_device='local'):
                     file_path=output_path
                 )
             else:
-                olliePrint_simple(f"[VOICE-DEFAULT] No voice sample found - using default XTTS voice")
                 # Use default XTTS speaker instead of voice cloning
                 tts_engine.tts_to_file(
                     text=text,
@@ -354,21 +297,16 @@ def fred_speak(text, mute_fred=False, target_device='local'):
                     file_path=output_path
                 )
         
-        olliePrint_simple(f"[SUCCESS] Voice synthesis complete - audio matrix ready")
-
         # Route audio based on target device
         if target_device in ['local', 'all']:
             # Play locally on main computer
-            olliePrint_simple(f"[LOCAL-COMM] Broadcasting to main terminal: '{text[:50]}...'")
             play_audio_locally(output_path)
 
         if target_device in ['pi', 'all']:
             # Send audio to Pi glasses
-            olliePrint_simple(f"[TRANSMISSION] Routing audio to ArmLink interface...")
             send_audio_to_pi(output_path, text)
 
         if target_device not in ['local', 'pi', 'all']:
-            olliePrint_simple(f"[ERROR] Unknown device '{target_device}' - defaulting to local broadcast")
             play_audio_locally(output_path)
 
         # Schedule cleanup after a delay
@@ -377,7 +315,6 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             try:
                 if os.path.exists(output_path):
                     os.remove(output_path)
-                    olliePrint_simple(f"[CLEANUP] Voice file purged from memory banks")
             except Exception:
                 pass
 
@@ -388,31 +325,21 @@ def fred_speak(text, mute_fred=False, target_device='local'):
             pass
 
     except Exception as e:
-        olliePrint_simple(f"TTS error: {e}", level='error')
-        olliePrint_simple(f"[CRITICAL] Voice synthesis failure: {e}")
+        pass
 
 def send_audio_to_pi(audio_file_path, text):
     """Send audio file to connected Pi clients."""
     try:
         import base64
         
-        olliePrint_simple(f"[ARMLINK] Initiating field comm protocol...")
-        olliePrint_simple(f"   Audio matrix: {audio_file_path}")
-        olliePrint_simple(f"   Message: '{text[:50]}...'")
-        
         # Check if file exists
         if not os.path.exists(audio_file_path):
-            olliePrint_simple(f"[ERROR] Audio matrix not found in data banks: {audio_file_path}")
             return
         
         # Read audio file and encode as base64
         with open(audio_file_path, 'rb') as f:
             audio_data = f.read()
-        
-        olliePrint_simple(f"   Data size: {len(audio_data)} bytes")
-        
         audio_b64 = base64.b64encode(audio_data).decode('utf-8')
-        olliePrint_simple(f"   Encoded for transmission: {len(audio_b64)} chars")
         
         # Send via SocketIO to WebRTC server
         payload = {
@@ -421,17 +348,10 @@ def send_audio_to_pi(audio_file_path, text):
             'format': 'wav'
         }
         
-        olliePrint_simple(f"   Broadcasting via secure channel...")
         socketio.emit('fred_audio', payload)
         
-        olliePrint_simple(f"[SUCCESS] Transmission complete - audio routed to field operative")
-        olliePrint_simple(f"   Payload: {len(audio_data)} bytes for '{text[:30]}...')")
-        
     except Exception as e:
-        olliePrint_simple(f"Error sending audio to Pi: {e}", level='error')
-        olliePrint_simple(f"[CRITICAL] ArmLink transmission failure: {e}")
-        import traceback
-        traceback.print_exc()
+        pass
 
 def cleanup_wav_files():
     """Clean up old WAV files."""
@@ -445,9 +365,8 @@ def cleanup_wav_files():
 # Initialize databases
 try:
     L3.init_db()
-    olliePrint_simple(f"[MAINFRAME] Memory systems (L2/L3) & Agenda initialized at: {DB_PATH}")
 except Exception as e:
-    olliePrint_simple(f"[ERROR] Database initialization failed: {e}", level='error')
+    pass
 
 if not os.path.exists(app.static_folder):
     os.makedirs(app.static_folder)
@@ -506,7 +425,7 @@ def get_graph():
                 })
     
     except Exception as e:
-        olliePrint_simple(f"Graph generation error: {e}", level='error')
+        pass
     
     return jsonify({"nodes": nodes, "edges": edges})
 
@@ -535,6 +454,25 @@ def chat_endpoint():
             # Add user message to history
             fred_state.add_conversation_turn('user', user_message)
             
+            print("\n" + "="*80)
+            print("🤖 [F.R.E.D.] MAIN AGENT INPUT")
+            print("="*80)
+            print(f"📝 USER MESSAGE: {user_message}")
+            print(f"🔧 MODEL: {model_name}")
+            if from_pi_glasses:
+                print("👓 SOURCE: Pi Glasses")
+            else:
+                print("🖥️ SOURCE: Web Interface")
+            
+            conversation_history = fred_state.get_conversation_history()
+            if conversation_history:
+                print(f"\n📚 FULL CONVERSATION HISTORY ({len(conversation_history)} turns):")
+                for i, turn in enumerate(conversation_history):
+                    print(f"  Turn {i+1} [{turn['role']}]: {turn['content']}")
+            else:
+                print("\n📚 CONVERSATION HISTORY: Empty")
+            print("="*80 + "\n")
+            
             # CENTRALIZED CONNECTION: All calls use ollama_manager.chat_concurrent_safe() directly
             # No need to store client reference
 
@@ -543,6 +481,8 @@ def chat_endpoint():
             if from_pi_glasses:
                 from vision_service import vision_service
                 visual_context = vision_service.get_current_visual_context()
+                if visual_context:
+                    print(f"👁️ VISUAL CONTEXT: {len(visual_context)} characters")
 
             # Parallel Agent Execution: G.A.T.E. + M.A.D.
             from memory import gate
@@ -586,9 +526,9 @@ def chat_endpoint():
                             if mad_result.get('success', False):
                                 created_count = len(mad_result.get('created_memories', []))
                                 if created_count > 0:
-                                    olliePrint_simple(f"[M.A.D.] Successfully created {created_count} new memories from previous turn")
+                                    pass
                         except Exception as e:
-                            olliePrint_simple(f"[M.A.D.] Analysis failed: {e}", level='error')
+                            pass
                 
                 return gate_result
             
@@ -622,7 +562,7 @@ SUBCONSCIOUS PROCESSING RESULTS:
                     # Mark as delivered
                     agenda.mark_fred_summaries_delivered(summary_ids)
             except Exception as e:
-                olliePrint_simple(f"Failed to get F.R.E.D. summaries: {e}", level='error')
+                pass
 
             # Format final user message with the retrieved database content
             formatted_input = f"""(USER INPUT)
@@ -634,26 +574,31 @@ SUBCONSCIOUS PROCESSING RESULTS:
             
             assistant_response = ""
             raw_thinking = ""
+            tool_outputs = []  # Ensure defined even if no tools are called
             
             # Tool iteration loop
             sleep_cycle_triggered = False  # Initialize variable
             for iteration in range(max_tool_iterations):
-                response = ollama_manager.chat_concurrent_safe(
-                    host=ollama_base_url,
-                    model=model_name,
-                    messages=messages,
-                    stream=False,
-                    options=config.Instruct_Generation_Options
-                )
+                try:
+                    response = ollama_manager.chat_concurrent_safe(
+                        host=ollama_base_url,
+                        model=model_name,
+                        messages=messages,
+                        stream=False,
+                        options=config.Instruct_Generation_Options
+                    )
+                except Exception as e:
+                    print(f"[SSE] Iteration {iteration+1} chat error: {e}")
+                    print(traceback.format_exc())
+                    yield json.dumps({"type": "error", "content": str(e)}) + '\n'
+                    return
                 
                 response_message = response.get('message', {})
                 raw_content = response_message.get('content', '')
 
                 # Extract and store thinking
                 current_thinking = extract_think_content(raw_content)
-                if current_thinking:
-                    olliePrint_simple(f"[THINKING] Extracted {len(current_thinking)} chars of thinking from iteration {iteration + 1}")
-                    raw_thinking += current_thinking + "\n"
+                raw_thinking += current_thinking + "\n"
                 
                 clean_content = strip_think_tags(raw_content)
                 tool_calls = response_message.get('tool_calls')
@@ -682,11 +627,8 @@ SUBCONSCIOUS PROCESSING RESULTS:
                         yield json.dumps({'response': config.SLEEP_CYCLE_MESSAGE}) + '\n'
                     
                     # Execute tools
-                    olliePrint_simple(f"\n[TOOL CALLS] Model requested {len(tool_calls)} tool(s):")
                     for tc in tool_calls:
                         tool_name = tc.get('function', {}).get('name', 'unknown')
-                        tool_args = tc.get('function', {}).get('arguments', {})
-                        olliePrint_simple(f"[TOOL CALLS] - {tool_name} with args: {tool_args}")
                         if not sleep_cycle_triggered:  # Don't show activity for sleep cycle (already shown)
                             yield json.dumps({
                                 "type": "tool_activity",
@@ -695,30 +637,11 @@ SUBCONSCIOUS PROCESSING RESULTS:
                     
                     try:
                         tool_outputs = handle_tool_calls(tool_calls)
-                        olliePrint_simple(f"[TOOL CALLS] Executed {len(tool_outputs) if tool_outputs else 0} tools successfully")
                     except Exception as e:
-                        olliePrint_simple(f"[TOOL CALLS] Tool execution failed: {e}", level='error')
                         tool_outputs = []
                     
-                    # Print tool results
+                    # Process tool results without printing
                     if tool_outputs:
-                        olliePrint_simple("\n[TOOL RESULTS] Tool execution results:")
-                        olliePrint_simple(f"{'='*50}")
-                        for i, output in enumerate(tool_outputs):
-                            tool_call_id = output.get('tool_call_id', 'unknown')
-                            content = output.get('content', '{}')
-                            olliePrint_simple(f"[TOOL RESULTS] Result {i+1} (ID: {tool_call_id}):")
-                            try:
-                                # Try to format JSON nicely
-                                import json as json_module
-                                parsed = json_module.loads(content)
-                                formatted = json_module.dumps(parsed, indent=2)
-                                olliePrint_simple(formatted)
-                            except:
-                                # If not JSON, print as-is
-                                olliePrint_simple(content)
-                            olliePrint_simple(f"{'-'*30}")
-                        olliePrint_simple(f"{'='*50}\n")
                     
                         
                         # Update user message with tool results (skip for sleep cycle - already handled)
@@ -774,30 +697,36 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             
             # Generate final response if needed
             if not assistant_response:
-                # Use ollama_manager for consistent connection management
-                final_stream = ollama_manager.chat_concurrent_safe(
-                    host=ollama_base_url,
-                    model=model_name,
-                    messages=messages,
-                    stream=True,
-                    options=config.Instruct_Generation_Options
-                )
-                
-                for chunk in final_stream:
-                    content_chunk = chunk.get('message', {}).get('content')
-                    if content_chunk:
-                        # Extract thinking from streaming chunks
-                        chunk_thinking = extract_think_content(content_chunk)
-                        if chunk_thinking:
-                            raw_thinking += chunk_thinking + "\n"
+                try:
+                    # Use ollama_manager for consistent connection management
+                    final_stream = ollama_manager.chat_concurrent_safe(
+                        host=ollama_base_url,
+                        model=model_name,
+                        messages=messages,
+                        stream=True,
+                        options=config.Instruct_Generation_Options
+                    )
+                    
+                    for chunk in final_stream:
+                        content_chunk = chunk.get('message', {}).get('content')
+                        if content_chunk:
+                            # Extract thinking from streaming chunks
+                            chunk_thinking = extract_think_content(content_chunk)
+                            if chunk_thinking:
+                                raw_thinking += chunk_thinking + "\n"
 
-                        clean_chunk = strip_think_tags(content_chunk)
-                        if clean_chunk:
-                            assistant_response += clean_chunk
-                            yield json.dumps({'response': clean_chunk}) + '\n'
+                            clean_chunk = strip_think_tags(content_chunk)
+                            if clean_chunk:
+                                assistant_response += clean_chunk
+                                yield json.dumps({'response': clean_chunk}) + '\n'
 
-                    if chunk.get('done', False):
-                        break
+                        if chunk.get('done', False):
+                            break
+                except Exception as e:
+                    print(f"[SSE] Final streaming error: {e}")
+                    print(traceback.format_exc())
+                    yield json.dumps({"type": "error", "content": str(e)}) + '\n'
+                    return
             else:
                 # Direct response
                 yield json.dumps({'response': assistant_response}) + '\n'
@@ -818,7 +747,6 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         })
     
     except Exception as e:
-        olliePrint_simple(f"Chat error: {e}", level='error')
         if fred_state.get_conversation_history() and fred_state.get_conversation_history()[-1].get('role') == 'user':
             fred_state.clear_conversation_history()
         return jsonify({'error': str(e)}), 500
@@ -906,7 +834,6 @@ def process_transcription(text, from_pi=False):
             else:
                 socketio.emit('error', {'message': 'Failed to process voice command'})
         except Exception as e:
-            olliePrint_simple(f"Voice processing error: {e}", level='error')
             socketio.emit('error', {'message': f'Error: {str(e)}'})
     
     threading.Thread(target=process_voice, daemon=True).start()
@@ -922,7 +849,6 @@ def handle_disconnect():
 
 @socketio.on('webrtc_server_connected')
 def handle_webrtc_server_connect():
-    olliePrint_simple("[BRIDGE] WebRTC communication bridge established")
     emit('status', {'message': 'WebRTC bridge online'})
 
 @socketio.on('start_stt')
@@ -963,22 +889,19 @@ def handle_voice_message(data):
 # --- Main Execution ---
 def run_app():
     """Starts the F.R.E.D. main server using Flask-SocketIO."""
-    olliePrint_simple("[MAINFRAME] F.R.E.D. intelligence core starting...")
     
     # Initialize TTS if not already initialized
     if fred_state.get_tts_engine() is None:
-        olliePrint_simple("[INIT] Initializing voice synthesis systems...")
         initialize_tts()
     
     # Initialize STT if not already initialized  
     if not getattr(stt_service, 'is_initialized', False):
-        olliePrint_simple("[INIT] Initializing speech recognition systems...")
         stt_service.initialize()
     
     try:
         socketio.run(app, host=config.HOST, port=config.PORT, debug=False, use_reloader=False, log_output=False)
     except Exception as e:
-        olliePrint_simple(f"[CRITICAL] Mainframe startup failure: {e}")
+        pass
 
 if __name__ == '__main__':
     cleanup_wav_files()
@@ -986,9 +909,8 @@ if __name__ == '__main__':
     # Check Ollama connection
     try:
         requests.get(config.OLLAMA_BASE_URL, timeout=None)
-        olliePrint_simple(f"[NEURAL-NET] AI model interface connected")
     except:
-        olliePrint_simple("[WARNING] AI model interface not responding", level='warning')
+        pass
     
     # Initialize STT
     stt_service.initialize()

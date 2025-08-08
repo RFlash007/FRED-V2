@@ -1,0 +1,60 @@
+{
+  "query": "raspberry pi webrtc latency",
+  "timestamp": "2025-08-06T00:16:15.478271",
+  "results": {
+    "query": "raspberry pi webrtc latency",
+    "links": [
+      {
+        "url": "https://github.com/TzuHuanTai/RaspberryPi-WebRTC",
+        "title": "GitHub - TzuHuanTai/RaspberryPi-WebRTC: Native WebRTC low-latency P2P video streaming on Raspberry Pi with V4L2 hardware H.264 and OpenH264 software encoding support.",
+        "description": "Turn your Raspberry Pi into a real-time, <strong>~200ms</strong> low-latency WebRTC camera.",
+        "score": 0.7537370026319983
+      },
+      {
+        "url": "https://gektor650.medium.com/comparing-video-stream-latencies-raspberry-pi-5-camera-v3-a8d5dad2f67b",
+        "title": "Raspberry Pi 5 Video Stream Latencies: Comparing UDP, TCP, RTSP, and WebRTC | by Eugene Tkachenko | Medium",
+        "description": "Create a video streaming server on a <strong>Raspberry</strong> <strong>Pi</strong> 5. Find out the best options for a video live stream with low <strong>latency</strong> and pick the best from the list.",
+        "score": 0.7429558425664499
+      },
+      {
+        "url": "https://www.reddit.com/r/raspberry_pi/comments/1ffkyj3/i_built_a_lowlatency_webrtc_live_camera_on_a_pi/",
+        "title": "r/raspberry_pi on Reddit: I Built a Low-Latency WebRTC Live Camera on a Pi Zero 2W with an App!",
+        "description": "So I tried it on a Pi Zero 2W which can also achieve less than a <strong>1-second latency</strong> while recording video simultaneously at 1280x960, however, the temperature reached up to 80°C... The Pi 4 can easily handle more than 3 users watching p2p live broadcasts at the same time.",
+        "score": 0.7290982153919378
+      },
+      {
+        "url": "https://www.hackster.io/news/tzu-huan-tai-s-webrtc-camera-stack-turns-a-raspberry-pi-zero-2-w-into-a-low-latency-streamer-30a49006f181",
+        "title": "Tzu Huan Tai's WebRTC Camera Stack Turns a Raspberry Pi Zero 2 W Into a Low-Latency Streamer - Hackster.io",
+        "description": "Buildable at a low cost, and with optional two-way communication, this Raspberry Pi-powered camera project streams with <strong>sub-1s</strong> latency.",
+        "score": 0.7077791410256266
+      },
+      {
+        "url": "https://www.highvoltagecode.com/post/webrtc-on-raspberry-pi-live-hd-video-and-audio-streaming/",
+        "title": "WebRTC on Raspberry Pi: Live HD Video and Audio Streaming | High Voltage Code",
+        "description": "Today we&#x27;re going to talk about how we can stream low <strong>latency</strong> high resolution live video and audio to a web browser from <strong>Raspberry</strong> <strong>Pi</strong> using <strong>WebRTC</strong>.",
+        "score": 0.7034871513678482
+      }
+    ],
+    "extracted_content": [
+      {
+        "url": "https://github.com/TzuHuanTai/RaspberryPi-WebRTC",
+        "title": "GitHub - TzuHuanTai/RaspberryPi-WebRTC: Native WebRTC low-latency P2P video streaming on Raspberry Pi with V4L2 hardware H.264 and OpenH264 software encoding support.",
+        "content": "Turn your Raspberry Pi into a real-time, ~200ms low-latency WebRTC camera.\n-\nSnapshot/video recording and WebRTC DataChannel messaging\n-\nSupports P2P, SFU broadcasting, and Home Assistant integration\n-\nSignaling options:\nMQTT\nWebSocket\n- picamera.js - SFU signaling & broadcast\nCheck out the tutorial video or follow these steps.\n- Raspberry Pi Zero 2W, 3B, 4B, or 5\n- CSI or USB camera (supports libcamera or V4L2)\nUse Raspberry Pi Imager to flash Lite OS (or full OS) to SD card.\nsudo apt update\nsudo apt install libcamera0.5 libmosquitto1 pulseaudio libavformat59 libswscale6 libprotobuf32\nGet the latest release binary .\nwget https://github.com/TzuHuanTai/RaspberryPi-WebRTC/releases/latest/download/pi-webrtc-v1.1.2_raspios-bookworm-arm64.tar.gz\ntar -xzf pi-webrtc-v1.1.2_raspios-bookworm-arm64.tar.gz\nUse HiveMQ, EMQX, or a self-hosted broker.\nTip\nMQTT lets your Pi camera and client exchange WebRTC connection info. WHEP doesn’t need a broker but requires a public hostname.\n- Open picamera-web, add MQTT settings, and create a\nUID\n. - Run the command on your Pi:\n./pi-webrtc \\ --camera=libcamera:0 \\ --fps=30 \\ --width=1280 \\ --height=960 \\ --use-mqtt \\ --mqtt-host=your.mqtt.cloud \\ --mqtt-port=8883 \\ --mqtt-username=hakunamatata \\ --mqtt-password=Wonderful \\ --uid=your-custom-uid \\ --no-audio \\ --hw-accel # Only Pi Zero 2W, 3B, 4B support hw encoding\nImportant\nRemove --hw-accel\nfor Pi 5 or others without hardware encoder..\n- Broadcasting a Live Stream to 1,000+ Viewers via SFU\n- Using the V4L2 Driver (for USB cameras)\n- Running as a Linux Service\n- Recording\n- Two-way Audio Communication\n- Two-way DataChannel Messaging\n- Stream AI or Any Custom Feed to a Virtual Camera\n- WHEP with Nginx proxy\n- Using the WebRTC Camera in Home Assistant",
+        "description": "Native WebRTC low-latency P2P video streaming on Raspberry Pi with V4L2 hardware H.264 and OpenH264 software encoding support. - TzuHuanTai/RaspberryPi-WebRTC",
+        "publish_date": "2022-05-09",
+        "author": "TzuHuanTai"
+      },
+      {
+        "url": "https://gektor650.medium.com/comparing-video-stream-latencies-raspberry-pi-5-camera-v3-a8d5dad2f67b",
+        "title": "Raspberry Pi 5 Video Stream Latencies: Comparing UDP, TCP, RTSP, and WebRTC",
+        "content": "Member-only story\nRaspberry Pi 5 Video Stream Latencies: Comparing UDP, TCP, RTSP, and WebRTC\nDiscover the best live-streaming options for the Raspberry Pi 5. I will test a video live-stream latency and pick the best from the list.\nMany projects with a Raspberry PI require “eyes” or, in other words, a Camera to control something like a robot or a remote-controlled car.\nIn this article, I will test the latencies of live-streaming a video. Ultimately, we will have a solution with a ~200 ms delay.\nIt’s better to watch live-stream in a video version of the article:\nWhy is it so important to have a zero-latency video stream?\nOf course, it really depends on the task. The latency doesn’t matter if it’s about recording birds outside your window. Or watching a stream of a beautiful waterfall.\nHowever, latency is crucial when piloting an FPV drone, a racing car, or a remote-controlled boxer robot.\nThis article is not about how each particular protocol works and why these delays exist.",
+        "description": "Discover the best live-streaming options for the Raspberry Pi 5. I will test a video live-stream latency and pick the best from the list.",
+        "publish_date": "2024-04-15",
+        "author": "Eugene Tkachenko"
+      }
+    ],
+    "summary": "[Published: 2022-05-09] Raspberry Pi can achieve ~200ms low-latency WebRTC video streaming using native WebRTC with V4L2 hardware H.264 and OpenH264 software encoding. Supports P2P, SFU broadcasting, Home Assistant integration, and two-way audio/data communication. Uses MQTT or WebSocket for signaling; requires Raspberry Pi Zero 2W, 3B, 4B, or 5 with CSI/USB camera support. Hardware acceleration is enabled only on Pi Zero 2W, 3B, and 4B—must remove `--hw-accel` flag for Pi 5. Includes features like snapshot recording, WHEP via Nginx proxy, virtual camera streaming, and running as a Linux service.\nGitHub - TzuHuanTai/RaspberryPi-WebRTC | https://github.com/TzuHuanTai/RaspberryPi-WebRTC\n\n[Published: 2024-04-15] Testing shows that WebRTC delivers low-latency video streaming on Raspberry Pi 5, with a target latency of ~200ms. The article compares UDP, TCP, RTSP, and WebRTC for live-streaming applications, emphasizing the importance of minimal delay in real-time control scenarios like FPV drones, remote-controlled vehicles, or robotics. While protocol details are not explained, WebRTC is positioned as a top contender for achieving low-latency performance.\nMedium | https://gektor650.medium.com/comparing-video-stream-latencies-raspberry-pi-5-camera-v3-a8d5dad2f67b",
+    "search_priority": "quick",
+    "mode": "auto"
+  }
+}

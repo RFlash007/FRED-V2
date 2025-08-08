@@ -6,7 +6,7 @@ import json
 import time
 import os # For potential environment variables later
 import threading
-from ollie_print import olliePrint_simple
+import logging
 from contextlib import contextmanager
 from config import config, ollama_manager # Import the config and connection manager
 from typing import List, Dict, Optional, Tuple, Set, Any
@@ -64,7 +64,21 @@ VALID_REL_TYPES = [
 ]
 
 # --- Logging Setup ---
-# (Replaced standard logging with olliePrint)
+class _NoOpLogger:
+    def debug(self, *args, **kwargs):
+        pass
+    def info(self, *args, **kwargs):
+        pass
+    def warning(self, *args, **kwargs):
+        pass
+    def error(self, *args, **kwargs):
+        pass
+
+logger = _NoOpLogger()
+
+# Temporary no-op to maintain compatibility during cleanup; will be removed after sweeping usages
+def olliePrint_simple(*args, **kwargs):
+    return None
 
 # --- Database Initialization ---
 def init_db():
@@ -344,11 +358,16 @@ Respond with ONLY a JSON object containing:
 
 If no clear relationship exists, use null for relationship_type and low confidence."""
         
-        # Get LLM response
+        # Get LLM response (force JSON and use a minimal system contract)
+        system_msg = "Respond with ONLY a compact JSON object matching the requested schema. No prose."
         response = ollama_manager.chat_concurrent_safe(
             model=LLM_DECISION_MODEL,
-            messages=[{"role": "user", "content": enhanced_prompt}],
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": enhanced_prompt}
+            ],
             stream=False,
+            format="json",
             options=config.LLM_GENERATION_OPTIONS
         )
         
@@ -382,6 +401,19 @@ If no clear relationship exists, use null for relationship_type and low confiden
             }
             
         except json.JSONDecodeError:
+            # As a fallback, attempt to extract a JSON object substring
+            try:
+                import re
+                match = re.search(r"\{[\s\S]*\}", response_text)
+                if match:
+                    analysis = json.loads(match.group(0))
+                    return {
+                        'relationship_type': analysis.get('relationship_type'),
+                        'confidence': float(analysis.get('confidence', 0.0) or 0.0),
+                        'reasoning': analysis.get('reasoning', '')
+                    }
+            except Exception:
+                pass
             olliePrint_simple(f"Failed to parse LLM relationship analysis: {response_text}", level='warning')
             return None
             

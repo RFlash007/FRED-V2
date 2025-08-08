@@ -5,11 +5,11 @@ import time
 from PIL import Image
 import numpy as np
 from config import config, ollama_manager
-from ollietec_theme import apply_theme
-from ollie_print import olliePrint_simple
 from persona_service import persona_service
 
-apply_theme()
+def olliePrint_simple(*args, **kwargs):
+    """No-op printer to preserve runtime without output."""
+    return None
 
 
 class VisionService:
@@ -186,10 +186,10 @@ class VisionService:
                     }]
                 )
                 
-                olliePrint_simple("✅ [QWEN] Model response received", 'success')
+                # Silenced logging: preserve behavior without console output
                 
             except Exception as model_error:
-                olliePrint_simple(f"❌ [QWEN] Model call failed: {model_error}", 'error')
+                # Silenced logging: preserve behavior without console output
                 self.current_scene_description = f"Vision processing failed: {model_error}"
                 return
             
@@ -205,14 +205,11 @@ class VisionService:
             else:
                 self.current_scene_description = raw_response
             
-            # Always show fresh vision analysis
-            olliePrint_simple(f"🔍 [QWEN OUTPUT] {self.current_scene_description}")
-            olliePrint_simple("✅ [VISION] Fresh image processing COMPLETE", 'success')
+            # Silenced logging
             
         except Exception as e:
-            olliePrint_simple(f"Fresh image processing error: {e}", 'error')
-            import traceback
-            traceback.print_exc()
+            # Silenced logging
+            pass
     
     # _process_current_frame method removed - replaced by process_fresh_image for on-demand processing
     

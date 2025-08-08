@@ -7,7 +7,22 @@ from duckduckgo_search import DDGS # Uncommented DuckDuckGo import
 # Import the librarian module
 import memory.L3_memory as L3
 from config import config, ollama_manager
-from ollie_print import olliePrint
+import logging
+
+# No-op logger to fully silence Tools output
+class _NoOpLogger:
+    def debug(self, *args, **kwargs):
+        pass
+    def info(self, *args, **kwargs):
+        pass
+    def warning(self, *args, **kwargs):
+        pass
+    def error(self, *args, **kwargs):
+        pass
+
+logger = _NoOpLogger()
+def olliePrint(*args, **kwargs):
+    return None
 import uuid
 import concurrent.futures
 import threading
@@ -953,7 +968,8 @@ def tool_trigger_sleep_cycle():
         try:
             edge_summary = L3.process_pending_edges(config.SLEEP_CYCLE_L2_CONSOLIDATION_BATCH)
             if isinstance(edge_summary, dict):
-                sleep_summary["edge_processing"] = edge_summary.get("edges_created", 0)
+                # Align with L3.process_pending_edges returned field name
+                sleep_summary["edge_processing"] = edge_summary.get("edges_succeeded_this_run", 0)
         except Exception as e:
             olliePrint(f"Edge processing failed: {e}", level='error')
         

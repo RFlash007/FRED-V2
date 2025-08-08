@@ -12,7 +12,6 @@ import trafilatura
 from datetime import datetime
 
 import config
-from ollie_print import olliePrint_simple
 from ollama_manager import OllamaConnectionManager
 from Tools import search_brave, search_searchapi  # Import existing search functions
 
@@ -85,7 +84,7 @@ def gather_links(query: str, max_results: int = 5) -> List[Dict[str, str]]:
         if brave_results and isinstance(brave_results, dict):
             _add_items(brave_results.get("web", []))
     except Exception as e:
-        olliePrint_simple(f"[WEB_SEARCH] Brave search failed: {e}", level='warning')
+        pass
 
     # --- Fallback: SearchAPI --------------------------------------------------
     if len(all_results) < max_results:
@@ -94,7 +93,7 @@ def gather_links(query: str, max_results: int = 5) -> List[Dict[str, str]]:
             if searchapi_results and isinstance(searchapi_results, dict):
                 _add_items(searchapi_results.get("web", []))
         except Exception as e:
-            olliePrint_simple(f"[WEB_SEARCH] SearchAPI fallback failed: {e}", level='warning')
+            pass
 
     return all_results[:max_results]
 
@@ -150,7 +149,6 @@ def extract_page_content(url: str) -> Optional[Dict[str, str]]:
         return result
         
     except Exception as e:
-        olliePrint_simple(f"[WEB_SEARCH] Failed to extract content from {url}: {e}", level='error')
         return None
 
 
@@ -163,24 +161,23 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
     The function gathers links using the configured search engines and then
     ranks them using :func:`calculate_relevance_score`.  Links with the highest
     semantic similarity between the query and the page title are selected for
-    content extraction.  This avoids the previous LLM-based link analysis and
-    relies solely on embedding similarity.
+    content extraction.
 
     Args:
         query: Search query string
-        search_priority: ``"quick"`` or ``"thorough"``
+        search_priority: ``"quick"``, ``"thorough"``, or ``"research"``
         mode: ``"links_only"``, ``"auto"``, or ``"deep"``
 
     Returns:
         Dictionary with search results and analysis
     """
     # --------------------------------------------------------------
-    # Special handling: in *thorough* mode we enqueue a background
+    # Special handling: in *research* mode we enqueue a background
     # research task in the Agenda System instead of executing it
     # synchronously. Results will surface once the agenda processor
     # completes the task.
     # --------------------------------------------------------------
-    if search_priority == "thorough" and mode != "links_only":
+    if search_priority == "research" and mode != "links_only":
         try:
             import memory.agenda_system as agenda
             research_task = f"Conduct comprehensive web research on: {query}"
@@ -190,17 +187,14 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
                     'query': query,
                     'links': [],
                     'extracted_content': [],
-                    'summary': f"Thorough research queued as Agenda task {task_id}. Results will be provided once ready.",
+                    'summary': f"Deep research queued as Agenda task {task_id}. Results will be provided once ready.",
                     'task_id': task_id,
                     'search_priority': search_priority,
                     'mode': mode
                 }
         except Exception as e:
-            olliePrint_simple(
-                f"[WEB_SEARCH] Agenda enqueue failed: {e}; continuing with quick search fallback",
-                level='warning'
-            )
-        # If enqueue fails, continue with quick search fallback
+            pass
+        # If enqueue fails, continue with thorough search fallback
     
     try:
         # Step 1: Gather initial links
@@ -226,7 +220,12 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
         links = scored_links
 
         # Decide how many links to process based on search_priority
-        max_selected = 2 if search_priority == "quick" else 3
+        if search_priority == "quick":
+            max_selected = 2
+        elif search_priority == "thorough":
+            max_selected = 5
+        else:  # research or fallback
+            max_selected = 4
         selected_urls = [item['url'] for item in links[:max_selected]]
         
         # Step 3: Extract content from selected URLs
@@ -236,47 +235,144 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
             if content:
                 extracted_content.append(content)
         
-        # Step 4: Generate summary using GIST model
+        # Step 4: Process based on search_priority
         if extracted_content:
-            search_results_text = "\n\n".join([
-                f"Title: {item['title']}\nURL: {item['url']}\nContent: {item['content'][:2000]}..."
-                for item in extracted_content
-            ])
+            from prompts import SOURCE_EXTRACT_SYSTEM_PROMPT, SOURCE_EXTRACT_USER_PROMPT, GIST_SYSTEM_PROMPT, GIST_USER_PROMPT
+            from concurrent.futures import ThreadPoolExecutor, as_completed
             
-            from prompts import GIST_SYSTEM_PROMPT, GIST_USER_PROMPT
-            
-            gist_messages = [
-                {"role": "system", "content": GIST_SYSTEM_PROMPT},
-                {"role": "user", "content": GIST_USER_PROMPT.format(
-                    query=query,
-                    search_results=search_results_text
-                )}
-            ]
-            
-            # Call Ollama to generate the summary. The API returns a ``ChatResponse``
-            # (or a plain ``dict`` depending on the client version) which is **not**
-            # directly JSON-serialisable.  Extract the assistant message content so
-            # the returned ``results`` dictionary only contains primitive types.
-            raw_response = ollama_manager.chat_concurrent_safe(
-                model=config.GIST_OLLAMA_MODEL,
-                messages=gist_messages,
-                options=config.Instruct_Generation_Options
-            )
+            # Quick mode: Skip individual summarization, go straight to GIST
+            if search_priority == "quick":
+                # Use raw content directly for GIST synthesis
+                synthesis_text = "\n\n".join([
+                    f"Source: {item['title']}\nURL: {item['url']}\nPublish Date: {item.get('publish_date', 'N/A')}\nContent:\n{item['content'][:2000]}..."  # Truncate for quick processing
+                    for item in extracted_content
+                ])
+                
+                gist_messages = [
+                    {"role": "system", "content": GIST_SYSTEM_PROMPT},
+                    {"role": "user", "content": GIST_USER_PROMPT.format(
+                        query=query,
+                        search_results=synthesis_text
+                    )}
+                ]
 
-            # Attempt to normalise the response into a plain string.  The newest
-            # Python Ollama client returns a ``ChatResponse`` object whose
-            # ``message`` attribute (or key) holds the assistant reply.
-            if isinstance(raw_response, dict):
-                # Official client >=0.1.8 returns a dict
-                message = raw_response.get("message", {}) if isinstance(raw_response.get("message", {}), dict) else {}
-                summary = message.get("content", str(raw_response))
+                raw_response = ollama_manager.chat_concurrent_safe(
+                    model=config.GIST_OLLAMA_MODEL,
+                    messages=gist_messages,
+                    options=config.Instruct_Generation_Options
+                )
+
+                # Normalize response
+                if isinstance(raw_response, dict):
+                    message = raw_response.get("message", {}) if isinstance(raw_response.get("message", {}), dict) else {}
+                    summary = message.get("content", str(raw_response))
+                else:
+                    try:
+                        msg_obj = getattr(raw_response, "message", None)
+                        summary = getattr(msg_obj, "content", str(raw_response))
+                    except Exception:
+                        summary = str(raw_response)
+                        
             else:
-                # Fallback: use ``getattr`` for older/alternative client versions
-                try:
-                    msg_obj = getattr(raw_response, "message", None)
-                    summary = getattr(msg_obj, "content", str(raw_response))
-                except Exception:
-                    summary = str(raw_response)
+                # Thorough mode: Full two-stage processing with individual source summarization
+                # Stage 1: Extract high-density information from each source in parallel
+                
+                def extract_single_source(item, query_text):
+                    """Extract information from a single source."""
+                    try:
+                        extract_messages = [
+                            {"role": "system", "content": SOURCE_EXTRACT_SYSTEM_PROMPT},
+                            {"role": "user", "content": SOURCE_EXTRACT_USER_PROMPT.format(
+                                query=query_text,
+                                title=item['title'],
+                                url=item['url'],
+                                publish_date=item.get('publish_date', 'N/A'),
+                                content=item['content']  # Full content, no truncation
+                            )}
+                        ]
+                        
+                        extract_response = ollama_manager.chat_concurrent_safe(
+                            model=config.GIST_OLLAMA_MODEL,
+                            messages=extract_messages,
+                            options=config.Instruct_Generation_Options
+                        )
+                        
+                        # Extract the response content
+                        if isinstance(extract_response, dict):
+                            message = extract_response.get("message", {}) if isinstance(extract_response.get("message", {}), dict) else {}
+                            extract_content = message.get("content", str(extract_response))
+                        else:
+                            try:
+                                msg_obj = getattr(extract_response, "message", None)
+                                extract_content = getattr(msg_obj, "content", str(extract_response))
+                            except Exception:
+                                extract_content = str(extract_response)
+                        
+                        return {
+                            'url': item['url'],
+                            'title': item['title'],
+                            'publish_date': item.get('publish_date', 'N/A'),
+                            'extract': extract_content
+                        }
+                    except Exception as e:
+                        return {
+                            'url': item.get('url', 'Unknown'),
+                            'title': item.get('title', 'Unknown'),
+                            'publish_date': item.get('publish_date', 'N/A'),
+                            'extract': f"Extraction failed: {str(e)}"
+                        }
+            
+            # Process all sources in parallel
+            source_extracts = []
+            with ThreadPoolExecutor(max_workers=min(len(extracted_content), 3)) as executor:
+                # Submit all extraction tasks
+                futures = {executor.submit(extract_single_source, item, query): item for item in extracted_content}
+                
+                # Collect results as they complete
+                for future in as_completed(futures):
+                    try:
+                        result = future.result()
+                        source_extracts.append(result)
+                    except Exception as e:
+                        # Fallback for failed extractions
+                        item = futures[future]
+                        source_extracts.append({
+                            'url': item.get('url', 'Unknown'),
+                            'title': item.get('title', 'Unknown'),
+                            'publish_date': item.get('publish_date', 'N/A'),
+                            'extract': f"Extraction failed: {str(e)}"
+                        })
+            
+                # Stage 2: Synthesize extracted information using GIST
+                synthesis_text = "\n\n".join([
+                    f"Source: {extract['title']}\nURL: {extract['url']}\nPublish Date: {extract['publish_date']}\nExtracted Information:\n{extract['extract']}"
+                    for extract in source_extracts
+                ])
+                
+                gist_messages = [
+                    {"role": "system", "content": GIST_SYSTEM_PROMPT},
+                    {"role": "user", "content": GIST_USER_PROMPT.format(
+                        query=query,
+                        search_results=synthesis_text
+                    )}
+                ]
+
+                raw_response = ollama_manager.chat_concurrent_safe(
+                    model=config.GIST_OLLAMA_MODEL,
+                    messages=gist_messages,
+                    options=config.Instruct_Generation_Options
+                )
+
+                # Attempt to normalise the response into a plain string.
+                if isinstance(raw_response, dict):
+                    message = raw_response.get("message", {}) if isinstance(raw_response.get("message", {}), dict) else {}
+                    summary = message.get("content", str(raw_response))
+                else:
+                    try:
+                        msg_obj = getattr(raw_response, "message", None)
+                        summary = getattr(msg_obj, "content", str(raw_response))
+                    except Exception:
+                        summary = str(raw_response)
         else:
             summary = "No content could be extracted from the search results."
         
@@ -290,7 +386,6 @@ def intelligent_search(query: str, search_priority: str = "quick", mode: str = "
         }
         
     except Exception as e:
-        olliePrint_simple(f"[WEB_SEARCH] Intelligent search failed: {e}", level='error')
         return {
             'query': query,
             'links': [],
@@ -414,5 +509,4 @@ def calculate_relevance_score(query: str, title: str) -> float:
         return max(0.0, cosine_sim)
 
     except Exception as e:
-        olliePrint_simple(f"[WEB_SEARCH] Relevance calculation failed: {e}", level='error')
         return 0.0

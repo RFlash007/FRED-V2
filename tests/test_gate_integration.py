@@ -45,7 +45,7 @@ class TestGateIntegration(unittest.TestCase):
         It makes a REAL network call to the Ollama model to test the G.A.T.E. agent.
         Ensure the model is running and configured correctly before executing.
         """
-        print("\nRunning: test_run_gate_analysis_with_real_model")
+        # Test running silently
         # Arrange
         # Use a real AgentDispatcher but mock the method that gets called
         agent_dispatcher = AgentDispatcher()
@@ -71,19 +71,19 @@ class TestGateIntegration(unittest.TestCase):
         self.assertIn('routing_flags', call_kwargs)
         routing_flags = call_kwargs['routing_flags']
 
-        print(f"--> Routing flags from real model: {routing_flags}")
+        # Routing flags captured silently
 
         # The primary assertion: did the model correctly flag a web search?
         self.assertTrue(routing_flags.get('web_search_strategy', {}).get('needed', False),
                         "The real model failed to flag a web search as needed.")
 
-        print("\nIntegration Test Passed: The real AI model correctly triggered a web search route.")
-        print(f"Final content received: {final_content}")
+        # Integration test passed silently
+        # Final content received silently
 
     @patch('memory.gate.L2.query_l2_context')
     def test_gate_analysis_implicit_web_search(self, mock_l2_query):
         """Implicit phrasing should also trigger web search."""
-        print("\nRunning: test_gate_analysis_implicit_web_search")
+        # Test running silently
         agent_dispatcher = AgentDispatcher()
         agent_dispatcher.dispatch_agents = MagicMock(return_value="Dispatcher called (implicit web search)")
         mock_l2_query.return_value = "No relevant context."
@@ -91,14 +91,14 @@ class TestGateIntegration(unittest.TestCase):
         gate.run_gate_analysis(user_message, [], agent_dispatcher)
         self.assertTrue(agent_dispatcher.dispatch_agents.called, "Dispatcher not called for implicit web search")
         routing_flags = agent_dispatcher.dispatch_agents.call_args.kwargs['routing_flags']
-        print(f"--> Routing flags (implicit web search): {routing_flags}")
+        # Routing flags captured silently
         self.assertTrue(routing_flags.get('web_search_strategy', {}).get('needed', False),
                         "Model failed to flag web search for implicit query")
 
     @patch('memory.gate.L2.query_l2_context')
     def test_gate_analysis_memory_only_implicit(self, mock_l2_query):
         """Implicit memory retrieval should trigger memory flag with no web search."""
-        print("\nRunning: test_gate_analysis_memory_only_implicit")
+        # Test running silently
         agent_dispatcher = AgentDispatcher()
         agent_dispatcher.dispatch_agents = MagicMock(return_value="Dispatcher called (implicit memory)")
         mock_l2_query.return_value = "No relevant context."
@@ -106,7 +106,7 @@ class TestGateIntegration(unittest.TestCase):
         gate.run_gate_analysis(user_message, [], agent_dispatcher)
         self.assertTrue(agent_dispatcher.dispatch_agents.called, "Dispatcher not called for implicit memory query")
         routing_flags = agent_dispatcher.dispatch_agents.call_args.kwargs['routing_flags']
-        print(f"--> Routing flags (implicit memory): {routing_flags}")
+        # Routing flags captured silently
         self.assertTrue(routing_flags.get('needs_memory', False), "Model failed to flag needs_memory for implicit memory query")
         # New assertion: Ensure the G.A.T.E. agent provides or defaults a valid memory_search_query
         memory_search_query = routing_flags.get('memory_search_query') or user_message

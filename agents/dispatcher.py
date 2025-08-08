@@ -8,12 +8,24 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List, Optional, Tuple, Callable
-from ollie_print import olliePrint_simple
 from config import config
 
 from .pivot import PivotAgent
 from .synapse import SynapseAgent
 
+
+# No-op logger to disable all logging output in this module
+class _NoOpLogger:
+    def debug(self, *args, **kwargs):
+        pass
+    def info(self, *args, **kwargs):
+        pass
+    def warning(self, *args, **kwargs):
+        pass
+    def error(self, *args, **kwargs):
+        pass
+
+logger = _NoOpLogger()
 
 class AgentDispatcher:
     """Manages parallel execution of FRED agents."""
@@ -23,7 +35,7 @@ class AgentDispatcher:
         self.timeout_seconds = 30  # Agent timeout
 
         # Remove persistent agent instances - create them per-request instead
-        olliePrint_simple(
+        logger.info(
             f"[DISPATCHER] Initialized, max concurrent: {self.max_concurrent}"
         )
 
@@ -57,7 +69,7 @@ class AgentDispatcher:
             Formatted NEURAL PROCESSING CORE content
         """
         try:
-            olliePrint_simple(
+            logger.info(
                 f"[DISPATCHER] Dispatching agents for flags: {routing_flags}"
             )
 
@@ -71,19 +83,19 @@ class AgentDispatcher:
             if agent_tasks:
                 agent_outputs = self._execute_agents_parallel(agent_tasks)
             else:
-                olliePrint_simple(
+                logger.info(
                     "[DISPATCHER] No agent tasks scheduled (memory-only request)"
                 )
 
             # Inject memory context prepared by G.A.T.E. directly (new pathway)
             if memory_context:
                 agent_outputs["memory"] = {"memories": memory_context}
-                olliePrint_simple(
+                logger.debug(
                     "[DISPATCHER] Injected memory_context into agent_outputs"
                 )
             elif not agent_tasks:
                 # If still no context or agents, fallback
-                olliePrint_simple(
+                logger.warning(
                     "[DISPATCHER] Neither agents nor memory context provided. Using fallback"
                 )
                 return self._generate_fallback_database(user_message, visual_context)
@@ -105,7 +117,7 @@ class AgentDispatcher:
             return synapse_result
 
         except Exception as e:
-            olliePrint_simple(f"[DISPATCHER] Critical error: {e}", level="error")
+            logger.error(f"[DISPATCHER] Critical error: {e}")
             return self._generate_fallback_database(user_message, visual_context)
 
     def _plan_agent_execution(
@@ -143,19 +155,19 @@ class AgentDispatcher:
         if self.max_concurrent == 1:
             for agent_name, task_func in agent_tasks:
                 try:
-                    olliePrint_simple(f"[DISPATCHER] Running {agent_name}...")
+                    logger.info(f"[DISPATCHER] Running {agent_name}...")
                     start_time = time.time()
                     result = task_func()
                     duration = time.time() - start_time
 
                     agent_outputs[agent_name] = result
-                    olliePrint_simple(
+                    logger.info(
                         f"[DISPATCHER] {agent_name} completed in {duration:.2f}s"
                     )
 
                 except Exception as e:
-                    olliePrint_simple(
-                        f"[DISPATCHER] {agent_name} failed: {e}", level="error"
+                    logger.error(
+                        f"[DISPATCHER] {agent_name} failed: {e}"
                     )
                     agent_outputs[agent_name] = {"error": str(e)}
         else:
@@ -172,10 +184,10 @@ class AgentDispatcher:
                     try:
                         result = future.result()
                         agent_outputs[agent_name] = result
-                        olliePrint_simple(f"[DISPATCHER] {agent_name} completed")
+                        logger.info(f"[DISPATCHER] {agent_name} completed")
                     except Exception as e:
-                        olliePrint_simple(
-                            f"[DISPATCHER] {agent_name} failed: {e}", level="error"
+                        logger.error(
+                            f"[DISPATCHER] {agent_name} failed: {e}"
                         )
                         agent_outputs[agent_name] = {
                             "error": config.AGENT_ERRORS.get(
@@ -223,7 +235,7 @@ class AgentDispatcher:
             return []
 
         except Exception as e:
-            olliePrint_simple(f"[DISPATCHER] L2 context error: {e}", level="error")
+            logger.error(f"[DISPATCHER] L2 context error: {e}")
             return []
 
     def _generate_fallback_database(

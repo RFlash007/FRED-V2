@@ -1,0 +1,60 @@
+{
+  "query": "latest developments in artificial intelligence 2024",
+  "timestamp": "2025-08-05T22:14:21.992896",
+  "results": {
+    "query": "latest developments in artificial intelligence 2024",
+    "links": [
+      {
+        "url": "https://techcrunch.com/category/artificial-intelligence/",
+        "title": "AI News & Artificial Intelligence | TechCrunch",
+        "description": "Read the <strong>latest</strong> <strong>on</strong> <strong>artificial</strong> <strong>intelligence</strong> and machine learning tech, the companies that are building them, and the ethical issues AI raises today.",
+        "score": 0.0
+      },
+      {
+        "url": "https://www.theguardian.com/technology/artificialintelligenceai",
+        "title": "Artificial intelligence (AI) | The Guardian",
+        "description": "<strong>Latest</strong> news, sport, business, comment, analysis and reviews from the Guardian, the world&#x27;s leading liberal voice",
+        "score": 0.0
+      },
+      {
+        "url": "https://www.reuters.com/technology/artificial-intelligence/",
+        "title": "Reuters AI News | Latest Headlines and Developments | Reuters",
+        "description": "How <strong>Artificial</strong> <strong>Intelligence</strong> is creating the next normal",
+        "score": 0.0
+      },
+      {
+        "url": "https://news.mit.edu/topic/artificial-intelligence2",
+        "title": "Artificial intelligence | MIT News | Massachusetts Institute of Technology",
+        "description": "<strong>Neural Jacobian Fields</strong>, developed by MIT CSAIL researchers, can learn to control any robot from a single camera, without any other sensors.",
+        "score": 0.0
+      },
+      {
+        "url": "https://www.sciencedaily.com/news/computers_math/artificial_intelligence/",
+        "title": "Artificial Intelligence News -- ScienceDaily",
+        "description": "May 14, 2025  <strong>A new study outlines how artificial intelligence-powered handwriting analysis may serve as an early detection tool for dyslexia and dysgraphia among young</strong> ... ... May 14, 2025  Scientists inspired by the octopus&#x27;s nervous system have developed a robot that can decide how to ...",
+        "score": 0.0
+      }
+    ],
+    "extracted_content": [
+      {
+        "url": "https://techcrunch.com/category/artificial-intelligence/",
+        "title": "AI News & Artificial Intelligence | TechCrunch",
+        "content": "AI\nNews coverage on artificial intelligence and machine learning tech, the companies building them, and the ethical issues AI raises today. This encompasses generative AI, including large language models, text-to-image and text-to-video models; speech recognition and generation; and predictive analytics.",
+        "description": "Read the latest on artificial intelligence and machine learning tech, the companies that are building them, and the ethical issues AI raises today.",
+        "publish_date": "2025-08-01",
+        "author": "Marina Temkin"
+      },
+      {
+        "url": "https://www.theguardian.com/technology/artificialintelligenceai",
+        "title": "Artificial intelligence (AI)",
+        "content": "Artificial intelligence (AI)\nNews Corp warns Trump AI is pillaging contents of The Art of the Deal\nLib Dems call for urgent regulation of YouTube ads after wave of scams\nOpenAI takes on Meta and DeepSeek with free and customisable AI models\nOpenAI stops ChatGPT from telling people to break up with partners\n‘We didn’t vote for ChatGPT’: Swedish PM under fire for using AI in role\nGoogle says its new ‘world model’ could train AI robots in virtual warehouses\nShould big tech be allowed to mine Australians’ text and data to train AI? The Productivity Commission is considering it\nJim Acosta interviews ‘made-up’ AI avatar of Parkland victim Joaquin Oliver\nThe G2 interview\nDemis Hassabis on our AI future: ‘It’ll be 10 times bigger than the Industrial Revolution – and maybe 10 times faster’\nThe modern mind\nUsing Generative AI for therapy might feel like a lifeline – but there’s danger in seeking certainty in a chatbotCarly DoberBreakthrough\nWhat will the AI revolution mean for the global south?Krystal Maughan\nAustralia and the AI revolution – turning algorithms into opportunities\nJim ChalmersAI chatbots are becoming popular alternatives to therapy. But they may worsen mental health crises, experts warn\nBig tech has spent $155bn on AI this year. It’s about to spend hundreds of billions more\nAirbnb guest says images were altered in false £12,000 damage claim\nEnough of the billionaires and their big tech. ‘Frugal tech’ will build us all a better world\nEleanor Drage‘It wasn’t an error’: Ofqual boss defends regulator after withdrawn data row\nMargaret Boden obituary\nCognitive scientist who explored how consciousness arises from biochemical interactions within the brain\nAmazon fails to calm tariff worries with worse-than-expected financial outlook\nMicrosoft becomes second public company to reach $4tn valuation amid AI boom\nAbout 3,792 results for Artificial intelligence (AI)",
+        "description": "Latest news, sport, business, comment, analysis and reviews from the Guardian, the world's leading liberal voice",
+        "publish_date": "2025-08-05",
+        "author": ""
+      }
+    ],
+    "summary": "OpenAI has launched free and customizable AI models to compete with Meta and DeepSeek, while also implementing safeguards—such as preventing ChatGPT from advising users to end relationships. Google is developing a \"world model\" to train AI robots in virtual warehouses, and big tech companies have invested $155 billion in AI this year, with plans to spend hundreds of billions more. The UK’s Productivity Commission is examining whether major tech firms should be allowed to use Australians’ text and data for AI training. Sweden's prime minister faces backlash for using an AI assistant in official duties, and concerns are rising about AI-driven therapy chatbots potentially worsening mental health crises. Demis Hassabis of DeepMind predicts the AI revolution will surpass the Industrial Revolution in scale and speed. The Guardian also covers ethical issues around AI-generated content, including a fabricated interview with a Parkland shooting victim.\n\nhttps://www.theguardian.com/technology/artificialintelligenceai\n\nTechCrunch provides ongoing coverage of artificial intelligence advancements, focusing on generative AI technologies such as large language models, text-to-image and text-to-video systems, speech recognition, and predictive analytics. The platform tracks innovations from leading companies in the field and highlights ethical challenges emerging alongside rapid development.\n\nhttps://techcrunch.com/category/artificial-intelligence/",
+    "search_priority": "quick",
+    "mode": "auto"
+  }
+}

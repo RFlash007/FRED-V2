@@ -164,25 +164,25 @@ class Config:
     # --- Ollama Model Assignments ---
     # Centralized model names for all agents
 
-    FRED_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL"
+    FRED_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q3_K_XL"
     """Model for F.R.E.D.'s personality and conversation style."""
 
-    INSTRUCT_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL"
+    INSTRUCT_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q3_K_XL"
     """General instruction-following model used for utility tasks."""
 
-    GATE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
-    MAD_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
-    SYNAPSE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    GATE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q3_K_XL"
+    MAD_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q3_K_XL"
+    SYNAPSE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q3_K_XL"
 
-    ARCH_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
-    DELVE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
-    VET_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
-    SAGE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    ARCH_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q3_K_XL"
+    DELVE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q3_K_XL"
+    VET_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q3_K_XL"
+    SAGE_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q3_K_XL"
 
-    GIST_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q4_K_XL"
-    REFLEX_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    GIST_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Instruct-2507-GGUF:Q3_K_XL"
+    REFLEX_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q3_K_XL"
 
-    L2_ANALYSIS_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q4_K_XL"
+    L2_ANALYSIS_OLLAMA_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-Thinking-2507-GGUF:Q3_K_XL"
     VISION_OLLAMA_MODEL = "qwen2.5vl:7b"
 
     EMBED_MODEL = "nomic-embed-text"
@@ -491,7 +491,7 @@ class Config:
     L2_RETRIEVAL_LIMIT = 2
     """Maximum L2 memories retrieved per query."""
 
-    L2_RETRIEVAL_THRESHOLD = 0.3
+    L2_RETRIEVAL_THRESHOLD = 0.6
     """Semantic similarity threshold for L2 memory retrieval."""
 
     L2_ANALYSIS_MODEL = "hf.co/unsloth/Qwen3-30B-A3B-GGUF:Q3_K_XL"
@@ -1032,6 +1032,8 @@ config.REFLEX_USER_PROMPT = REFLEX_USER_PROMPT
 config.SYNAPSE_SYSTEM_PROMPT = SYNAPSE_SYSTEM_PROMPT
 config.VISION_SYSTEM_PROMPT = VISION_SYSTEM_PROMPT
 config.VISION_USER_PROMPT = VISION_USER_PROMPT
+config.L2_ANALYSIS_SYSTEM_PROMPT = L2_ANALYSIS_SYSTEM_PROMPT
+config.L2_ANALYSIS_PROMPT = L2_ANALYSIS_PROMPT
 
 config.MEMORY_TOOLS = MEMORY_TOOLS
 config.RESEARCH_TOOLS = RESEARCH_TOOLS

@@ -1,29 +1,19 @@
 import os
 import threading
 from typing import Optional, Dict, Any
+import traceback
 
 import ollama
 
 try:
     from ollie_print import olliePrint_simple, log_model_io
 except ImportError:
+    # Fallbacks are silenced no-ops to maintain a quiet runtime if ollie_print isn't available
     def olliePrint_simple(msg, level='info'):
-        print(f"[{level.upper()}] {msg}")
+        return
 
     def log_model_io(model, inputs, outputs):
-        if isinstance(inputs, list):
-            for m in reversed(inputs):
-                if isinstance(m, dict) and m.get('role') == 'user':
-                    inputs = m.get('content', '')
-                    break
-        if isinstance(outputs, dict) and 'embedding' in outputs:
-            emb = outputs['embedding']
-            if isinstance(emb, (list, tuple)):
-                outputs = f"[{len(emb)}-dimensional embedding]"
-        elif isinstance(outputs, (list, tuple)) and all(isinstance(x, (int, float)) for x in outputs):
-            outputs = f"[{len(outputs)}-dimensional vector]"
-        print(f"[MODEL {model} INPUT]: {inputs}")
-        print(f"[MODEL {model} OUTPUT]: {outputs}")
+        return
 
 
 class OllamaConnectionManager:
@@ -48,21 +38,21 @@ class OllamaConnectionManager:
         self.default_options['keep_alive'] = '30m'  # Keep model resident to avoid repeated loads
     
     def _configure_ollama_environment(self):
-        """Configure Ollama environment variables for optimal memory usage."""
-        # Assertively set environment variables to ensure memory-safe execution for this script
-        os.environ['OLLAMA_MAX_LOADED_MODELS'] = '1'  # Force only one model in memory
-        os.environ['OLLAMA_NUM_PARALLEL'] = '1'      # Force single-file processing
+        """Configure Ollama environment variables for optimal concurrent processing."""
+        # Configure environment variables for concurrent web search processing
+        os.environ['OLLAMA_MAX_LOADED_MODELS'] = '2'  # Allow up to 2 models in memory (for future flexibility)
+        os.environ['OLLAMA_NUM_PARALLEL'] = '4'      # Allow up to 4 concurrent requests
         os.environ['OLLAMA_KEEP_ALIVE'] = '30m'      # Keep model resident for 30 minutes to prevent thrashing
+        os.environ['OLLAMA_MAX_QUEUE'] = '10'        # Allow queuing of additional requests
+        os.environ['OLLAMA_FLASH_ATTENTION'] = '1'   # Enable flash attention for better memory efficiency
             
         # Use safe printing to avoid import issues during config initialization
-        self._safe_print("[OLLAMA CONFIG] Memory optimization settings applied:")
-        self._safe_print(f"  MAX_LOADED_MODELS: {os.environ.get('OLLAMA_MAX_LOADED_MODELS', 'default')}")
-        self._safe_print(f"  NUM_PARALLEL: {os.environ.get('OLLAMA_NUM_PARALLEL', 'default')}")
-        self._safe_print(f"  KEEP_ALIVE: {os.environ.get('OLLAMA_KEEP_ALIVE', 'default')}")
+        # Memory optimization settings applied silently
     
     def _safe_print(self, message: str):
         """Safe printing method that works during config initialization."""
-        olliePrint_simple(message)
+        # No-op for silent operation
+        pass
     
     def get_client(self, host: Optional[str] = None) -> ollama.Client:
         """
@@ -80,7 +70,7 @@ class OllamaConnectionManager:
         with self._lock:
             if self._client is None:
                 self._client = ollama.Client(host=host)
-                self._safe_print(f"[OLLAMA] Created optimized client for {host}")
+                # Client created silently
             return self._client
     
     def chat_concurrent_safe(self, host: Optional[str] = None, **kwargs) -> Dict[str, Any]:
@@ -116,19 +106,33 @@ class OllamaConnectionManager:
 
             def generator():
                 output_text = ""
-                for chunk in stream:
-                    content = chunk.get('message', {}).get('content', '')
-                    if content:
-                        output_text += content
-                    yield chunk
-                log_model_io(model_name, messages, output_text)
+                try:
+                    for chunk in stream:
+                        content = chunk.get('message', {}).get('content', '')
+                        if content:
+                            output_text += content
+                        yield chunk
+                    log_model_io(model_name, messages, output_text)
+                except Exception as e:
+                    err = traceback.format_exc()
+                    olliePrint_simple(f"[Ollama] streaming error: {e}", level='error')
+                    olliePrint_simple(err, level='error')
+                    # Re-raise so callers (SSE) can handle and surface the failure
+                    raise
 
             return generator()
         else:
-            response = client.chat(**kwargs)
-            output_text = response.get('message', {}).get('content', response)
-            log_model_io(model_name, messages, output_text)
-            return response
+            try:
+                response = client.chat(**kwargs)
+                output_text = response.get('message', {}).get('content', response)
+                log_model_io(model_name, messages, output_text)
+                return response
+            except Exception as e:
+                err = traceback.format_exc()
+                olliePrint_simple(f"[Ollama] chat error: {e}", level='error')
+                olliePrint_simple(err, level='error')
+                # Re-raise to allow upstream handlers to decide recovery behavior
+                raise
     
     def embeddings(self, model: str, prompt: str, host: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -158,7 +162,7 @@ class OllamaConnectionManager:
             bool: True if successful, False otherwise
         """
         try:
-            self._safe_print(f"[OLLAMA] Preloading model to prevent unloading: {model_name}")
+            # Model preloading silently
             
             # Simple ping to load the model with keep_alive
             self.chat_concurrent_safe(
@@ -167,11 +171,11 @@ class OllamaConnectionManager:
                 options={'keep_alive': '30m'}  # Keep loaded for 30 minutes
             )
             
-            self._safe_print(f"[OLLAMA] ✅ Model {model_name} preloaded and will stay resident")
+            # Model preloaded silently
             return True
             
         except Exception as e:
-            self._safe_print(f"[OLLAMA] ❌ Failed to preload model {model_name}: {e}")
+            # Model preload failure handled silently
             return False
     
     def get_stats(self) -> Dict[str, Any]:

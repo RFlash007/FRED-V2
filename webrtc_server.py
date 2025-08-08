@@ -12,8 +12,24 @@ import argparse
 import ssl
 import numpy as np
 from scipy.signal import resample_poly
-from ollietec_theme import apply_theme, banner
-from ollie_print import olliePrint_simple
+import logging
+
+# No-op logger for complete silence
+class _NoOpLogger:
+    def debug(self, *args, **kwargs):
+        pass
+    def info(self, *args, **kwargs):
+        pass
+    def warning(self, *args, **kwargs):
+        pass
+    def error(self, *args, **kwargs):
+        pass
+
+logger = _NoOpLogger()
+
+def olliePrint_simple(message, level=None, *args, **kwargs):
+    """No-op logger replacement to maintain compatibility"""
+    pass
 
 # Import configuration
 from config import config
@@ -22,7 +38,7 @@ from config import config
 FRED_AUTH_TOKEN = config.FRED_AUTH_TOKEN
 MAX_CONNECTIONS = config.MAX_PI_CONNECTIONS
 
-apply_theme()
+ 
 
 pcs = set()
 data_channels = set()  # Store data channels for sending responses back to Pi
@@ -35,7 +51,7 @@ runner = None
 async def send_capture_request_to_pi():
     """Send capture request to all connected Pi clients"""
     if not data_channels:
-        olliePrint_simple("❌ No Pi clients connected for capture request", 'warning')
+        # No Pi clients available
         return False
     
     try:
@@ -45,13 +61,14 @@ async def send_capture_request_to_pi():
                 if channel.readyState == 'open':
                     channel.send("[CAPTURE_REQUEST]")
                     capture_sent = True
-                    olliePrint_simple("📡 [REQUEST] Sent capture request to Pi")
+                    # Capture request sent
             except Exception as e:
-                olliePrint_simple(f"Failed to send capture request: {e}", 'warning')
+                # Capture request failed
+                pass
         
         return capture_sent
     except Exception as e:
-        olliePrint_simple(f"Capture request error: {e}", 'error')
+        # Capture request error
         return False
 
 # SocketIO client to connect to main F.R.E.D. server
@@ -94,12 +111,12 @@ async def offer(request):
     
     # Rate limiting check
     if not check_rate_limit(client_ip):
-        olliePrint_simple(f"Rate limit exceeded: {client_ip}")
+        # Logging removed for silent operation
         return web.json_response({'error': 'Rate limit exceeded'}, status=429)
     
     # Authentication check
     if not authenticate_request(request):
-        olliePrint_simple(f"Unauthorized access: {client_ip}")
+        # Logging removed for silent operation
         return web.json_response({'error': 'Unauthorized'}, status=401)
     
     try:
@@ -118,14 +135,15 @@ async def offer(request):
         pc = RTCPeerConnection()
         pcs.add(pc)
         
-        olliePrint_simple(f"ArmLink connected: {client_ip}")
+        # Logging removed for silent operation
         
         # Initialize media recorder
         recorder = MediaBlackhole()
         try:
             await recorder.start()
         except Exception as e:
-            olliePrint_simple(f"Recorder start failed: {e}", level='warning')
+            # Logging removed for silent operation
+            pass
         
         # STT setup - consolidated
         if not getattr(stt_service, "is_processing", False):
@@ -167,12 +185,12 @@ async def offer(request):
                             
                             # Send complete response
                             if buffer:
-                                olliePrint_simple(f"Response to Pi: '{buffer[:50]}...'")
+                                # Logging removed for silent operation
                                 _send_to_pi_safe(buffer)
                         else:
-                            olliePrint_simple(f"Chat request failed: {resp.status_code}", level='error')
+                            pass  # Request failed
                     except Exception as exc:
-                        olliePrint_simple(f"Error relaying to F.R.E.D.: {exc}", level='error')
+                        pass  # Error handled silently
 
                 def _send_to_pi_safe(message):
                     """Thread-safe method to send messages to Pi clients"""
@@ -182,10 +200,10 @@ async def offer(request):
                             try:
                                 future.result(timeout=5)
                             except Exception as e:
-                                olliePrint_simple(f"Send to Pi failed: {e}")
+                                pass  # Send failed
                     
                     except Exception as e:
-                        olliePrint_simple(f"Pi communication error: {e}")
+                        pass  # Communication error handled
 
                 async def _send_to_pi_async(message):
                     """Send message to all connected Pi clients via data channels"""
@@ -196,7 +214,7 @@ async def offer(request):
                         try:
                             channel.send(message)
                         except Exception as e:
-                            olliePrint_simple(f"Channel send failed: {e}")
+                            pass  # Channel send failed
 
                 # Run in background thread
                 import threading
@@ -206,7 +224,7 @@ async def offer(request):
         def on_datachannel(channel):
             data_channels.add(channel)
             pi_clients.add(client_ip)
-            olliePrint_simple(f"Data channel established: {client_ip}")
+            # Logging removed for silent operation
             
             # Set Pi connection for vision service
             vision_service.set_pi_connection_status(True)
@@ -229,7 +247,7 @@ async def offer(request):
                         format_info = message[12:header_end]  # Skip "[IMAGE_DATA:"
                         image_b64 = message[header_end + 1:]
                         
-                        olliePrint_simple(f"📸 [RECEIVED] Fresh image from Pi ({format_info}, {len(image_b64)} chars)")
+                        # Logging removed for silent operation
                         
                         # Send to vision service for processing
                         async def process_image_async():
@@ -239,21 +257,22 @@ async def offer(request):
                         asyncio.run_coroutine_threadsafe(process_image_async(), main_event_loop)
                         
                     except Exception as e:
-                        olliePrint_simple(f"Image processing error: {e}", 'error')
+                        # Logging removed for silent operation
+                        pass
                     return
                 
                 if is_local_stt:
                     # Handle pre-transcribed text from Pi STT - Keep original simple format
                     if message.startswith("TRANSCRIPTION:"):
                         text = message.replace("TRANSCRIPTION:", "").strip()
-                        olliePrint_simple(f"Pi: '{text}'")
+                        # Logging removed for silent operation
                         process_pi_transcription(text, from_pi=True)
                     else:
                         # Plain text - this is the main working path
                         text = message.strip()
                         if text and len(text) > 2:  # Ignore very short messages
-                            olliePrint_simple(f"Pi: '{text}'")
-                        process_pi_transcription(text, from_pi=True)
+                            # Logging removed for silent operation
+                            process_pi_transcription(text, from_pi=True)
                 else:
                     # Server-side STT processing
                     if hasattr(stt_service, 'process_audio_from_webrtc'):
@@ -265,11 +284,11 @@ async def offer(request):
                 pi_clients.discard(client_ip)
                 if not pi_clients:
                     vision_service.set_pi_connection_status(False)
-                olliePrint_simple(f"Data channel closed: {client_ip}")
+                # Logging removed for silent operation
 
         @pc.on('track')
         async def on_track(track):
-            olliePrint_simple(f"{track.kind.upper()} track connected: {client_ip}")
+            # Logging removed for silent operation
             
             if track.kind == "audio":
                 # Simplified audio handling
@@ -283,7 +302,8 @@ async def offer(request):
                             async for frame in track:
                                 frame_count += 1
                                 if frame_count % 100 == 0:  # Log every 100 frames instead of every frame
-                                    olliePrint_simple(f"Audio frames: {frame_count} (local STT)")
+                                    # Logging removed for silent operation
+                                    pass
                         except Exception as e:
                             pass  # Silent audio end
                     
@@ -295,7 +315,7 @@ async def offer(request):
                             # Start STT if not already running
                             if not getattr(stt_service, "is_processing", False):
                                 stt_service.start_processing(process_pi_transcription)
-                                olliePrint_simple("STT processing started")
+                                # Logging removed for silent operation
                             
                             frame_count = 0
                             async for frame in track:
@@ -328,7 +348,8 @@ async def offer(request):
                                 
                                 # Reduced logging frequency
                                 if frame_count % 50 == 0:
-                                    olliePrint_simple(f"Processing audio frames: {frame_count}")
+                                    # Logging removed for silent operation
+                                    pass
                         
                         except Exception as e:
                             pass  # Silent error handling
@@ -337,7 +358,7 @@ async def offer(request):
                 
             elif track.kind == "video":
                 # No longer processing continuous video - using on-demand capture instead
-                olliePrint_simple("Video track connected (on-demand capture mode)")
+                # Logging removed for silent operation
                 
                 # Consume video frames without processing to prevent WebRTC errors
                 async def consume_video_frames_minimal():
@@ -347,7 +368,8 @@ async def offer(request):
                             frame_count += 1
                             # Only log occasionally to reduce noise
                             if frame_count % 500 == 0:
-                                olliePrint_simple(f"Video connection maintained ({frame_count} frames discarded)")
+                                # Logging removed for silent operation
+                                pass
                     except Exception as e:
                         pass  # Silent video end
                 
@@ -363,9 +385,10 @@ async def offer(request):
         async def on_connectionstatechange():
             state = pc.connectionState
             if state == "connected":
-                olliePrint_simple(f"ArmLink operational: {client_ip}")
+                # Logging removed for silent operation
+                pass
             elif state in ["disconnected", "failed", "closed"]:
-                olliePrint_simple(f"ArmLink offline: {client_ip}")
+                # Logging removed for silent operation
                 pcs.discard(pc)
 
         # Process the offer and create answer
@@ -379,24 +402,26 @@ async def offer(request):
         })
 
     except Exception as e:
-        olliePrint_simple(f"Connection error {client_ip}: {e}", level='error')
+        # Logging removed for silent operation
         return web.json_response({'error': 'Internal server error'}, status=500)
 
 # SocketIO event handlers for receiving responses from main F.R.E.D. server
 @sio_client.event
 async def connect():
-    olliePrint_simple("[SHELTER-NET] Established secure link to F.R.E.D. mainframe", 'success')
+    # Logging removed for silent operation
     # Emit connection confirmation
     await sio_client.emit('webrtc_server_connected')
-    olliePrint_simple("[BRIDGE] Wasteland communication network ONLINE - standing by for field operations", 'success')
+    # Logging removed for silent operation
 
 @sio_client.event
 async def disconnect():
-    olliePrint_simple("[WARNING] Lost connection to F.R.E.D. mainframe - audio relay offline", 'warning')
+    # Logging removed for silent operation
+    pass
 
 @sio_client.event
 async def connect_error(data):
-    olliePrint_simple(f"[ERROR] SocketIO connection error: {data}", 'error')
+    # Logging removed for silent operation
+    pass
 
 @sio_client.event
 async def voice_response(data):
@@ -407,9 +432,10 @@ async def voice_response(data):
         for channel in data_channels.copy():
             try:
                 channel.send(response_text)
-                olliePrint_simple(f"📱 Text sent to Pi: {response_text[:50]}...")
+                # Logging removed for silent operation
+                pass
             except Exception as e:
-                olliePrint_simple(f"Failed to send to Pi: {e}")
+                # Logging removed for silent operation
                 data_channels.discard(channel)
 
 @sio_client.event
@@ -419,9 +445,9 @@ async def fred_acknowledgment(data):
     for channel in data_channels.copy():
         try:
             channel.send(f"[ACK] {ack_text}")
-            olliePrint_simple(f"Sent acknowledgment to Pi: {ack_text}")
+            # Logging removed for silent operation
         except Exception as e:
-            olliePrint_simple(f"Failed to send acknowledgment to Pi: {e}")
+            # Logging removed for silent operation
             data_channels.discard(channel)
 
 @sio_client.event
@@ -432,8 +458,7 @@ async def fred_audio(data):
     audio_format = data.get('format', 'wav')
     
     if audio_b64:
-        olliePrint_simple(f"[TRANSMISSION] Audio matrix received from F.R.E.D. ({len(audio_b64)} chars) for '{text[:50]}...'")
-        olliePrint_simple(f"[NETWORK] {len(data_channels)} ArmLink device(s) in communication range")
+        # Audio transmission handled silently
         
         # Send audio to all connected Pi clients
         sent_count = 0
@@ -442,15 +467,17 @@ async def fred_audio(data):
                 message = f"[AUDIO_BASE64:{audio_format}]{audio_b64}"
                 channel.send(message)
                 sent_count += 1
-                olliePrint_simple(f"[RELAY] Voice data transmitted to ArmLink #{sent_count} for '{text[:50]}...'")
+                # Logging removed for silent operation
             except Exception as e:
-                olliePrint_simple(f"[ERROR] ArmLink #{sent_count+1} transmission failure: {e}")
+                # Logging removed for silent operation
                 data_channels.discard(channel)
         
         if sent_count == 0:
-            olliePrint_simple("[WARNING] No ArmLink devices available - audio transmission failed")
+            # Logging removed for silent operation
+            pass
         else:
-            olliePrint_simple(f"[SUCCESS] Voice transmission complete - {sent_count} field operative(s) reached")
+            # Logging removed for silent operation
+            pass
         
         # Inform STT to pause listening during playback
         estimated_bytes = int(len(audio_b64) * 3 / 4)  # rough base64 decode
@@ -460,12 +487,13 @@ async def fred_audio(data):
         loop = asyncio.get_event_loop()
         loop.call_later(playback_seconds, lambda: stt_service.set_speaking_state(False))
     else:
-        olliePrint_simple("[ERROR] No audio data in transmission from F.R.E.D. mainframe")
+        # Error handled silently
+        pass
 
 
 async def cleanup(app):
     # This is still valuable for graceful shutdown
-    olliePrint_simple("Cleaning up server resources...")
+    # Server cleanup handled silently
     for pc in pcs:
         if pc.connectionState != "closed":
             await pc.close()
@@ -481,19 +509,19 @@ async def init_app(app):
     
     for attempt in range(max_retries):
         try:
-            olliePrint_simple(f"[BRIDGE] Attempting SocketIO connection to F.R.E.D. mainframe (attempt {attempt + 1}/{max_retries})")
+            # Logging removed for silent operation
             # Connect to main F.R.E.D. server
             await sio_client.connect('http://localhost:5000')
-            olliePrint_simple("[SUCCESS] Connected to F.R.E.D. main server for response forwarding", 'success')
+            # Logging removed for silent operation
             return  # Success, exit retry loop
         except Exception as e:
-            olliePrint_simple(f"[ATTEMPT {attempt + 1}] Connection failed: {e}", 'warning')
+            # Logging removed for silent operation
             if attempt < max_retries - 1:
-                olliePrint_simple(f"[BRIDGE] Retrying in {retry_delay} seconds...")
+                # Logging removed for silent operation
                 await asyncio.sleep(retry_delay)
             else:
-                olliePrint_simple(f"[CRITICAL] Failed to connect to F.R.E.D. main server after {max_retries} attempts", 'error')
-                olliePrint_simple("[WARNING] Audio relay will not function - Pi clients will only receive text responses", 'warning')
+                # Logging removed for silent operation
+                pass
 
 async def main():
     parser = argparse.ArgumentParser(description="F.R.E.D. WebRTC server")
@@ -509,8 +537,8 @@ async def main():
     args = parser.parse_args()
 
     if args.verbose:
-        olliePrint_simple("Verbose logging enabled", level='info')
-
+        # Logging removed for silent operation
+        pass
     if args.cert_file:
         ssl_context = ssl.SSLContext()
         ssl_context.load_cert_chain(args.cert_file, args.key_file)
@@ -529,9 +557,7 @@ async def main():
     site = web.TCPSite(runner, host=args.host, port=args.port, ssl_context=ssl_context)
     await site.start()
     
-    olliePrint_simple(f"[NETWORK] WebRTC server ready on http://{args.host}:{args.port}")
-    olliePrint_simple(f"🔐 Authentication: {'Enabled' if FRED_AUTH_TOKEN else 'Disabled'}")
-    olliePrint_simple(f"🔢 Max connections: {MAX_CONNECTIONS}")
+    # WebRTC server started silently
 
     # Keep server running until interrupted
     while True:
@@ -541,9 +567,10 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        olliePrint_simple("\n⌨️ Server shutting down manually...")
+        # Logging removed for silent operation
+        pass
     finally:
         # This cleanup is for when running the file directly
         if runner:
             asyncio.run(runner.cleanup())
-        olliePrint_simple("✅ Server shutdown complete.")
+        # Logging removed for silent operation

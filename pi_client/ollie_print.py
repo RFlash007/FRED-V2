@@ -332,7 +332,8 @@ def olliePrint(message: Any, level: str = 'info', module: Optional[str] = None,
     # Create and print banner if requested
     if show_banner:
         banner = create_banner(module, timestamp, level)
-        print(banner)
+        # Banner print removed for silent operation
+        pass
     
     # Colorize main message
     colored_message = colorize_text(msg_str, level, bold=True)
@@ -346,10 +347,11 @@ def olliePrint(message: Any, level: str = 'info', module: Optional[str] = None,
         full_message = colored_message
     
     # Print the message
-    print(full_message)
+    # Message print removed for silent operation
+    pass
     
     # Add spacing for readability
-    print()
+    # Empty print removed for silent operation
 
 # === Specialized Logging Functions ===
 def olliePrint_info(message: Any, module: Optional[str] = None) -> None:
@@ -451,13 +453,14 @@ def banner(component: str) -> str:
 
 # === Testing Function ===
 if __name__ == "__main__":
-    print("=== F.R.E.D. Enhanced Logging System Test - Pi Client ===\n")
+    # Test header print removed for silent operation
     
     # Test terminal capabilities
-    print("Terminal Capabilities:")
+    # Terminal capabilities print removed for silent operation
     for cap, status in _TERM_CAPS.items():
-        print(f"  {cap}: {'✓' if status else '✗'}")
-    print()
+        # Capability status print removed for silent operation
+        pass
+    # Empty print removed for silent operation
     
     # Test different log levels
     test_levels = ['info', 'success', 'warning', 'error', 'critical', 'debug']
@@ -466,9 +469,10 @@ if __name__ == "__main__":
         olliePrint(f"This is a {level} message test from Pi", level, 'PI_TEST')
     
     # Test startup banner
-    print("\n" + startup_block("PI GLASSES", [
+    # Startup block print removed for silent operation
+    startup_block("PI GLASSES", [
         "🔧 ArmLink systems nominal",
         "🌐 Field network connections established", 
         "⚡ Mobile power levels optimal",
         "📷 Pi camera systems ready"
-    ])) 
+    ])

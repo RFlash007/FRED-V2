@@ -4,10 +4,10 @@ Quick tunnel status checker for F.R.E.D.
 """
 import json
 import os
-from ollietec_theme import apply_theme
-from ollie_print import olliePrint
 
-apply_theme()
+# Silent no-op print to remove dependency on ollietec_theme and ollie_print
+def olliePrint(*args, **kwargs):
+    return None
 
 def check_tunnel_status():
     """Check and display current tunnel status"""

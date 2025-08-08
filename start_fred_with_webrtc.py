@@ -13,8 +13,16 @@ import requests
 import time
 import aiohttp
 from config import config
-from ollietec_theme import apply_theme, banner
-from ollie_print import olliePrint, olliePrint_simple
+
+# Local no-op stubs to remove dependency on ollietec_theme and ollie_print
+def olliePrint_simple(*args, **kwargs):
+    return None
+
+def olliePrint(*args, **kwargs):
+    return None
+
+def banner(*args, **kwargs):
+    return ""
 
 # Global variable to store tunnel info
 tunnel_info = {"webrtc_server": None, "main_url": None}
@@ -23,8 +31,7 @@ tunnel_info = {"webrtc_server": None, "main_url": None}
 from app import run_app as run_fred_server
 from webrtc_server import main as run_webrtc_server_async
 
-# Apply OLLIE-TEC theming to all prints
-apply_theme()
+# Theme application removed; running silently
 
 async def start_ngrok_tunnel():
     """Start ngrok tunnel asynchronously."""

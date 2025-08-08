@@ -1226,10 +1226,7 @@ def enhanced_conduct_iterative_research_with_quality(task_id: str, original_task
         return final_result
 
     except Exception as e:
-        olliePrint_simple(f"Enhanced research with quality assessment error: {e}", level='error')
-        import traceback
-        traceback.print_exc()
-        
+        # Silenced console output in exception path; preserve returned error_result
         error_result = {
             'success': False,
             'task_id': task_id,

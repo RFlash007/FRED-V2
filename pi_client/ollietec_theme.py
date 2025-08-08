@@ -31,7 +31,8 @@ def ollietec_print(*args, **kwargs):
         if color:
             text = f"{color}{text}{_RESET}"
         colored_args.append(text)
-    _orig_print(*colored_args, **kwargs)
+    # Print call removed for silent operation
+    pass
 
 
 def apply_theme():

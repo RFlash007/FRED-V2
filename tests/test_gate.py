@@ -29,7 +29,7 @@ class TestGateAgent(unittest.TestCase):
     @patch('memory.gate.ollama_manager.chat_concurrent_safe')
     def test_route_to_memory_only(self, mock_ollama, mock_l2_query):
         """Tests routing to memory by passing a mock dispatcher."""
-        print("\nRunning: test_route_to_memory_only")
+        # Test running silently
         # Arrange
         mock_dispatcher = MagicMock(spec=AgentDispatcher)
         mock_dispatcher.dispatch_agents.return_value = "Dispatcher processed memory task."
@@ -51,13 +51,13 @@ class TestGateAgent(unittest.TestCase):
         self.assertEqual(call_kwargs['routing_flags']['web_search_strategy']['needed'], False)
         self.assertIn('search_priority', call_kwargs['routing_flags']['web_search_strategy'])
         self.assertIn('search_query', call_kwargs['routing_flags']['web_search_strategy'])
-        print("PASSED: Correctly routed to memory agent.")
+        # PASSED: Correctly routed to memory agent
 
     @patch('memory.gate.L2.query_l2_context')
     @patch('memory.gate.ollama_manager.chat_concurrent_safe')
     def test_route_to_multiple_agents(self, mock_ollama, mock_l2_query):
         """Tests routing to multiple agents by passing a mock dispatcher."""
-        print("\nRunning: test_route_to_multiple_agents")
+        # Test running silently
         # Arrange
         mock_dispatcher = MagicMock(spec=AgentDispatcher)
         mock_dispatcher.dispatch_agents.return_value = "Dispatcher processed multi-agent task."
@@ -81,13 +81,13 @@ class TestGateAgent(unittest.TestCase):
         self.assertIn('search_priority', call_kwargs['routing_flags']['web_search_strategy'])
         self.assertIn('search_query', call_kwargs['routing_flags']['web_search_strategy'])
         self.assertEqual(call_kwargs['routing_flags']['needs_pi_tools'], False)
-        print("PASSED: Correctly routed to multiple agents.")
+        # PASSED: Correctly routed to multiple agents
 
     @patch('memory.gate.L2.query_l2_context')
     @patch('memory.gate.ollama_manager.chat_concurrent_safe')
     def test_malformed_json_fallback(self, mock_ollama, mock_l2_query):
         """Tests fallback behavior with malformed JSON by passing a mock dispatcher."""
-        print("\nRunning: test_malformed_json_fallback")
+        # Test running silently
         # Arrange
         mock_dispatcher = MagicMock(spec=AgentDispatcher)
         mock_dispatcher.dispatch_agents.return_value = "Dispatcher processed with default flags."
@@ -102,13 +102,13 @@ class TestGateAgent(unittest.TestCase):
         call_kwargs = mock_dispatcher.dispatch_agents.call_args.kwargs
         self.assertIn('routing_flags', call_kwargs)
         self.assertEqual(call_kwargs['routing_flags'], gate._get_default_routing_flags())
-        print("PASSED: Correctly used default flags on JSON error.")
+        # PASSED: Correctly used default flags on JSON error
 
     @patch('memory.gate.L2.query_l2_context')
     @patch('memory.gate.ollama_manager.chat_concurrent_safe')
     def test_llm_failure_fallback(self, mock_ollama, mock_l2_query):
         """Tests fallback behavior on LLM failure by passing a mock dispatcher."""
-        print("\nRunning: test_llm_failure_fallback")
+        # Test running silently
         # Arrange
         mock_dispatcher = MagicMock(spec=AgentDispatcher)
         mock_dispatcher.dispatch_agents.return_value = "Dispatcher processed with default flags."
@@ -123,7 +123,7 @@ class TestGateAgent(unittest.TestCase):
         call_kwargs = mock_dispatcher.dispatch_agents.call_args.kwargs
         self.assertIn('routing_flags', call_kwargs)
         self.assertEqual(call_kwargs['routing_flags'], gate._get_default_routing_flags())
-        print("PASSED: Correctly used default flags on LLM failure.")
+        # PASSED: Correctly used default flags on LLM failure
 
 if __name__ == '__main__':
     unittest.main()

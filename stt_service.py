@@ -12,10 +12,16 @@ from collections import deque
 import re
 from datetime import datetime
 from config import config
-from ollietec_theme import apply_theme
-from ollie_print import olliePrint_simple, log_model_io
+ 
+def olliePrint_simple(*args, **kwargs):
+    """No-op printer to preserve runtime without output."""
+    return None
 
-apply_theme()
+def log_model_io(*args, **kwargs):
+    """No-op model IO logger."""
+    return None
+
+ 
 
 # === TERMINAL TRANSCRIPTION LOGGING ===
 def print_transcription_to_terminal(text, source="TRANSCRIPTION"):

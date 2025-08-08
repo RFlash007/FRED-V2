@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 F.R.E.D. Pi Glasses Client - Consolidated Local STT & Communication
 ShelterNet Approved™ | OLLIE-TEC Advanced Wasteland Computing Division
@@ -32,15 +32,20 @@ from typing import Optional, Callable
 import vosk
 # librosa and scipy removed - were only needed for speaker verification
 
-# Import Ollie-Tec theming
-from ollietec_theme import apply_theme, banner
-from ollie_print import olliePrint, olliePrint_simple
+# Remove Ollie-Tec theming and printing dependencies (silent no-ops)
+def olliePrint_simple(*args, **kwargs):
+    return None
+
+def olliePrint(*args, **kwargs):
+    return None
+
+def banner(*args, **kwargs):
+    return ""
 
 # WebRTC imports
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration, RTCIceServer
 
-# Apply theming to all prints
-apply_theme()
+# Theme application removed; running silently
 
 
 # Speaker verification system removed to fix wake word detection issues

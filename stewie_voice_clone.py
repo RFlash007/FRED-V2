@@ -175,17 +175,12 @@ class StewieVoiceClone:
                     return False
             
             if not self.stewie_voice_samples:
-                olliePrint_simple("[STEWIE-CLONE] No voice samples available for cloning", 'error')
                 return False
             
             # Get the best voice sample
             speaker_wav = self.get_best_voice_sample()
             if not speaker_wav:
-                olliePrint_simple("[STEWIE-CLONE] No suitable voice sample found", 'error')
                 return False
-            
-            olliePrint_simple(f"[STEWIE-CLONE] Generating Stewie's voice: '{text[:50]}...'", 'audio')
-            olliePrint_simple(f"[STEWIE-CLONE] Using voice sample: {Path(speaker_wav).name}")
             
             # Generate speech using minimal, stable settings
             self.model.tts_to_file(
@@ -199,16 +194,11 @@ class StewieVoiceClone:
             # Verify output file was created
             if os.path.exists(output_path):
                 file_size = os.path.getsize(output_path)
-                olliePrint_simple(f"[STEWIE-CLONE] ✅ Voice cloning successful! Output: {file_size} bytes", 'success')
                 return True
             else:
-                olliePrint_simple("[STEWIE-CLONE] ❌ Output file not generated", 'error')
                 return False
                 
         except Exception as e:
-            olliePrint_simple(f"[STEWIE-CLONE] Voice cloning failed: {e}", 'error')
-            import traceback
-            traceback.print_exc()
             return False
     
     def validate_samples(self) -> Dict[str, Any]:

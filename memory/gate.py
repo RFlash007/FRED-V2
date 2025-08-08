@@ -1,12 +1,25 @@
 import json
 from datetime import datetime
 from typing import Dict, List
-from ollie_print import olliePrint_simple
+import logging
+import traceback
 from config import config, ollama_manager
 from utils import strip_think_tags
 
 from agents.dispatcher import AgentDispatcher
 import memory.L2_memory as L2  # noqa: F401
+
+# Configure a real logger that prints to console
+logger = logging.getLogger("G.A.T.E.")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+    _handler.setFormatter(_formatter)
+    logger.addHandler(_handler)
+try:
+    logger.setLevel(getattr(logging, getattr(config, "LOG_LEVEL", "INFO")))
+except Exception:
+    logger.setLevel(logging.INFO)
 
 
 def run_gate_analysis(
@@ -21,7 +34,7 @@ def run_gate_analysis(
     2. Dispatches appropriate agents based on flags
     3. Returns synthesized NEURAL PROCESSING CORE from S.Y.N.A.P.S.E.
     """
-    olliePrint_simple("[G.A.T.E.] Multi-agent routing initiated...")
+    logger.info("[G.A.T.E.] Multi-agent routing initiated...")
 
     try:
         recent_history_for_prompt: List[Dict] = []
@@ -32,15 +45,30 @@ def run_gate_analysis(
                     {"role": turn["role"], "content": clean_content}
                 )
 
-        olliePrint_simple(
-            f"[G.A.T.E.] User Message Input: {user_message}", level="debug"
+        logger.debug(f"[G.A.T.E.] User Message Input: {user_message}")
+        logger.debug(
+            f"[G.A.T.E.] Recent History Input: {recent_history_for_prompt}"
         )
-        olliePrint_simple(
-            f"[G.A.T.E.] Recent History Input: {recent_history_for_prompt}",
-            level="debug",
-        )
+        
+        print("\n" + "="*80)
+        print("🎯 [G.A.T.E.] ROUTING INPUT")
+        print("="*80)
+        print(f"📝 USER MESSAGE: {user_message}")
+        if recent_history_for_prompt:
+            print(f"📚 CONTEXT HISTORY ({len(recent_history_for_prompt)} turns):")
+            for i, turn in enumerate(recent_history_for_prompt):
+                print(f"  Turn {i+1} [{turn['role']}]: {turn['content']}")
+        else:
+            print("📚 CONTEXT HISTORY: None")
+        print("="*80 + "\n")
 
         routing_flags = _get_routing_flags(user_message, recent_history_for_prompt)
+        
+        print("\n" + "="*80)
+        print("🎯 [G.A.T.E.] ROUTING ANALYSIS COMPLETE")
+        print("="*80)
+        print(f"📊 ROUTING FLAGS: {json.dumps(routing_flags, indent=2)}")
+        print("="*80 + "\n")
 
         memory_context = ""
         if routing_flags.get("needs_memory", False):
@@ -48,79 +76,104 @@ def run_gate_analysis(
             try:
                 import memory.L3_memory as L3
 
-                olliePrint_simple(
-                    f"[G.A.T.E.] Performing memory search for query: '{search_query}'",
-                    level="debug",
+                logger.debug(
+                    f"[G.A.T.E.] Performing memory search for query: '{search_query}'"
                 )
                 memory_results = L3.search_memory(query_text=search_query, limit=2)
                 memory_context = json.dumps(
                     memory_results, ensure_ascii=False, default=str
                 )
-                olliePrint_simple(
-                    f"[G.A.T.E.] Retrieved {len(memory_results)} memory nodes",
-                    level="debug",
+                logger.debug(
+                    f"[G.A.T.E.] Retrieved {len(memory_results)} memory nodes"
                 )
             except Exception as mem_err:
-                olliePrint_simple(
-                    f"[G.A.T.E.] Memory search error: {mem_err}", level="warning"
+                logger.warning(
+                    f"[G.A.T.E.] Memory search error: {mem_err}"
                 )
                 memory_context = ""
 
-        olliePrint_simple(f"[G.A.T.E.] Routing flags: {routing_flags}")
+        logger.info(f"[G.A.T.E.] Routing flags: {routing_flags}")
 
         web_search_strategy = routing_flags.get("web_search_strategy", {})
         if web_search_strategy.get("needed", False):
             search_priority = web_search_strategy.get("search_priority", "quick")
             search_query = web_search_strategy.get("search_query", user_message)
 
-            if search_priority == "thorough":
-                return _handle_thorough_search(
+            if search_priority == "research":
+                return _handle_research_search(
                     search_query, user_message, conversation_history
                 )
-            else:
+            elif search_priority == "thorough":
+                search_results = _handle_thorough_search(search_query)
+                if search_results and search_results.get("summary"):
+                    memory_context += (
+                        f"\n\nWeb Search Results:\n{search_results['summary']}"
+                    )
+            else:  # quick
                 search_results = _handle_quick_search(search_query)
                 if search_results and search_results.get("summary"):
                     memory_context += (
                         f"\n\nWeb Search Results:\n{search_results['summary']}"
                     )
 
-        database_content = agent_dispatcher.dispatch_agents(
-            routing_flags=routing_flags,
-            user_message=user_message,
-            conversation_history=conversation_history,
-            visual_context=visual_context,
-            memory_context=memory_context,
-        )
+        try:
+            database_content = agent_dispatcher.dispatch_agents(
+                routing_flags=routing_flags,
+                user_message=user_message,
+                conversation_history=conversation_history,
+                visual_context=visual_context,
+                memory_context=memory_context,
+            )
+        except Exception as dispatch_err:
+            logger.error(f"[G.A.T.E.] Agent dispatch error: {dispatch_err}")
+            print(traceback.format_exc())
+            raise
 
-        olliePrint_simple(
-            f"[G.A.T.E.] Final Neural Processing Core Content: {database_content}",
-            level="debug",
+        logger.debug(
+            f"[G.A.T.E.] Final Neural Processing Core Content: {database_content}"
         )
         return database_content
 
     except Exception as e:
-        olliePrint_simple(
-            f"[G.A.T.E.] Critical failure during routing: {e}. Using fallback.",
-            level="error",
+        logger.error(
+            f"[G.A.T.E.] Critical failure during routing: {e}. Using fallback."
         )
+        print(traceback.format_exc())
         return _generate_fallback_database(user_message)
 
 
 def _get_routing_flags(user_message: str, recent_history: list) -> dict:
     """Get routing flags from G.A.T.E. LLM analysis."""
     try:
+        # Local import to avoid hard dependency if logging utility changes
+        try:
+            from ollie_print import log_model_io
+        except Exception:
+            log_model_io = None
         formatted_recent_history = "\n".join(
             [f"{msg['role'].title()}: {msg['content']}" for msg in recent_history]
         )
 
-        prompt = config.GATE_USER_PROMPT.format(
-            user_query=user_message, recent_history=formatted_recent_history
+
+        # Avoid Python str.format interpreting JSON braces in the template.
+        # Replace only our known placeholders to prevent KeyErrors (e.g., on "needs_memory").
+        prompt_template = config.GATE_USER_PROMPT
+        prompt = (
+            prompt_template
+            .replace("{user_query}", user_message)
+            .replace("{recent_history}", formatted_recent_history)
         )
 
         messages = [
             {"role": "system", "content": config.GATE_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ]
+        
+        print("\n" + "="*80)
+        print("🎯 [G.A.T.E.] LLM PROMPT")
+        print("="*80)
+        print(f"📝 FULL USER PROMPT:\n{prompt}")
+        print("="*80 + "\n")
 
         response = ollama_manager.chat_concurrent_safe(
             model=config.GATE_OLLAMA_MODEL,
@@ -129,6 +182,13 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
             format="json",
             stream=False,
         )
+
+        # Model I/O logging
+        if 'log_model_io' in locals() and callable(log_model_io):
+            try:
+                log_model_io(str(config.GATE_OLLAMA_MODEL), messages, response)
+            except Exception:
+                pass
 
         if not response:
             olliePrint_simple(
@@ -174,39 +234,39 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
             response_content = response.strip()
 
         if not response_content:
-            olliePrint_simple(
-                "[G.A.T.E.] LLM response missing usable content – using default routing flags",
-                level="warning",
+            logger.warning(
+                "[G.A.T.E.] LLM response missing usable content – using default routing flags"
             )
             return _get_default_routing_flags()
 
-        olliePrint_simple("\n┏━━[G.A.T.E.] Raw Routing Response ━━")
-        olliePrint_simple(response_content)
-        olliePrint_simple("┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
+        print("\n" + "="*80)
+        print("🎯 [G.A.T.E.] RAW LLM RESPONSE")
+        print("="*80)
+        print(f"🤖 FULL RESPONSE:\n{response_content}")
+        print("="*80 + "\n")
 
         try:
             routing_flags = json.loads(response_content)
             routing_flags = _normalize_and_fill_defaults(routing_flags)
             return routing_flags
         except json.JSONDecodeError as e:
-            olliePrint_simple(
-                f"[G.A.T.E.] JSON parse error: {e}. Using default flags.",
-                level="warning",
+            logger.warning(
+                f"[G.A.T.E.] JSON parse error: {e}. Using default flags."
             )
             return _get_default_routing_flags()
 
     except Exception as e:
-        olliePrint_simple(
-            f"[G.A.T.E.] Routing analysis error: {e}. Using default flags.",
-            level="error",
+        logger.error(
+            f"[G.A.T.E.] Routing analysis error: {e}. Using default flags."
         )
+        print(traceback.format_exc())
         return _get_default_routing_flags()
 
 
-def _handle_thorough_search(
+def _handle_research_search(
     search_query: str, user_message: str, conversation_history: list
 ) -> str:
-    """Route thorough search requests to the Agenda System for background research."""
+    """Route research search requests to the Agenda System for background research."""
     try:
         import memory.agenda_system as agenda
 
@@ -214,25 +274,49 @@ def _handle_thorough_search(
         task_id = agenda.add_task_to_agenda(research_task, priority=2)
 
         if task_id:
-            olliePrint_simple(
-                f"[G.A.T.E.] Thorough search enqueued in Agenda System (task_id={task_id})"
+            logger.info(
+                f"[G.A.T.E.] Research search enqueued in Agenda System (task_id={task_id})"
             )
             return (
-                f"I've queued a thorough background research task (ID: {task_id}) for '{search_query}'. "
-                "I'll share the findings once they are ready."
+                f"I've queued a deep background research task (ID: {task_id}) for '{search_query}'. "
+                "I'll share the comprehensive findings once they are ready."
             )
         else:
-            olliePrint_simple(
-                "[G.A.T.E.] Failed to enqueue thorough search; falling back to quick search",
-                level="warning",
+            logger.warning(
+                "[G.A.T.E.] Failed to enqueue research search; falling back to thorough search"
             )
-            return _handle_quick_search(search_query)
+            search_results = _handle_thorough_search(search_query)
+            return f"Research queue unavailable. Conducted thorough search instead: {search_results.get('summary', '')}"
 
     except Exception as e:
-        olliePrint_simple(
-            f"[G.A.T.E.] Error enqueuing thorough search: {e}", level="error"
+        logger.error(
+            f"[G.A.T.E.] Error enqueuing research search: {e}"
         )
-        return _handle_quick_search(search_query)
+        search_results = _handle_thorough_search(search_query)
+        return f"Research queue error. Conducted thorough search instead: {search_results.get('summary', '')}"
+
+
+def _handle_thorough_search(search_query: str) -> dict:
+    """Handle thorough web searches using intelligent_search with comprehensive processing."""
+    try:
+        from web_search_core import intelligent_search
+
+        logger.info(f"[G.A.T.E.] Executing thorough web search: {search_query}")
+
+        search_results = intelligent_search(
+            query=search_query, search_priority="thorough", mode="auto"
+        )
+
+        return search_results
+
+    except Exception as e:
+        logger.error(f"[G.A.T.E.] Error in thorough search: {e}")
+        return {
+            "query": search_query,
+            "summary": f"Thorough search error: {str(e)}",
+            "links": [],
+            "extracted_content": [],
+        }
 
 
 def _handle_quick_search(search_query: str) -> dict:
@@ -240,7 +324,7 @@ def _handle_quick_search(search_query: str) -> dict:
     try:
         from web_search_core import intelligent_search
 
-        olliePrint_simple(f"[G.A.T.E.] Executing quick web search: {search_query}")
+        logger.info(f"[G.A.T.E.] Executing quick web search: {search_query}")
 
         search_results = intelligent_search(
             query=search_query, search_priority="quick", mode="auto"
@@ -249,7 +333,7 @@ def _handle_quick_search(search_query: str) -> dict:
         return search_results
 
     except Exception as e:
-        olliePrint_simple(f"[G.A.T.E.] Error in quick search: {e}", level="error")
+        logger.error(f"[G.A.T.E.] Error in quick search: {e}")
         return {
             "query": search_query,
             "summary": f"Web search error: {str(e)}",
@@ -261,7 +345,7 @@ def _handle_quick_search(search_query: str) -> dict:
 def _get_default_routing_flags() -> dict:
     """Get default routing flags when analysis fails."""
     return {
-        "needs_memory": True,
+        "needs_memory": False,
         "needs_pi_tools": False,
         "web_search_strategy": {
             "needed": False,
