@@ -571,6 +571,18 @@ SUBCONSCIOUS PROCESSING RESULTS:
 {subconscious_results}
 {fred_database}"""
             messages.append({"role": "user", "content": formatted_input})
+            # --- Debug: Show full F.R.E.D. LLM prompt (mirrors G.A.T.E. style) ---
+            try:
+                print("\n" + "="*80)
+                print("🎯 [F.R.E.D.] LLM PROMPT")
+                print("="*80)
+                print(f"🧠 SYSTEM PROMPT:\n{SYSTEM_PROMPT}")
+                print("-"*80)
+                print("📝 FULL USER PROMPT:")
+                print(messages[-1].get('content', ''))
+                print("="*80 + "\n")
+            except Exception:
+                pass
             
             assistant_response = ""
             raw_thinking = ""
