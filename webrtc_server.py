@@ -270,9 +270,16 @@ async def offer(request):
                     else:
                         # Plain text - this is the main working path
                         text = message.strip()
-                        if text and len(text) > 2:  # Ignore very short messages
-                            # Logging removed for silent operation
-                            process_pi_transcription(text, from_pi=True)
+                        if text and len(text) > 0:
+                            # Support explicit UI interrupts: [INTERRUPT_STOP], [INTERRUPT_CONTINUE: text]
+                            if text == '[INTERRUPT_STOP]':
+                                process_pi_transcription('stop', from_pi=True)
+                            elif text.startswith('[INTERRUPT_CONTINUE:') and text.endswith(']'):
+                                user_text = text[len('[INTERRUPT_CONTINUE:'):-1].strip()
+                                if user_text:
+                                    process_pi_transcription(user_text, from_pi=True)
+                            else:
+                                process_pi_transcription(text, from_pi=True)
                 else:
                     # Server-side STT processing
                     if hasattr(stt_service, 'process_audio_from_webrtc'):
@@ -488,6 +495,21 @@ async def fred_audio(data):
         loop.call_later(playback_seconds, lambda: stt_service.set_speaking_state(False))
     else:
         # Error handled silently
+        pass
+
+@sio_client.event
+async def fred_audio_stop(data=None):
+    """Stop audio playback on all connected Pi clients."""
+    try:
+        # Send stop command to all channels
+        for channel in data_channels.copy():
+            try:
+                channel.send('[AUDIO_STOP]')
+            except Exception:
+                data_channels.discard(channel)
+        # Immediately mark speaking state false on server-side STT
+        stt_service.set_speaking_state(False)
+    except Exception:
         pass
 
 

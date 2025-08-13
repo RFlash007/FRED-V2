@@ -382,6 +382,19 @@ body {
     gap: 12px;
 }
 
+.interrupt-card {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 8px;
+    padding: 8px;
+}
+
+.interrupt-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
 .speech-status-card {
     background: rgba(var(--fred-focus-rgb), 0.1);
     border: 1px solid rgba(var(--fred-focus-rgb), 0.3);

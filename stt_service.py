@@ -57,7 +57,8 @@ class STTService:
         self.processing_thread = None
         self.transcription_callback = None
         self.last_speech_time = 0
-        self.is_speaking = False  # Indicates F.R.E.D. TTS is playing to avoid feedback loop
+        self.is_speaking = False  # Indicates F.R.E.D. TTS is playing; used for barge-in mode
+        self._barge_in_mode = False  # When True, only listen for interrupt grammar
         
         # Enhanced speech detection settings
         self.silence_duration = config.STT_SILENCE_DURATION
@@ -229,9 +230,49 @@ class STTService:
         
         while self.is_processing and self.is_running:
             try:
-                # Skip processing if F.R.E.D. is speaking
+                # If F.R.E.D. is speaking, enable barge-in limited grammar instead of pausing
                 if self.is_speaking:
-                    time.sleep(0.1)
+                    # Process audio but only detect interrupt keywords quickly
+                    if not self.audio_queue.empty():
+                        audio_data, from_pi = self.audio_queue.get()
+                        if len(audio_data.shape) == 2 and audio_data.shape[1] == 2:
+                            audio_data = np.mean(audio_data, axis=1)
+                        audio_level = np.abs(audio_data).mean()
+                        threshold = self.pi_silence_threshold if from_pi else self.silence_threshold
+                        if audio_level > max(threshold * 1.3, threshold + 0.0005):  # slightly stricter during speaking
+                            audio_int16 = (audio_data * 32768).astype(np.int16)
+                            if self.recognizer.AcceptWaveform(audio_int16.tobytes()):
+                                result = json.loads(self.recognizer.Result())
+                                text = result.get('text', '').strip().lower()
+                                if text:
+                                    # Hard stop if user says 'stop'
+                                    if 'stop' in text:
+                                        try:
+                                            # Defer import to avoid circulars
+                                            from conversation_orchestrator import InteractionOrchestrator
+                                        except Exception:
+                                            InteractionOrchestrator = None
+                                        try:
+                                            # Global orchestrator is created in app, but importing here is avoided; emit via socket instead
+                                            import socketio
+                                        except Exception:
+                                            pass
+                                        # Use callback pathway to main app via transcription callback
+                                        if self.transcription_callback:
+                                            self.transcription_callback('stop', from_pi)
+                                        continue
+                                    # Wake-word barge-in: require 'fred'
+                                    if 'fred' in text:
+                                        # Extract remainder after 'fred' and forward with wake word retained
+                                        remainder = text.split('fred', 1)[1].strip()
+                                        if remainder:
+                                            if self.transcription_callback:
+                                                self.transcription_callback(f"fred {remainder}", from_pi)
+                                        else:
+                                            if self.transcription_callback:
+                                                self.transcription_callback('_acknowledge_', from_pi)
+                                        continue
+                    time.sleep(0.05)
                     continue
                 
                 # Process audio from queue

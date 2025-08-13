@@ -259,6 +259,10 @@ const controlPanel = document.getElementById('control-panel');
 const panelClose = document.getElementById('panel-close');
 
 const activityLog = document.getElementById('activity-log'); // Get the activity log div
+  // Interrupt controls
+  const interruptStopBtn = document.getElementById('interrupt-stop');
+  const interruptContinueBtn = document.getElementById('interrupt-continue');
+  const interruptTextInput = document.getElementById('interrupt-text');
 
 let isFredMuted = false; // Variable to track mute state
 
@@ -482,6 +486,30 @@ document.addEventListener('DOMContentLoaded', () => {
     if (panelClose) {
         panelClose.addEventListener('click', closeControlPanel);
     }
+  // Interrupt buttons
+  if (interruptStopBtn) {
+      interruptStopBtn.addEventListener('click', async () => {
+          try {
+              await fetch('/api/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'stop' }) });
+              olliePrint_quiet('Interrupt: STOP sent');
+          } catch (e) {
+              console.error('Interrupt STOP failed', e);
+          }
+      });
+  }
+
+  if (interruptContinueBtn) {
+      interruptContinueBtn.addEventListener('click', async () => {
+          const txt = (interruptTextInput && interruptTextInput.value || '').trim();
+          try {
+              await fetch('/api/interrupt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'continue', text: txt }) });
+              if (interruptTextInput) interruptTextInput.value = '';
+              olliePrint_quiet('Interrupt: CONTINUE sent');
+          } catch (e) {
+              console.error('Interrupt CONTINUE failed', e);
+          }
+      });
+  }
     
     // Close panel when clicking outside on mobile
     document.addEventListener('click', (e) => {

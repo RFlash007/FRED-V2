@@ -421,6 +421,7 @@ class FREDPiClient:
         
         # Camera setup  
         self.camera = None
+        self._player_proc = None  # Track current audio player process for cancellation
         
     async def start(self):
         """Start the F.R.E.D. Pi client"""
@@ -590,6 +591,12 @@ class FREDPiClient:
                     if len(message.strip()) > 0:
                         olliePrint_simple(f'\n[F.R.E.D.] {message}', 'success')
                 
+                # Stop audio playback immediately on command
+                if message == '[AUDIO_STOP]':
+                    # No central player handle; rely on OS players to be killed when we manage them via Popen.
+                    # Future: track subprocess Popen handles for aplay/paplay and terminate here.
+                    pass
+                
                 if not message.startswith('[HEARTBEAT_ACK]'):
                     olliePrint_simple('[ARMLINK] Standing by for commands...')
             
@@ -744,37 +751,47 @@ class FREDPiClient:
                 temp_file.write(audio_data)
                 temp_file_path = temp_file.name
             
-            # Try aplay first
+            # Kill any existing player first (single-channel playback)
             try:
-                result = subprocess.run(['aplay', temp_file_path], check=True, capture_output=True, text=True)
-                olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (aplay)", 'success')
-            except subprocess.CalledProcessError as e:
-                olliePrint_simple(f"[AUDIO] aplay failed: {e.stderr}", 'warning')
-                # Try paplay as fallback
-                try:
-                    result = subprocess.run(['paplay', temp_file_path], check=True, capture_output=True, text=True)
-                    olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (paplay)", 'success')
-                except subprocess.CalledProcessError as e2:
-                    olliePrint_simple(f"[AUDIO] paplay also failed: {e2.stderr}", 'error')
-                    # Try mpg123 as last resort
-                    try:
-                        result = subprocess.run(['mpg123', temp_file_path], check=True, capture_output=True, text=True)
-                        olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (mpg123)", 'success')
-                    except subprocess.CalledProcessError as e3:
-                        olliePrint_simple(f"[CRITICAL] All audio players failed - last error: {e3.stderr}", 'error')
-            except FileNotFoundError:
-                olliePrint_simple("[AUDIO] aplay not found, trying paplay...", 'warning')
-                try:
-                    result = subprocess.run(['paplay', temp_file_path], check=True, capture_output=True, text=True)
-                    olliePrint_simple("[SUCCESS] F.R.E.D. voice transmission complete (paplay)", 'success')
-                except Exception as e:
-                    olliePrint_simple(f"[CRITICAL] Audio playback failed: {e}", 'error')
-            
-            # Cleanup temp file
-            try:
-                os.unlink(temp_file_path)
+                if self._player_proc and self._player_proc.poll() is None:
+                    self._player_proc.terminate()
             except Exception:
-                pass  # Silent cleanup
+                pass
+
+            # Try aplay first with non-blocking Popen
+            started = False
+            for cmd in (['aplay', temp_file_path], ['paplay', temp_file_path], ['mpg123', temp_file_path]):
+                if started:
+                    break
+                try:
+                    self._player_proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    started = True
+                except FileNotFoundError:
+                    continue
+                except Exception:
+                    continue
+
+            if not started:
+                olliePrint_simple("[CRITICAL] No audio player available (aplay/paplay/mpg123)", 'error')
+            else:
+                # Detach a waiter to clean up temp file on completion
+                def _wait_and_cleanup(path, proc):
+                    try:
+                        proc.wait(timeout=60)
+                    except Exception:
+                        pass
+                    try:
+                        os.unlink(path)
+                    except Exception:
+                        pass
+                threading.Thread(target=_wait_and_cleanup, args=(temp_file_path, self._player_proc), daemon=True).start()
+            
+            # If we didn't start a player, remove the temp file now
+            if not started:
+                try:
+                    os.unlink(temp_file_path)
+                except Exception:
+                    pass
                 
         except Exception as e:
             olliePrint_simple(f"[CRITICAL] Audio playback system failure: {e}", 'error')

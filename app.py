@@ -27,6 +27,12 @@ from utils import strip_think_tags
 import time
 from config import config, ollama_manager, AGENT_MANAGEMENT_TOOLS
 
+# Conversation orchestration for barge-in and sentence queue TTS
+from conversation_orchestrator import (
+    InteractionOrchestrator,
+    AudioPlaybackController,
+    SpeechQueue,
+)
 # Import L2 and Agenda modules
 import memory.L2_memory as L2
 import memory.agenda_system as agenda
@@ -121,6 +127,8 @@ from agents.dispatcher import AgentDispatcher
 # Global state instance
 fred_state = FREDState()
 agent_dispatcher = AgentDispatcher()
+interaction_orchestrator = InteractionOrchestrator()
+local_playback_controller = AudioPlaybackController()
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
 app.config['SECRET_KEY'] = config.SECRET_KEY
@@ -235,97 +243,24 @@ def play_audio_locally(audio_file_path):
         pass
 
 def fred_speak(text, mute_fred=False, target_device='local'):
-    """Generate and play speech using TTS.
-    
-    Args:
-        text: Text to speak
-        mute_fred: Whether to mute output
-        target_device: 'local' for main computer, 'pi' for Pi glasses, 'all' for both
-    """
-    if mute_fred:
+    """Deprecated single-shot TTS (kept for compatibility). Use SpeechQueue."""
+    if not text:
         return
-        
-    if not text.strip():
-        return
+    # Route through a transient SpeechQueue instance for compatibility
+    def _tts_engine_provider():
+        return fred_state.get_tts_engine()
 
-    # Cleanup previous file
-    if fred_state.last_played_wav and os.path.exists(fred_state.last_played_wav):
-        try:
-            os.remove(fred_state.last_played_wav)
-        except Exception:
-            pass
-
-    # Generate speech
-    unique_id = uuid.uuid4()
-    output_path = os.path.join(APP_ROOT, f"fred_speech_output_{unique_id}.wav")
-
-    try:
-        # Priority 1: Use Stewie voice cloning if available
-        if config.STEWIE_VOICE_ENABLED and hasattr(fred_state, 'stewie_voice_available') and fred_state.stewie_voice_available:
-            from stewie_voice_clone import generate_stewie_speech
-            
-            stewie_success = generate_stewie_speech(text, output_path)
-            
-            if stewie_success:
-                pass
-            else:
-                # Fall through to standard TTS
-                stewie_success = False
-        else:
-            stewie_success = False
-        
-        # Fallback: Use standard TTS if Stewie cloning failed or is disabled
-        if not stewie_success:
-            tts_engine = fred_state.get_tts_engine()
-            if tts_engine is None:
-                return
-
-            # Check if we have a voice sample for cloning
-            if os.path.exists(config.FRED_SPEAKER_WAV_PATH):
-                tts_engine.tts_to_file(
-                    text=text,
-                    speaker_wav=config.FRED_SPEAKER_WAV_PATH,
-                    language=config.FRED_LANGUAGE,
-                    file_path=output_path
-                )
-            else:
-                # Use default XTTS speaker instead of voice cloning
-                tts_engine.tts_to_file(
-                    text=text,
-                    speaker="Ana Florence",  # Default XTTS speaker
-                    language=config.FRED_LANGUAGE,
-                    file_path=output_path
-                )
-        
-        # Route audio based on target device
-        if target_device in ['local', 'all']:
-            # Play locally on main computer
-            play_audio_locally(output_path)
-
-        if target_device in ['pi', 'all']:
-            # Send audio to Pi glasses
-            send_audio_to_pi(output_path, text)
-
-        if target_device not in ['local', 'pi', 'all']:
-            play_audio_locally(output_path)
-
-        # Schedule cleanup after a delay
-        def delayed_cleanup():
-            time.sleep(config.TTS_CLEANUP_DELAY)  # Wait for playback to complete
-            try:
-                if os.path.exists(output_path):
-                    os.remove(output_path)
-            except Exception:
-                pass
-
-        threading.Thread(target=delayed_cleanup, daemon=True).start()
-        try:
-            setattr(fred_state, 'last_played_wav', output_path)
-        except Exception:
-            pass
-
-    except Exception as e:
-        pass
+    sq = SpeechQueue(
+        playback_controller=local_playback_controller,
+        tts_engine_provider=_tts_engine_provider,
+        send_audio_to_pi_fn=lambda path, t: send_audio_to_pi(path, t),
+        prebuffer_sentences=1,
+        language=config.FRED_LANGUAGE,
+        speaker_wav_path=config.FRED_SPEAKER_WAV_PATH if os.path.exists(config.FRED_SPEAKER_WAV_PATH) else None,
+        default_speaker="Ana Florence",
+    )
+    sq.configure(target_device=target_device, mute=mute_fred)
+    sq.enqueue(text)
 
 def send_audio_to_pi(audio_file_path, text):
     """Send audio file to connected Pi clients."""
@@ -352,6 +287,15 @@ def send_audio_to_pi(audio_file_path, text):
         
     except Exception as e:
         pass
+
+def segment_into_sentences(text: str) -> list:
+    """Lightweight sentence segmentation for English. Returns list of sentences."""
+    if not text:
+        return []
+    # Simple rule-based segmentation on ., !, ? followed by space or EOL
+    import re
+    pieces = re.split(r'(?<=[.!?])\s+', text.strip())
+    return [p.strip() for p in pieces if p.strip()]
 
 def cleanup_wav_files():
     """Clean up old WAV files."""
@@ -428,6 +372,27 @@ def get_graph():
         pass
     
     return jsonify({"nodes": nodes, "edges": edges})
+
+@app.route('/api/interrupt', methods=['POST'])
+def api_interrupt():
+    """HTTP endpoint for UI interrupt buttons.
+
+    action: 'stop' | 'continue'
+    text: optional user text for continuation
+    """
+    try:
+        data = request.json or {}
+        action = data.get('action', '').strip().lower()
+        if action == 'stop':
+            interaction_orchestrator.request_stop()
+            return jsonify({"ok": True})
+        if action == 'continue':
+            user_text = (data.get('text') or '').strip()
+            interaction_orchestrator.request_barge_in(user_text)
+            return jsonify({"ok": True})
+        return jsonify({"ok": False, "error": "invalid action"}), 400
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route('/chat', methods=['POST'])
 def chat_endpoint():
@@ -587,6 +552,8 @@ SUBCONSCIOUS PROCESSING RESULTS:
             assistant_response = ""
             raw_thinking = ""
             tool_outputs = []  # Ensure defined even if no tools are called
+            # Begin orchestrated response lifecycle
+            response_id = interaction_orchestrator.begin_response()
             
             # Tool iteration loop
             sleep_cycle_triggered = False  # Initialize variable
@@ -718,22 +685,125 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
                         stream=True,
                         options=config.Instruct_Generation_Options
                     )
-                    
+
+                    # Set up sentence-level speech queue
+                    def tts_engine_provider():
+                        return fred_state.get_tts_engine()
+
+                    def send_stop_to_pi():
+                        try:
+                            socketio.emit('fred_audio_stop', {'message': 'stop'})
+                        except Exception:
+                            pass
+
+                    speech_queue = SpeechQueue(
+                        playback_controller=local_playback_controller,
+                        tts_engine_provider=tts_engine_provider,
+                        send_audio_to_pi_fn=lambda path, t: send_audio_to_pi(path, t),
+                        send_stop_to_pi_fn=send_stop_to_pi,
+                        prebuffer_sentences=1,
+                        language=config.FRED_LANGUAGE,
+                        speaker_wav_path=config.FRED_SPEAKER_WAV_PATH if os.path.exists(config.FRED_SPEAKER_WAV_PATH) else None,
+                        default_speaker="Ana Florence",
+                    )
+                    target_device = 'pi' if from_pi_glasses else 'local'
+                    speech_queue.configure(target_device=target_device, mute=mute_fred)
+                    interaction_orchestrator.bind_speech_queue(speech_queue)
+
+                    # STT coordination during playback (local)
+                    speech_queue.on_playback_start = lambda: stt_service.set_speaking_state(True)
+                    speech_queue.on_playback_end = lambda: stt_service.set_speaking_state(False)
+                    speech_queue.on_sentence_spoken = interaction_orchestrator.record_spoken_sentence
+
+                    sentence_buffer = ""
+
+                    def flush_sentences(text_chunk: str):
+                        nonlocal sentence_buffer
+                        sentence_buffer += text_chunk
+                        sentences = segment_into_sentences(sentence_buffer)
+                        if sentences:
+                            # If last char is not a terminal, keep the tail as partial
+                            if sentence_buffer and sentence_buffer[-1] not in ['.', '!', '?']:
+                                tail = sentences.pop() if len(sentences) > 0 else ""
+                            else:
+                                tail = ""
+                            for s in sentences:
+                                speech_queue.enqueue(s)
+                            sentence_buffer = tail
+
+                    # Primary stream loop
                     for chunk in final_stream:
                         content_chunk = chunk.get('message', {}).get('content')
                         if content_chunk:
-                            # Extract thinking from streaming chunks
                             chunk_thinking = extract_think_content(content_chunk)
                             if chunk_thinking:
                                 raw_thinking += chunk_thinking + "\n"
-
                             clean_chunk = strip_think_tags(content_chunk)
                             if clean_chunk:
                                 assistant_response += clean_chunk
                                 yield json.dumps({'response': clean_chunk}) + '\n'
+                                flush_sentences(clean_chunk)
+
+                        # Check for abort request (stop or barge-in)
+                        if interaction_orchestrator.should_abort_generation():
+                            break
 
                         if chunk.get('done', False):
                             break
+
+                    # If abort requested, determine whether to continue with user context
+                    if interaction_orchestrator.should_abort_generation():
+                        user_barge_text = interaction_orchestrator.consume_barge_in_text()
+                        # Flush trailing partial as a sentence if present
+                        if sentence_buffer.strip():
+                            speech_queue.enqueue(sentence_buffer.strip())
+                            sentence_buffer = ""
+
+                        if user_barge_text and user_barge_text.strip():
+                            # Build continuation prompt
+                            last_spoken = interaction_orchestrator.get_last_spoken(1)
+                            spoken_hint = last_spoken[0] if last_spoken else ""
+                            continuation_msg = (
+                                "(INTERRUPTION) You were interrupted mid-response. "
+                                f"User said: '{user_barge_text.strip()}'. "
+                                f"Avoid repeating already spoken sentence: '{spoken_hint}'. "
+                                "Continue seamlessly from where you left off."
+                            )
+                            messages.append({"role": "assistant", "content": assistant_response})
+                            messages.append({"role": "user", "content": continuation_msg})
+
+                            # Clear abort flag before resuming
+                            interaction_orchestrator.clear_abort_flags()
+
+                            # Resume streaming continuation
+                            cont_stream = ollama_manager.chat_concurrent_safe(
+                                host=ollama_base_url,
+                                model=model_name,
+                                messages=messages,
+                                stream=True,
+                                options=config.Instruct_Generation_Options
+                            )
+                            for chunk in cont_stream:
+                                content_chunk = chunk.get('message', {}).get('content')
+                                if content_chunk:
+                                    chunk_thinking = extract_think_content(content_chunk)
+                                    if chunk_thinking:
+                                        raw_thinking += chunk_thinking + "\n"
+                                    clean_chunk = strip_think_tags(content_chunk)
+                                    if clean_chunk:
+                                        assistant_response += clean_chunk
+                                        yield json.dumps({'response': clean_chunk}) + '\n'
+                                        flush_sentences(clean_chunk)
+                                if interaction_orchestrator.should_abort_generation():
+                                    break
+                                if chunk.get('done', False):
+                                    break
+
+                    # After stream completes, enqueue any trailing partial sentence
+                    if sentence_buffer.strip():
+                        speech_queue.enqueue(sentence_buffer.strip())
+                        sentence_buffer = ""
+
                 except Exception as e:
                     print(f"[SSE] Final streaming error: {e}")
                     print(traceback.format_exc())
@@ -747,10 +817,9 @@ The current time is: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
             fred_state.add_conversation_turn('assistant', assistant_response)
             
 
-            # TTS - route audio to appropriate device (use outer-scope flag)
-            target_device = 'pi' if from_pi_glasses else 'local'
-            fred_speak(assistant_response, mute_fred, target_device)
+            # Streaming handled sentence-level above; finalize
             yield json.dumps({'type': 'done'}) + '\n'
+            interaction_orchestrator.end_response(response_id)
         
         return Response(event_stream(), headers={
             'Content-Type': 'text/event-stream',
@@ -803,13 +872,20 @@ def process_transcription(text, from_pi=False):
         return
     
     text = text.strip()
+    lower = text.lower()
     
     if text.startswith("_acknowledge_"):
-        acknowledgment = text.replace("_acknowledge_", "")
-        socketio.emit('fred_acknowledgment', {'text': acknowledgment})
-        # Route acknowledgment to appropriate device
-        target_device = 'pi' if from_pi else 'local'
-        fred_speak(acknowledgment, target_device=target_device)
+        # Silent acknowledgment; do not speak or print
+        return
+    
+    # Interrupt semantics from STT or UI
+    if lower == 'stop' or lower == '[interrupt_stop]':
+        interaction_orchestrator.request_stop()
+        return
+    if lower.startswith('fred'):
+        # Everything after 'fred' is barge-in continuation context
+        remainder = text[4:].strip() if len(text) >= 4 else ''
+        interaction_orchestrator.request_barge_in(remainder)
         return
     
     socketio.emit('transcription_result', {'text': text})
