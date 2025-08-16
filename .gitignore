@@ -195,7 +195,7 @@ Ranking.txt
 features.txt
 incrementaluprgades
 
-
+models/*
 *.db
 Sermon.txt
 ToDo
