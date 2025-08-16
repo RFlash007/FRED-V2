@@ -80,7 +80,7 @@ body.dark-mode {
     --text-primary: var(--fred-ivory-light);
     --text-secondary: var(--fred-cloud-medium);
     --text-muted: var(--fred-cloud-dark);
-    --text-inverse: var(--fred-slate-dark);
+    --text-inverse: var(--fred-ivory-light);
     --text-accent: var(--fred-book-cloth);
     --text-focus: var(--fred-focus);
     
@@ -317,6 +317,7 @@ body {
     bottom: 0;
     z-index: 40;
     overflow-y: auto;
+    overflow-x: hidden;
     box-shadow: var(--shadow-lg);
 }
 
@@ -393,6 +394,13 @@ body {
     display: flex;
     gap: 8px;
     align-items: center;
+    flex-wrap: wrap;
+}
+
+/* Ensure interrupt input can shrink on narrow sidebars */
+#interrupt-text {
+    min-width: 0 !important;
+    flex: 1 1 140px;
 }
 
 .speech-status-card {

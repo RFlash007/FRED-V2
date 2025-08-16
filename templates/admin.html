@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>F.R.E.D. :: Admin Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css" />
+  <link rel="stylesheet" href="/static/admin.css" />
+  <script src="/static/theme.js"></script>
+</head>
+<body>
+  <!-- Header Bar (reuse look/feel) -->
+  <header class="fred-header">
+    <div class="header-content">
+      <div class="fred-logo">
+        <div class="logo-core"></div>
+        <span class="logo-text">F.R.E.D.</span>
+        <span class="logo-subtext">Admin Control Center</span>
+      </div>
+      <div class="header-controls">
+        <a href="/" class="control-btn" title="Back to Interface">Home</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="admin-container">
+    <div class="admin-grid">
+      <!-- System Health -->
+      <section class="tile tile-health">
+        <div class="tile-header">
+          <h3>System Health</h3>
+          <span class="pill" id="pill-uptime">Uptime: 00:00:00</span>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="metric-label">Ollama</div>
+            <div class="metric-value" id="metric-ollama">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">WebRTC Bridge</div>
+            <div class="metric-value" id="metric-webrtc">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">TTS</div>
+            <div class="metric-value" id="metric-tts">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">STT</div>
+            <div class="metric-value" id="metric-stt">—</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Conversation Stats -->
+      <section class="tile tile-conv">
+        <div class="tile-header">
+          <h3>Conversation</h3>
+          <span class="pill" id="pill-turns">Turns: 0</span>
+        </div>
+        <div class="conv-stats">
+          <div>
+            <div class="metric-label">Current Messages</div>
+            <div class="metric-value" id="stat-messages">0</div>
+          </div>
+          <div>
+            <div class="metric-label">Max Messages</div>
+            <div class="metric-value" id="stat-max">0</div>
+          </div>
+          <div>
+            <div class="metric-label">Last L2 Index</div>
+            <div class="metric-value" id="stat-l2">0</div>
+          </div>
+        </div>
+        <div class="recent-conv" id="recent-conv"></div>
+      </section>
+
+      <!-- Visual Context -->
+      <section class="tile tile-vision">
+        <div class="tile-header">
+          <h3>Visual Context</h3>
+          <span class="pill">Vision</span>
+        </div>
+        <pre class="vision-summary" id="vision-summary">Loading...</pre>
+      </section>
+
+      <!-- Models -->
+      <section class="tile tile-models">
+        <div class="tile-header">
+          <h3>Model Runtime</h3>
+          <button id="btn-refresh-models" class="control-btn">Refresh</button>
+        </div>
+        <pre class="models-json" id="models-json">Loading...</pre>
+      </section>
+
+      <!-- Memory Telemetry (full-width below) -->
+      <section class="tile" style="grid-column: span 12;">
+        <div class="tile-header">
+          <h3>Memory Telemetry</h3>
+          <span class="pill">L2 + L3</span>
+        </div>
+        <div id="memory-stats"></div>
+      </section>
+    </div>
+  </div>
+
+  <script src="/static/admin.js"></script>
+</body>
+</html>

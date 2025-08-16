@@ -49,6 +49,8 @@ class FREDState:
         self.total_conversation_turns = 0  # Track conversation turns for L2
         self.last_analyzed_message_index = 0  # Track last analyzed message for L2
         self.stewie_voice_available = False  # Track if Stewie voice cloning is available
+        self.startup_time = time.time()
+        self.webrtc_bridge_online = False
         self._lock = threading.Lock()
     
     def add_conversation_turn(self, role, content):
@@ -320,6 +322,10 @@ if not os.path.exists(app.static_folder):
 def index():
     return render_template('index.html')
 
+@app.route('/admin')
+def admin_page():
+    return render_template('admin.html')
+
 @app.route('/static/<path:filename>')
 def serve_static(filename):
     return send_from_directory(app.static_folder, filename)
@@ -372,6 +378,186 @@ def get_graph():
         pass
     
     return jsonify({"nodes": nodes, "edges": edges})
+
+@app.route('/api/admin/overview')
+def admin_overview():
+    """Overview metrics for Admin UI."""
+    try:
+        uptime_sec = int(time.time() - fred_state.startup_time)
+
+        # Ollama connectivity
+        has_ollama = False
+        try:
+            resp = requests.get(f"{config.OLLAMA_BASE_URL}/api/tags", timeout=3)
+            has_ollama = resp.ok
+        except Exception:
+            has_ollama = False
+
+        # STT status
+        stt_status = {
+            'is_initialized': bool(getattr(stt_service, 'is_initialized', False)),
+            'is_running': bool(getattr(stt_service, 'is_running', False))
+        }
+
+        # TTS status
+        tts_status = {
+            'available': fred_state.get_tts_engine() is not None,
+            'stewie_voice': bool(getattr(fred_state, 'stewie_voice_available', False))
+        }
+
+        # Vision status
+        vision_status = {
+            'available': bool(getattr(vision_service, 'available', True)),
+            'summary': getattr(vision_service, 'latest_summary', None) or getattr(vision_service, 'summary', None)
+        }
+
+        # Conversation stats
+        conv_stats = fred_state.get_conversation_stats()
+        recent_conv = fred_state.get_conversation_history()[-10:]
+
+        return jsonify({
+            'uptime_sec': uptime_sec,
+            'ollama': {'has_connection': has_ollama},
+            'webrtc': {'bridge_online': bool(getattr(fred_state, 'webrtc_bridge_online', False))},
+            'tts': tts_status,
+            'stt': stt_status,
+            'vision': vision_status,
+            'conversation': conv_stats,
+            'recent_conversation': recent_conv
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/models')
+def admin_models():
+    """Return model runtime info (from Ollama)."""
+    try:
+        # Try using Ollama API directly
+        resp = requests.get(f"{config.OLLAMA_BASE_URL}/api/tags", timeout=5)
+        if resp.ok:
+            return jsonify(resp.json())
+        return jsonify({'error': 'failed to query ollama'}), 502
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/admin/memory/stats')
+def admin_memory_stats():
+    """Return L2/L3 memory telemetry. Best-effort with safe fallbacks."""
+    try:
+        stats = {
+            'l2': {
+                'total': 0,
+                'eligible_for_consolidation': 0,
+                'last_created_at': None,
+                'recent': [],
+                'triggers': []
+            },
+            'l3': {
+                'nodes_total': 0,
+                'edges_total': 0,
+                'nodes_by_type': [],
+                'edges_by_rel': [],
+                'pending_tasks': [],
+                'top_connected': []
+            }
+        }
+
+        # L3 queries
+        try:
+            with L3.duckdb.connect(L3.DB_FILE) as con:
+                nodes_total = con.execute("""
+                    SELECT COUNT(*) FROM nodes WHERE superseded_at IS NULL
+                """).fetchone()[0]
+                edges_total = con.execute("""
+                    SELECT COUNT(*) FROM edges
+                """).fetchone()[0]
+                nodes_by_type = con.execute("""
+                    SELECT COALESCE(type,'Unknown') AS type, COUNT(*) AS count
+                    FROM nodes WHERE superseded_at IS NULL
+                    GROUP BY 1 ORDER BY count DESC
+                """).fetchall()
+                edges_by_rel = con.execute("""
+                    SELECT COALESCE(rel_type,'relatedTo') AS rel_type, COUNT(*) AS count
+                    FROM edges GROUP BY 1 ORDER BY count DESC
+                """).fetchall()
+                top_connected = con.execute("""
+                    SELECT n.nodeid, n.label, 
+                           (SELECT COUNT(*) FROM edges e WHERE e.sourceid = n.nodeid OR e.targetid = n.nodeid) AS degree
+                    FROM nodes n
+                    WHERE n.superseded_at IS NULL
+                    ORDER BY degree DESC
+                    LIMIT 10
+                """).fetchall()
+
+                stats['l3']['nodes_total'] = nodes_total or 0
+                stats['l3']['edges_total'] = edges_total or 0
+                stats['l3']['nodes_by_type'] = [
+                    {'type': r[0], 'count': r[1]} for r in nodes_by_type
+                ]
+                stats['l3']['edges_by_rel'] = [
+                    {'rel_type': r[0], 'count': r[1]} for r in edges_by_rel
+                ]
+                stats['l3']['top_connected'] = [
+                    {'nodeid': r[0], 'label': r[1], 'degree': r[2]} for r in top_connected
+                ]
+        except Exception:
+            pass
+
+        # L2 queries (schema may vary; attempt best-effort and fall back)
+        try:
+            with L3.duckdb.connect(L3.DB_FILE) as con:
+                # Heuristic table discovery for L2 episodic memories
+                tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
+                l2_table = None
+                for t in tables:
+                    if t.lower() in ('l2_memories', 'l2_memory', 'episodic_memories', 'l2'):
+                        l2_table = t
+                        break
+                if l2_table:
+                    stats['l2']['total'] = con.execute(f"SELECT COUNT(*) FROM {l2_table}").fetchone()[0]
+                    # Try optional columns
+                    try:
+                        stats['l2']['eligible_for_consolidation'] = con.execute(
+                            f"SELECT COUNT(*) FROM {l2_table} WHERE COALESCE(eligible_for_consolidation, false) = true"
+                        ).fetchone()[0]
+                    except Exception:
+                        pass
+                    try:
+                        stats['l2']['last_created_at'] = con.execute(
+                            f"SELECT MAX(created_at) FROM {l2_table}"
+                        ).fetchone()[0]
+                    except Exception:
+                        pass
+                    try:
+                        recent = con.execute(
+                            f"SELECT created_at, topic, turn_range, trigger_reason FROM {l2_table} ORDER BY created_at DESC LIMIT 8"
+                        ).fetchall()
+                        stats['l2']['recent'] = [
+                            {
+                                'created_at': (r[0].isoformat() if hasattr(r[0], 'isoformat') else r[0]),
+                                'topic': r[1],
+                                'turn_range': r[2],
+                                'trigger_reason': r[3]
+                            } for r in recent
+                        ]
+                    except Exception:
+                        pass
+                    # Trigger stats (if available)
+                    try:
+                        triggers = con.execute(
+                            f"SELECT trigger_reason, COUNT(*) FROM {l2_table} GROUP BY 1 ORDER BY 2 DESC LIMIT 12"
+                        ).fetchall()
+                        stats['l2']['triggers'] = [
+                            {'reason': r[0], 'count': r[1]} for r in triggers
+                        ]
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        return jsonify(stats)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/interrupt', methods=['POST'])
 def api_interrupt():
@@ -937,7 +1123,19 @@ def handle_disconnect():
 
 @socketio.on('webrtc_server_connected')
 def handle_webrtc_server_connect():
+    try:
+        fred_state.webrtc_bridge_online = True
+    except Exception:
+        pass
     emit('status', {'message': 'WebRTC bridge online'})
+
+@socketio.on('webrtc_server_disconnected')
+def handle_webrtc_server_disconnect():
+    try:
+        fred_state.webrtc_bridge_online = False
+    except Exception:
+        pass
+    emit('status', {'message': 'WebRTC bridge offline'})
 
 @socketio.on('start_stt')
 def handle_start_stt():

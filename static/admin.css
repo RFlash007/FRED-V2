@@ -1,0 +1,209 @@
+:root {
+	--admin-grid-gap: 16px;
+}
+
+.admin-container {
+	padding-top: 90px;
+	padding-left: 24px;
+	padding-right: 24px;
+	max-width: 1400px;
+	margin: 0 auto;
+	position: relative;
+	z-index: 10;
+	height: calc(100vh - 90px);
+	overflow-y: auto; /* allow scrolling of page content */
+	overflow-x: hidden;
+}
+
+.admin-grid {
+	display: grid;
+	grid-template-columns: repeat(12, 1fr);
+	grid-auto-rows: minmax(120px, auto);
+	gap: var(--admin-grid-gap);
+    padding-bottom: 24px; /* ensure last tile has breathing room */
+}
+
+.tile {
+	background: var(--bg-card);
+	border: 1px solid var(--border-primary);
+	border-radius: var(--radius-lg);
+	box-shadow: var(--shadow-sm);
+	padding: 16px;
+	backdrop-filter: blur(10px);
+}
+
+.tile-health {
+	grid-column: span 4;
+}
+
+.tile-conv {
+	grid-column: span 4;
+}
+
+.tile-vision {
+	grid-column: span 4;
+}
+
+.tile-models {
+	grid-column: span 6;
+}
+
+.tile-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 12px;
+	border-bottom: 1px solid var(--border-primary);
+	padding-bottom: 8px;
+}
+
+.tile-header h3 {
+	color: var(--fred-white);
+	font-family: var(--font-mono);
+	font-size: 13px;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+}
+
+.pill {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--text-focus);
+	background: rgba(var(--fred-focus-rgb), 0.08);
+	border: 1px solid rgba(var(--fred-focus-rgb), 0.2);
+	border-radius: 999px;
+	padding: 4px 8px;
+}
+
+.metrics {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 12px;
+}
+
+.metric {
+	background: rgba(255,255,255,0.03);
+	border: 1px solid rgba(255,255,255,0.08);
+	border-radius: 10px;
+	padding: 12px;
+}
+
+.metric-label {
+	color: var(--text-muted);
+	font-size: 11px;
+	margin-bottom: 4px;
+}
+
+.metric-value {
+	color: var(--fred-white);
+	font-family: var(--font-mono);
+}
+
+.conv-stats {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 8px 12px;
+	margin-bottom: 12px;
+}
+
+.recent-conv {
+	max-height: 220px;
+	overflow-y: auto;
+	background: rgba(255,255,255,0.03);
+	border: 1px solid rgba(255,255,255,0.08);
+	border-radius: 10px;
+	padding: 12px;
+}
+
+.conv-item {
+	display: grid;
+	grid-template-columns: 70px 1fr;
+	gap: 8px;
+	border-bottom: 1px dashed rgba(255,255,255,0.08);
+	padding: 8px 0;
+}
+
+.conv-role {
+	font-family: var(--font-mono);
+	font-size: 11px;
+	color: var(--text-accent);
+}
+
+.conv-text {
+	color: var(--text-primary);
+	font-size: 12px;
+	white-space: pre-wrap;
+}
+
+.vision-summary, .models-json {
+	background: rgba(0,0,0,0.3);
+	border: 1px solid rgba(255,255,255,0.08);
+	border-radius: 10px;
+	color: var(--fred-white);
+	font-family: var(--font-mono);
+	font-size: 12px;
+	padding: 12px;
+	max-height: 260px;
+	overflow-y: auto;
+}
+
+/* Memory sections */
+.memory-sections {
+	display: grid;
+	grid-template-columns: repeat(2, 1fr);
+	gap: 16px;
+}
+
+.memory-card {
+	background: rgba(255,255,255,0.03);
+	border: 1px solid rgba(255,255,255,0.08);
+	border-radius: 12px;
+	padding: 12px;
+}
+
+.memory-card-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	margin-bottom: 8px;
+	border-bottom: 1px solid rgba(255,255,255,0.08);
+	padding-bottom: 6px;
+}
+
+.memory-card-header h4 {
+	margin: 0;
+	font-family: var(--font-mono);
+	font-size: 12px;
+	text-transform: uppercase;
+	letter-spacing: 1px;
+	color: var(--fred-white);
+}
+
+.memory-grid {
+	display: grid;
+	grid-template-columns: repeat(3, 1fr);
+	gap: 12px;
+	margin-bottom: 8px;
+}
+
+.subsection { margin-top: 8px; }
+.sub-title { color: var(--text-muted); font-size: 11px; margin-bottom: 6px; }
+.recent-list { display: grid; gap: 6px; max-height: 200px; overflow-y: auto; }
+.recent-row { display: grid; grid-template-columns: 140px 1fr 80px 1fr; gap: 8px; align-items: center; }
+.tag-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-family: var(--font-mono); font-size: 11px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.08); border-radius: 999px; padding: 3px 8px; color: var(--fred-white); }
+
+@media (max-width: 1024px) {
+	.memory-sections { grid-template-columns: 1fr; }
+	.memory-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 1024px) {
+	.tile-health, .tile-conv, .tile-vision {
+		grid-column: span 12;
+	}
+	.tile-models {
+		grid-column: span 12;
+	}
+}
+
