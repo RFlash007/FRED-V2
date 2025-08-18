@@ -240,7 +240,7 @@ GATE_USER_PROMPT = """
 
 4. Directive
 <Directive>
-**Directive**: Analyze the query and context. Your entire output MUST be a single, top-level JSON object with EXACTLY these fields: `needs_memory`, `memory_search_query`, `web_search_strategy`, `needs_pi_tools`. Output nothing else. No markdown, no code fences, no explanations, no wrapper keys like `message` or `content`. If uncertain, output the safe default: {"needs_memory": false, "memory_search_query": null, "web_search_strategy": null, "needs_pi_tools": false}.
+**Directive**: Analyze the query and context. Respond with ONLY a single, top-level JSON object with EXACTLY these fields: `needs_memory`, `memory_search_query`, `web_search_strategy`, `needs_pi_tools`. Output nothing else. No markdown, no code fences, no tags, no explanations, and no wrapper keys like `message` or `content`. Your output MUST start with `{` and end with `}`. If uncertain, reply EXACTLY with: {"needs_memory": false, "memory_search_query": null, "web_search_strategy": null, "needs_pi_tools": false}. Now return the JSON.
 </Directive>   
 """
 

@@ -1,8 +1,9 @@
 import json
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 import logging
 import traceback
+import re
 from config import config, ollama_manager
 from utils import strip_think_tags
 
@@ -233,7 +234,131 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
         elif isinstance(response, str):
             response_content = response.strip()
 
+        # --- Robust JSON salvage helpers (nested for minimal surface area) ---
+        expected_keys = {"needs_memory", "memory_search_query", "web_search_strategy", "needs_pi_tools"}
+
+        def _strip_code_fences(text: str) -> str:
+            # Remove triple backtick fences and language hints
+            return re.sub(r"```[a-zA-Z0-9_\-]*\n?|```", "", text)
+
+        def _remove_trailing_commas(text: str) -> str:
+            # Remove trailing commas before } or ]
+            return re.sub(r",\s*([}\]])", r"\1", text)
+
+        def _python_literals_to_json(text: str) -> str:
+            text = re.sub(r"\bTrue\b", "true", text)
+            text = re.sub(r"\bFalse\b", "false", text)
+            text = re.sub(r"\bNone\b", "null", text)
+            return text
+
+        def _extract_json_objects(text: str) -> list:
+            # Return list of balanced JSON object substrings
+            objs = []
+            depth = 0
+            start = -1
+            for i, ch in enumerate(text):
+                if ch == '{':
+                    if depth == 0:
+                        start = i
+                    depth += 1
+                elif ch == '}':
+                    if depth > 0:
+                        depth -= 1
+                        if depth == 0 and start != -1:
+                            objs.append(text[start : i + 1])
+                            start = -1
+            return objs
+
+        def _find_dict_with_keys(obj) -> Optional[dict]:
+            # Search recursively for a dict containing expected_keys
+            try:
+                if isinstance(obj, dict):
+                    if any(k in obj for k in expected_keys):
+                        return obj
+                    for v in obj.values():
+                        found = _find_dict_with_keys(v)
+                        if found:
+                            return found
+                elif isinstance(obj, list):
+                    for item in obj:
+                        found = _find_dict_with_keys(item)
+                        if found:
+                            return found
+            except Exception:
+                pass
+            return None
+
+        def _coerce_and_fill(flags: dict) -> dict:
+            # Coerce types and fill defaults, then reuse the local normalizer
+            if "needs_memory" in flags and not isinstance(flags["needs_memory"], bool):
+                if isinstance(flags["needs_memory"], str):
+                    flags["needs_memory"] = flags["needs_memory"].strip().lower() == "true"
+                else:
+                    flags["needs_memory"] = bool(flags["needs_memory"])
+            if "needs_pi_tools" in flags and not isinstance(flags["needs_pi_tools"], bool):
+                if isinstance(flags["needs_pi_tools"], str):
+                    flags["needs_pi_tools"] = flags["needs_pi_tools"].strip().lower() == "true"
+                else:
+                    flags["needs_pi_tools"] = bool(flags["needs_pi_tools"])
+            if "memory_search_query" in flags and flags["memory_search_query"] is not None and not isinstance(flags["memory_search_query"], str):
+                try:
+                    flags["memory_search_query"] = str(flags["memory_search_query"])
+                except Exception:
+                    flags["memory_search_query"] = None
+            if "web_search_strategy" in flags and flags["web_search_strategy"] is not None and not isinstance(flags["web_search_strategy"], dict):
+                flags["web_search_strategy"] = None
+            return _normalize_and_fill_defaults(flags)
+
+        def _robust_parse(text: str) -> Optional[dict]:
+            if not text:
+                return None
+            raw = _strip_code_fences(text).strip()
+            # Quick direct load
+            try:
+                obj = json.loads(raw)
+                if isinstance(obj, list) and obj:
+                    obj = obj[0]
+                candidate = _find_dict_with_keys(obj) if not (isinstance(obj, dict) and any(k in obj for k in expected_keys)) else obj
+                if candidate:
+                    return _coerce_and_fill(candidate)
+            except Exception:
+                pass
+
+            # Try extracting JSON objects from messy text
+            candidates = _extract_json_objects(raw)
+            for c in candidates:
+                # Try clean, then sanitized variants
+                variants = [c]
+                sanitized = _python_literals_to_json(_remove_trailing_commas(c))
+                if sanitized != c:
+                    variants.append(sanitized)
+                # Last resort: single quotes to double quotes (coarse)
+                variants.append(re.sub(r"'([^']*)'", r'"\1"', sanitized))
+                for v in variants:
+                    try:
+                        obj = json.loads(v)
+                        if isinstance(obj, list) and obj:
+                            obj = obj[0]
+                        candidate = _find_dict_with_keys(obj) if not (isinstance(obj, dict) and any(k in obj for k in expected_keys)) else obj
+                        if candidate:
+                            logger.info("[G.A.T.E.] Robust JSON salvage succeeded.")
+                            return _coerce_and_fill(candidate)
+                    except Exception:
+                        continue
+            return None
+
         if not response_content:
+            # Attempt salvage from the entire response object representation
+            salvage_source = None
+            try:
+                salvage_source = json.dumps(response, ensure_ascii=False)
+            except Exception:
+                salvage_source = str(response)
+
+            parsed = _robust_parse(salvage_source)
+            if parsed is not None:
+                return parsed
+
             logger.warning(
                 "[G.A.T.E.] LLM response missing usable content – using default routing flags"
             )
@@ -245,11 +370,16 @@ def _get_routing_flags(user_message: str, recent_history: list) -> dict:
         print(f"🤖 FULL RESPONSE:\n{response_content}")
         print("="*80 + "\n")
 
+        # First try strict load
         try:
             routing_flags = json.loads(response_content)
             routing_flags = _normalize_and_fill_defaults(routing_flags)
             return routing_flags
-        except json.JSONDecodeError as e:
+        except Exception as e:
+            # Try robust salvage from content
+            parsed = _robust_parse(response_content)
+            if parsed is not None:
+                return parsed
             logger.warning(
                 f"[G.A.T.E.] JSON parse error: {e}. Using default flags."
             )
